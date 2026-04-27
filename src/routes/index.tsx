@@ -51,6 +51,7 @@ type Shop = Database["public"]["Tables"]["shops"]["Row"];
 type Sale = Database["public"]["Tables"]["sales"]["Row"];
 type Attendance = Database["public"]["Tables"]["attendance"]["Row"];
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
+type AuthAction = "" | "password" | "otp";
 
 const starterProducts = [
   { name: "Tomato", category: "Vegetables", unit: "kg", price: 42 },
@@ -68,6 +69,50 @@ const roleLabels: Record<AppRole, string> = {
   employee: "Employee",
 };
 
+const transientDatabaseMessages = ["schema cache", "retrying", "not accepting connections", "recovery mode", "failed to fetch"];
+
+const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+
+function isTransientDatabaseError(message = "") {
+  const normalized = message.toLowerCase();
+  return transientDatabaseMessages.some((item) => normalized.includes(item));
+}
+
+async function retryTransient<T>(operation: () => Promise<T>, getMessage: (result: T) => string | undefined, attempts = 3) {
+  let lastResult: T | undefined;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    lastResult = await operation();
+    const message = getMessage(lastResult);
+    if (!message || !isTransientDatabaseError(message)) return lastResult;
+    await wait(400 + attempt * 500);
+  }
+  return lastResult as T;
+}
+
+function phoneCandidates(identifier: string) {
+  const compact = identifier.replace(/[\s()-]/g, "");
+  const digits = compact.replace(/\D/g, "");
+  const candidates = new Set<string>();
+
+  if (compact.startsWith("+") && digits.length >= 10) candidates.add(`+${digits}`);
+  if (digits.length === 10) candidates.add(`+91${digits}`);
+  if (digits.length > 10) candidates.add(`+${digits}`);
+  candidates.add(identifier);
+
+  return Array.from(candidates).filter(Boolean);
+}
+
+function friendlyAuthError(message: string) {
+  const normalized = message.toLowerCase();
+  if (normalized.includes("phone provider") || normalized.includes("sms")) {
+    return "Mobile OTP is not active yet. Please use email OTP or password login for now.";
+  }
+  if (normalized.includes("invalid login") || normalized.includes("invalid credentials")) {
+    return "Login details are not matching. Check the email/mobile number and password.";
+  }
+  return message;
+}
+
 function Index() {
   const createAccount = useServerFn(createStaffAccount);
   const setupStatus = useServerFn(getSetupStatus);
@@ -80,6 +125,7 @@ function Index() {
   const [attendance, setAttendance] = useState<Attendance[]>([]);
   const [hasOwner, setHasOwner] = useState(true);
   const [loading, setLoading] = useState(true);
+  const [authAction, setAuthAction] = useState<AuthAction>("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [pointer, setPointer] = useState({ x: "72%", y: "18%" });
