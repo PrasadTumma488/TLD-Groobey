@@ -388,8 +388,8 @@ function Index() {
                 <form className="space-y-3" onSubmit={handleLogin}>
                   <Field name="identifier" label="Email or mobile number" icon={Mail} required />
                   <Field name="password" label="Password" type="password" icon={LockKeyhole} required />
-                  <Button className="h-11 w-full rounded-xl" variant="groobey" type="submit">
-                    <ShieldCheck className="size-4" /> Login
+                  <Button className="h-11 w-full rounded-xl" variant="groobey" type="submit" disabled={authAction === "password"}>
+                    {authAction === "password" ? <Loader2 className="size-4 animate-spin" /> : <ShieldCheck className="size-4" />} Login
                   </Button>
                 </form>
                 <div className="flex items-center gap-3 text-xs font-semibold text-muted-foreground">
@@ -397,8 +397,8 @@ function Index() {
                 </div>
                 <form className="flex gap-2" onSubmit={handleOtp}>
                   <input name="otpIdentifier" className="min-w-0 flex-1 rounded-xl border border-input bg-card px-3 text-sm outline-none ring-ring transition focus:ring-2" placeholder="Email or mobile" />
-                  <Button variant="calm" type="submit" className="h-11 rounded-xl">
-                    Send OTP
+                  <Button variant="calm" type="submit" className="h-11 rounded-xl" disabled={authAction === "otp"}>
+                    {authAction === "otp" && <Loader2 className="size-4 animate-spin" />} Send OTP
                   </Button>
                 </form>
               </div>
