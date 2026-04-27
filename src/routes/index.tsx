@@ -176,18 +176,22 @@ function Index() {
     setLoading(true);
     setError("");
 
-    const [profileRes, rolesRes, productsRes, shopsRes, salesRes, attendanceRes] = await Promise.all([
-      supabase.from("profiles").select("*").eq("user_id", session.user.id).maybeSingle(),
-      supabase.from("user_roles").select("role").eq("user_id", session.user.id),
-      supabase.from("products").select("*").order("category", { ascending: true }).order("name"),
-      supabase.from("shops").select("*").order("name"),
-      supabase.from("sales").select("*").order("created_at", { ascending: false }).limit(50),
-      supabase.from("attendance").select("*").order("work_date", { ascending: false }).limit(50),
-    ]);
+    const [profileRes, rolesRes, productsRes, shopsRes, salesRes, attendanceRes] = await retryTransient(
+      () => Promise.all([
+        supabase.from("profiles").select("*").eq("user_id", session.user.id).maybeSingle(),
+        supabase.from("user_roles").select("role").eq("user_id", session.user.id),
+        supabase.from("products").select("*").order("category", { ascending: true }).order("name"),
+        supabase.from("shops").select("*").order("name"),
+        supabase.from("sales").select("*").order("created_at", { ascending: false }).limit(50),
+        supabase.from("attendance").select("*").order("work_date", { ascending: false }).limit(50),
+      ]),
+      (responses) => responses.map((response) => response.error?.message).find(Boolean),
+    );
 
     setLoading(false);
-    if (profileRes.error || rolesRes.error || productsRes.error) {
-      setError(profileRes.error?.message || rolesRes.error?.message || productsRes.error?.message || "Unable to load dashboard.");
+    const workspaceError = [profileRes, rolesRes, productsRes, shopsRes, salesRes, attendanceRes].map((response) => response.error?.message).find(Boolean);
+    if (workspaceError) {
+      setError(isTransientDatabaseError(workspaceError) ? "Backend was waking up. Please try login once more." : workspaceError);
       return;
     }
 
@@ -203,32 +207,58 @@ function Index() {
     event.preventDefault();
     setError("");
     setNotice("");
+    setAuthAction("password");
     const form = new FormData(event.currentTarget);
     const identifier = String(form.get("identifier") || "").trim();
     const password = String(form.get("password") || "");
     const isEmail = identifier.includes("@");
 
-    const { error: loginError } = await supabase.auth.signInWithPassword(
-      isEmail ? { email: identifier, password } : { phone: identifier, password },
-    );
+    const { error: loginError } = isEmail
+      ? await supabase.auth.signInWithPassword({ email: identifier, password })
+      : await signInWithPhonePassword(identifier, password);
 
-    if (loginError) setError(loginError.message);
+    setAuthAction("");
+    if (loginError) setError(friendlyAuthError(loginError.message));
   }
 
   async function handleOtp(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
     setNotice("");
+    setAuthAction("otp");
     const form = new FormData(event.currentTarget);
     const identifier = String(form.get("otpIdentifier") || "").trim();
     const isEmail = identifier.includes("@");
 
     const { error: otpError } = isEmail
       ? await supabase.auth.signInWithOtp({ email: identifier })
-      : await supabase.auth.signInWithOtp({ phone: identifier });
+      : await signInWithPhoneOtp(identifier);
 
-    if (otpError) setError(otpError.message);
+    setAuthAction("");
+    if (otpError) setError(friendlyAuthError(otpError.message));
     else setNotice("One-time login code sent.");
+  }
+
+  async function signInWithPhonePassword(identifier: string, password: string) {
+    let lastError: { message: string } | null = null;
+    for (const phone of phoneCandidates(identifier)) {
+      const { error: loginError } = await supabase.auth.signInWithPassword({ phone, password });
+      if (!loginError) return { error: null };
+      lastError = loginError;
+      if (!loginError.message.toLowerCase().includes("invalid")) break;
+    }
+    return { error: lastError };
+  }
+
+  async function signInWithPhoneOtp(identifier: string) {
+    let lastError: { message: string } | null = null;
+    for (const phone of phoneCandidates(identifier)) {
+      const { error: otpError } = await supabase.auth.signInWithOtp({ phone });
+      if (!otpError) return { error: null };
+      lastError = otpError;
+      if (otpError.message.toLowerCase().includes("phone provider")) break;
+    }
+    return { error: lastError };
   }
 
   async function handleCreateAccount(event: FormEvent<HTMLFormElement>) {
