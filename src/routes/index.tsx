@@ -145,6 +145,7 @@ function friendlyAuthError(message: string) {
 function Index() {
   const createAccount = useServerFn(createStaffAccount);
   const setupStatus = useServerFn(getSetupStatus);
+  const saveShop = useServerFn(saveShopDetails);
   const [session, setSession] = useState<Awaited<ReturnType<typeof supabase.auth.getSession>>["data"]["session"]>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [roles, setRoles] = useState<AppRole[]>([]);
@@ -162,6 +163,8 @@ function Index() {
   const activeRole = roles[0];
   const isOwner = roles.includes("main_admin");
   const isAdminLike = roles.includes("main_admin") || roles.includes("admin");
+  const isMerchant = roles.includes("merchant");
+  const isEmployee = roles.includes("employee");
 
   useEffect(() => {
     let mounted = true;
@@ -220,7 +223,8 @@ function Index() {
     setLoading(false);
     const workspaceError = [profileRes, rolesRes, productsRes, shopsRes, salesRes, attendanceRes].map((response) => response.error?.message).find(Boolean);
     if (workspaceError) {
-      setError(isTransientDatabaseError(workspaceError) ? "Backend was waking up. Please try login once more." : workspaceError);
+      setError(isTransientDatabaseError(workspaceError) ? "Backend is ready now. Refreshing your workspace automatically." : workspaceError);
+      if (isTransientDatabaseError(workspaceError)) window.setTimeout(() => void loadWorkspace(), 900);
       return;
     }
 
@@ -344,6 +348,47 @@ function Index() {
       event.currentTarget.reset();
       setNotice("Product added.");
       void loadWorkspace();
+    }
+  }
+
+  async function addShop(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const { error: shopError } = await supabase.from("shops").insert({
+      name: String(form.get("shopName") || ""),
+      contact_name: String(form.get("contactName") || "") || null,
+      phone: String(form.get("shopPhone") || "") || null,
+      address: String(form.get("address") || "") || null,
+      created_by: session?.user.id,
+    } as never);
+
+    if (shopError) setError(shopError.message);
+    else {
+      event.currentTarget.reset();
+      setNotice("Shop added. It will now appear in shop dropdowns.");
+      void loadWorkspace();
+    }
+  }
+
+  async function handleMerchantShop(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    const form = new FormData(event.currentTarget);
+    try {
+      await saveShop({
+        data: {
+          requesterToken: session?.access_token || "",
+          name: String(form.get("shopName") || ""),
+          contactName: String(form.get("contactName") || ""),
+          phone: String(form.get("shopPhone") || ""),
+          address: String(form.get("address") || ""),
+        },
+      });
+      event.currentTarget.reset();
+      setNotice("Shop details saved for owner review.");
+      void loadWorkspace();
+    } catch (shopError) {
+      setError(shopError instanceof Error ? shopError.message : "Unable to save shop details.");
     }
   }
 
