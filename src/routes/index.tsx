@@ -377,6 +377,7 @@ function Index() {
   async function handleMerchantShop(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
+    setNotice("");
     const form = new FormData(event.currentTarget);
     try {
       await saveShop({
@@ -398,6 +399,8 @@ function Index() {
 
   async function submitAttendance() {
     if (!session?.user) return;
+    setError("");
+    setNotice("");
     const { error: attendanceError } = await supabase.from("attendance").upsert({
       worker_id: session.user.id,
       work_date: new Date().toISOString().slice(0, 10),
