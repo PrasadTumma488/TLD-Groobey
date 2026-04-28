@@ -209,20 +209,6 @@ function Index() {
     };
   }, [setupStatus]);
 
-  useEffect(() => {
-    if (!session?.user) {
-      setProfile(null);
-      setRoles([]);
-      setProducts([]);
-      setShops([]);
-      setSales([]);
-      setAttendance([]);
-      return;
-    }
-
-    void loadWorkspace();
-  }, [loadWorkspace, session?.user]);
-
   const loadWorkspace = useCallback(async () => {
     if (!session?.user) return;
     const requestId = workspaceRequestRef.current + 1;
@@ -275,6 +261,20 @@ function Index() {
     setSales(salesRes.data ?? []);
     setAttendance(attendanceRes.data ?? []);
   }, [session?.user]);
+
+  useEffect(() => {
+    if (!session?.user) {
+      setProfile(null);
+      setRoles([]);
+      setProducts([]);
+      setShops([]);
+      setSales([]);
+      setAttendance([]);
+      return;
+    }
+
+    void loadWorkspace();
+  }, [loadWorkspace, session?.user]);
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
