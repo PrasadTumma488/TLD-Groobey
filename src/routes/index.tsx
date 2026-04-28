@@ -524,8 +524,11 @@ function Index() {
             </div>
           </Panel>
 
-          <Panel title={isOwner ? "Create separate logins" : "Submit today's work"} icon={UsersRound}>
-            {isOwner ? <AccountForm onCreate={handleCreateAccount} /> : <WorkForm products={products} shops={shops} userId={session.user.id} onDone={loadWorkspace} onError={setError} />}
+          <Panel title={isOwner ? "Create separate logins" : isMerchant ? "Merchant shop and sale work" : isEmployee ? "Employee work details" : "Admin operations"} icon={UsersRound}>
+            {isOwner && <AccountForm onCreate={handleCreateAccount} />}
+            {isMerchant && <MerchantWorkspace products={products} shops={shops} userId={session.user.id} onSaveShop={handleMerchantShop} onDone={loadWorkspace} onError={setError} />}
+            {isEmployee && <EmployeeWorkspace profile={profile} onSubmitAttendance={submitAttendance} />}
+            {!isOwner && !isMerchant && !isEmployee && <EmptyState icon={ShieldCheck} title="Admin login active" text="Use the product, shop, attendance, and verification sections below." />}
           </Panel>
         </section>
 
@@ -540,9 +543,14 @@ function Index() {
               </form>
             </Panel>
           )}
+          {isAdminLike && (
+            <Panel title="Add shop name" icon={Store}>
+              <ShopDetailsForm onSubmit={addShop} buttonText="Add shop" />
+            </Panel>
+          )}
           <Panel title="Attendance" icon={ClipboardList}>
             <div className="space-y-3">
-              <Button variant="groobey" onClick={submitAttendance} className="w-full rounded-xl"><CheckCircle2 className="size-4" /> Mark present</Button>
+              {!isOwner && <Button variant="groobey" onClick={submitAttendance} className="w-full rounded-xl"><CheckCircle2 className="size-4" /> Mark present</Button>}
               <Records items={attendance.map((item) => `${item.work_date} · ${item.status} · ${item.verification_status}`)} empty="No attendance records." />
             </div>
           </Panel>
