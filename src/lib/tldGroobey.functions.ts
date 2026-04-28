@@ -19,6 +19,14 @@ const createAccountSchema = z
     path: ["email"],
   });
 
+const shopDetailsSchema = z.object({
+  requesterToken: z.string().min(10),
+  name: z.string().trim().min(2).max(120),
+  contactName: z.string().trim().max(120).optional().or(z.literal("")),
+  phone: z.string().trim().max(20).optional().or(z.literal("")),
+  address: z.string().trim().max(300).optional().or(z.literal("")),
+});
+
 async function hasMainAdmin() {
   const { count, error } = await supabaseAdmin
     .from("user_roles")
@@ -44,6 +52,13 @@ async function assertMainAdmin(token?: string) {
 
   if (roleError) throw new Error(roleError.message);
   if (!role) throw new Error("Only the owner can create staff accounts.");
+}
+
+async function getAuthenticatedUser(token?: string) {
+  if (!token) throw new Error("Login is required.");
+  const { data, error } = await supabaseAdmin.auth.getUser(token);
+  if (error || !data.user) throw new Error("Session expired. Please login again.");
+  return data.user;
 }
 
 export const createStaffAccount = createServerFn({ method: "POST" })
@@ -95,3 +110,21 @@ export const createStaffAccount = createServerFn({ method: "POST" })
 export const getSetupStatus = createServerFn({ method: "GET" }).handler(async () => ({
   hasOwner: await hasMainAdmin(),
 }));
+
+export const saveShopDetails = createServerFn({ method: "POST" })
+  .inputValidator((input) => shopDetailsSchema.parse(input))
+  .handler(async ({ data }) => {
+    const user = await getAuthenticatedUser(data.requesterToken);
+
+    const { error } = await supabaseAdmin.from("shops").insert({
+      name: data.name,
+      contact_name: data.contactName || null,
+      phone: data.phone || null,
+      address: data.address || null,
+      created_by: user.id,
+      is_active: true,
+    } as never);
+
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
