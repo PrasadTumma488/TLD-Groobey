@@ -21,7 +21,7 @@ import {
   UserCog,
   UsersRound,
 } from "lucide-react";
-import { type CSSProperties, type FormEvent, useEffect, useMemo, useState } from "react";
+import { type CSSProperties, type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { createStaffAccount, getSetupStatus, saveShopDetails } from "@/lib/tldGroobey.functions";
@@ -159,6 +159,7 @@ function Index() {
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [pointer, setPointer] = useState({ x: "72%", y: "18%" });
+  const workspaceRequestRef = useRef(0);
 
   const activeRole = roles[0];
   const isOwner = roles.includes("main_admin");
