@@ -21,7 +21,15 @@ import {
   UserCog,
   UsersRound,
 } from "lucide-react";
-import { type CSSProperties, type FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  type FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { Button } from "@/components/ui/button";
 import { createStaffAccount, getSetupStatus, saveShopDetails } from "@/lib/tldGroobey.functions";
@@ -215,7 +223,7 @@ function Index() {
     void loadWorkspace();
   }, [session?.user?.id]);
 
-  async function loadWorkspace() {
+  const loadWorkspace = useCallback(async () => {
     if (!session?.user) return;
     const requestId = workspaceRequestRef.current + 1;
     workspaceRequestRef.current = requestId;
@@ -266,7 +274,7 @@ function Index() {
     setShops(shopsRes.data ?? []);
     setSales(salesRes.data ?? []);
     setAttendance(attendanceRes.data ?? []);
-  }
+  }, [session?.user]);
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
