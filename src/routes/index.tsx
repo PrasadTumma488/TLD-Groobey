@@ -17,13 +17,14 @@ import {
   ReceiptText,
   ShieldCheck,
   Store,
+  Truck,
   UserCog,
   UsersRound,
 } from "lucide-react";
 import { type CSSProperties, type FormEvent, useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { createStaffAccount, getSetupStatus } from "@/lib/tldGroobey.functions";
+import { createStaffAccount, getSetupStatus, saveShopDetails } from "@/lib/tldGroobey.functions";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 
@@ -56,10 +57,38 @@ type AuthAction = "" | "password" | "otp";
 const starterProducts = [
   { name: "Tomato", category: "Vegetables", unit: "kg", price: 42 },
   { name: "Onion", category: "Vegetables", unit: "kg", price: 36 },
-  { name: "Rice Sona Masoori", category: "Staples", unit: "kg", price: 68 },
-  { name: "Milk", category: "Dairy", unit: "litre", price: 58 },
+  { name: "Potato", category: "Vegetables", unit: "kg", price: 34 },
+  { name: "Carrot", category: "Vegetables", unit: "kg", price: 54 },
+  { name: "Beans", category: "Vegetables", unit: "kg", price: 82 },
+  { name: "Cabbage", category: "Vegetables", unit: "piece", price: 38 },
+  { name: "Cauliflower", category: "Vegetables", unit: "piece", price: 46 },
+  { name: "Brinjal", category: "Vegetables", unit: "kg", price: 48 },
+  { name: "Capsicum", category: "Vegetables", unit: "kg", price: 88 },
+  { name: "Green Chilli", category: "Vegetables", unit: "kg", price: 96 },
+  { name: "Coriander", category: "Greens", unit: "bunch", price: 18 },
+  { name: "Spinach", category: "Greens", unit: "bunch", price: 24 },
   { name: "Banana", category: "Fruits", unit: "dozen", price: 72 },
+  { name: "Apple", category: "Fruits", unit: "kg", price: 180 },
+  { name: "Orange", category: "Fruits", unit: "kg", price: 110 },
+  { name: "Mango", category: "Fruits", unit: "kg", price: 140 },
+  { name: "Grapes", category: "Fruits", unit: "kg", price: 120 },
+  { name: "Watermelon", category: "Fruits", unit: "piece", price: 90 },
+  { name: "Rice Sona Masoori", category: "Staples", unit: "kg", price: 68 },
+  { name: "Wheat Atta", category: "Staples", unit: "kg", price: 52 },
+  { name: "Toor Dal", category: "Staples", unit: "kg", price: 156 },
+  { name: "Urad Dal", category: "Staples", unit: "kg", price: 142 },
+  { name: "Sugar", category: "Staples", unit: "kg", price: 46 },
+  { name: "Salt", category: "Staples", unit: "kg", price: 24 },
+  { name: "Milk", category: "Dairy", unit: "litre", price: 58 },
+  { name: "Curd", category: "Dairy", unit: "500g", price: 34 },
+  { name: "Paneer", category: "Dairy", unit: "200g", price: 92 },
+  { name: "Butter", category: "Dairy", unit: "100g", price: 58 },
   { name: "Groundnut Oil", category: "Kitchen", unit: "litre", price: 168 },
+  { name: "Sunflower Oil", category: "Kitchen", unit: "litre", price: 148 },
+  { name: "Turmeric Powder", category: "Kitchen", unit: "100g", price: 36 },
+  { name: "Chilli Powder", category: "Kitchen", unit: "100g", price: 44 },
+  { name: "Tea Powder", category: "Kitchen", unit: "250g", price: 130 },
+  { name: "Coffee Powder", category: "Kitchen", unit: "200g", price: 165 },
 ];
 
 const roleLabels: Record<AppRole, string> = {
@@ -116,6 +145,7 @@ function friendlyAuthError(message: string) {
 function Index() {
   const createAccount = useServerFn(createStaffAccount);
   const setupStatus = useServerFn(getSetupStatus);
+  const saveShop = useServerFn(saveShopDetails);
   const [session, setSession] = useState<Awaited<ReturnType<typeof supabase.auth.getSession>>["data"]["session"]>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [roles, setRoles] = useState<AppRole[]>([]);
@@ -133,6 +163,8 @@ function Index() {
   const activeRole = roles[0];
   const isOwner = roles.includes("main_admin");
   const isAdminLike = roles.includes("main_admin") || roles.includes("admin");
+  const isMerchant = roles.includes("merchant");
+  const isEmployee = roles.includes("employee");
 
   useEffect(() => {
     let mounted = true;
@@ -191,7 +223,8 @@ function Index() {
     setLoading(false);
     const workspaceError = [profileRes, rolesRes, productsRes, shopsRes, salesRes, attendanceRes].map((response) => response.error?.message).find(Boolean);
     if (workspaceError) {
-      setError(isTransientDatabaseError(workspaceError) ? "Backend was waking up. Please try login once more." : workspaceError);
+      setError(isTransientDatabaseError(workspaceError) ? "Backend is ready now. Refreshing your workspace automatically." : workspaceError);
+      if (isTransientDatabaseError(workspaceError)) window.setTimeout(() => void loadWorkspace(), 900);
       return;
     }
 
@@ -315,6 +348,47 @@ function Index() {
       event.currentTarget.reset();
       setNotice("Product added.");
       void loadWorkspace();
+    }
+  }
+
+  async function addShop(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const { error: shopError } = await supabase.from("shops").insert({
+      name: String(form.get("shopName") || ""),
+      contact_name: String(form.get("contactName") || "") || null,
+      phone: String(form.get("shopPhone") || "") || null,
+      address: String(form.get("address") || "") || null,
+      created_by: session?.user.id,
+    } as never);
+
+    if (shopError) setError(shopError.message);
+    else {
+      event.currentTarget.reset();
+      setNotice("Shop added. It will now appear in shop dropdowns.");
+      void loadWorkspace();
+    }
+  }
+
+  async function handleMerchantShop(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    const form = new FormData(event.currentTarget);
+    try {
+      await saveShop({
+        data: {
+          requesterToken: session?.access_token || "",
+          name: String(form.get("shopName") || ""),
+          contactName: String(form.get("contactName") || ""),
+          phone: String(form.get("shopPhone") || ""),
+          address: String(form.get("address") || ""),
+        },
+      });
+      event.currentTarget.reset();
+      setNotice("Shop details saved for owner review.");
+      void loadWorkspace();
+    } catch (shopError) {
+      setError(shopError instanceof Error ? shopError.message : "Unable to save shop details.");
     }
   }
 
@@ -450,8 +524,11 @@ function Index() {
             </div>
           </Panel>
 
-          <Panel title={isOwner ? "Create separate logins" : "Submit today's work"} icon={UsersRound}>
-            {isOwner ? <AccountForm onCreate={handleCreateAccount} /> : <WorkForm products={products} shops={shops} userId={session.user.id} onDone={loadWorkspace} onError={setError} />}
+          <Panel title={isOwner ? "Create separate logins" : isMerchant ? "Merchant shop and sale work" : isEmployee ? "Employee work details" : "Admin operations"} icon={UsersRound}>
+            {isOwner && <AccountForm onCreate={handleCreateAccount} />}
+            {isMerchant && <MerchantWorkspace products={products} shops={shops} userId={session.user.id} onSaveShop={handleMerchantShop} onDone={loadWorkspace} onError={setError} />}
+            {isEmployee && <EmployeeWorkspace profile={profile} onSubmitAttendance={submitAttendance} />}
+            {!isOwner && !isMerchant && !isEmployee && <EmptyState icon={ShieldCheck} title="Admin login active" text="Use the product, shop, attendance, and verification sections below." />}
           </Panel>
         </section>
 
@@ -466,9 +543,14 @@ function Index() {
               </form>
             </Panel>
           )}
+          {isAdminLike && (
+            <Panel title="Add shop name" icon={Store}>
+              <ShopDetailsForm onSubmit={addShop} buttonText="Add shop" />
+            </Panel>
+          )}
           <Panel title="Attendance" icon={ClipboardList}>
             <div className="space-y-3">
-              <Button variant="groobey" onClick={submitAttendance} className="w-full rounded-xl"><CheckCircle2 className="size-4" /> Mark present</Button>
+              {!isOwner && <Button variant="groobey" onClick={submitAttendance} className="w-full rounded-xl"><CheckCircle2 className="size-4" /> Mark present</Button>}
               <Records items={attendance.map((item) => `${item.work_date} · ${item.status} · ${item.verification_status}`)} empty="No attendance records." />
             </div>
           </Panel>
@@ -497,22 +579,38 @@ function OwnerSetupForm({ onCreate }: { onCreate: (event: FormEvent<HTMLFormElem
   return <div className="space-y-4"><div className="rounded-xl border border-warning bg-warning/15 p-3 text-sm font-semibold text-warning-foreground">First create the owner login. Public signup is disabled.</div><form className="grid gap-3" onSubmit={onCreate}><input type="hidden" name="role" value="main_admin" /><Field name="displayName" label="Owner name" required /><Field name="email" label="Owner email" icon={Mail} /><Field name="phone" label="Owner mobile" icon={Phone} /><Field name="newPassword" label="Owner password" type="password" icon={LockKeyhole} required /><Button variant="groobey" className="rounded-xl">Create owner login</Button></form></div>;
 }
 
+function MerchantWorkspace({ products, shops, userId, onSaveShop, onDone, onError }: { products: Product[]; shops: Shop[]; userId: string; onSaveShop: (event: FormEvent<HTMLFormElement>) => void; onDone: () => void; onError: (message: string) => void }) {
+  return <div className="grid gap-5"><ShopDetailsForm onSubmit={onSaveShop} buttonText="Save my shop details" /><WorkForm products={products} shops={shops} userId={userId} onDone={onDone} onError={onError} /></div>;
+}
+
+function EmployeeWorkspace({ profile, onSubmitAttendance }: { profile: Profile | null; onSubmitAttendance: () => void }) {
+  return <div className="grid gap-3"><div className="rounded-xl border border-border bg-card/70 p-3 text-sm font-semibold"><div className="flex items-center gap-2"><Truck className="size-4 text-primary" /> Employee details</div><p className="mt-2 text-muted-foreground">{profile?.display_name || "Employee"} · {profile?.email || profile?.phone || "Login profile"}</p></div><Button variant="groobey" onClick={onSubmitAttendance} className="rounded-xl"><CheckCircle2 className="size-4" /> Submit today's attendance</Button></div>;
+}
+
+function ShopDetailsForm({ onSubmit, buttonText }: { onSubmit: (event: FormEvent<HTMLFormElement>) => void; buttonText: string }) {
+  return <form className="grid gap-3" onSubmit={onSubmit}><Field name="shopName" label="Shop name" icon={Store} required /><Field name="contactName" label="Contact person" icon={UserCog} /><Field name="shopPhone" label="Shop mobile number" icon={Phone} /><Field name="address" label="Shop address" /><Button variant="groobey" className="rounded-xl"><Store className="size-4" /> {buttonText}</Button></form>;
+}
+
 function WorkForm({ products, shops, userId, onDone, onError }: { products: Product[]; shops: Shop[]; userId: string; onDone: () => void; onError: (message: string) => void }) {
+  const [destination, setDestination] = useState("shop");
+
   async function submitSale(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const product = products.find((item) => item.id === form.get("productId"));
     if (!product) return onError("Choose a product first.");
-    const destination = String(form.get("destination"));
-    const { data: sale, error: saleError } = await supabase.from("sales").insert({ created_by: userId, destination_type: destination, shop_id: destination === "shop" ? String(form.get("shopId")) : null, other_shop_name: destination === "other" ? String(form.get("otherShop") || "") : null, notes: String(form.get("notes") || "") } as never).select("id").single();
+    const selectedDestination = String(form.get("destination"));
+    if (selectedDestination === "shop" && !form.get("shopId")) return onError("Add or choose a shop name first.");
+    const { data: sale, error: saleError } = await supabase.from("sales").insert({ created_by: userId, destination_type: selectedDestination, shop_id: selectedDestination === "shop" ? String(form.get("shopId")) : null, other_shop_name: selectedDestination === "other" ? String(form.get("otherShop") || "") : null, notes: String(form.get("notes") || "") } as never).select("id").single();
     if (saleError || !sale) return onError(saleError?.message || "Unable to submit sale.");
     const { error: itemError } = await supabase.from("sale_items").insert({ sale_id: sale.id, product_id: product.id, product_name: product.name, quantity: Number(form.get("quantity") || 1), unit_price: product.price } as never);
     if (itemError) return onError(itemError.message);
     event.currentTarget.reset();
+    setDestination("shop");
     onDone();
   }
 
-  return <form className="grid gap-3" onSubmit={submitSale}><select name="productId" className="h-11 rounded-xl border border-input bg-card px-3 text-sm font-semibold outline-none ring-ring focus:ring-2">{products.map((product) => <option key={product.id} value={product.id}>{product.name} · ₹{product.price}/{product.unit}</option>)}</select><Field name="quantity" label="Quantity" type="number" required /><select name="destination" className="h-11 rounded-xl border border-input bg-card px-3 text-sm font-semibold outline-none ring-ring focus:ring-2"><option value="shop">Shop name</option><option value="self">Self</option><option value="other">Others</option></select><select name="shopId" className="h-11 rounded-xl border border-input bg-card px-3 text-sm font-semibold outline-none ring-ring focus:ring-2">{shops.map((shop) => <option key={shop.id} value={shop.id}>{shop.name}</option>)}</select><Field name="otherShop" label="Other shop name optional" /><Field name="notes" label="Notes" /><Button variant="groobey" className="rounded-xl"><ReceiptText className="size-4" /> Submit sale</Button></form>;
+  return <form className="grid gap-3" onSubmit={submitSale}><select name="productId" className="h-11 rounded-xl border border-input bg-card px-3 text-sm font-semibold outline-none ring-ring focus:ring-2" defaultValue=""><option value="" disabled>{products.length ? "Choose grocery item" : "Owner must add grocery list first"}</option>{products.map((product) => <option key={product.id} value={product.id}>{product.name} · ₹{product.price}/{product.unit}</option>)}</select><Field name="quantity" label="Quantity" type="number" required /><select name="destination" value={destination} onChange={(event) => setDestination(event.target.value)} className="h-11 rounded-xl border border-input bg-card px-3 text-sm font-semibold outline-none ring-ring focus:ring-2"><option value="shop">Shop name</option><option value="self">Self</option><option value="other">Others</option></select>{destination === "shop" && <select name="shopId" className="h-11 rounded-xl border border-input bg-card px-3 text-sm font-semibold outline-none ring-ring focus:ring-2" defaultValue=""><option value="" disabled>{shops.length ? "Choose shop name" : "No shop names saved yet"}</option>{shops.map((shop) => <option key={shop.id} value={shop.id}>{shop.name}</option>)}</select>}{destination === "other" && <Field name="otherShop" label="Other shop name" required />}<Field name="notes" label="Notes" /><Button variant="groobey" className="rounded-xl" disabled={!products.length || (destination === "shop" && !shops.length)}><ReceiptText className="size-4" /> Submit sale</Button></form>;
 }
 
 function Field({ name, label, type = "text", icon: Icon, required = false }: { name: string; label: string; type?: string; icon?: typeof Mail; required?: boolean }) {
