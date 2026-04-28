@@ -17,13 +17,14 @@ import {
   ReceiptText,
   ShieldCheck,
   Store,
+  Truck,
   UserCog,
   UsersRound,
 } from "lucide-react";
 import { type CSSProperties, type FormEvent, useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { createStaffAccount, getSetupStatus } from "@/lib/tldGroobey.functions";
+import { createStaffAccount, getSetupStatus, saveShopDetails } from "@/lib/tldGroobey.functions";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 
@@ -56,10 +57,38 @@ type AuthAction = "" | "password" | "otp";
 const starterProducts = [
   { name: "Tomato", category: "Vegetables", unit: "kg", price: 42 },
   { name: "Onion", category: "Vegetables", unit: "kg", price: 36 },
-  { name: "Rice Sona Masoori", category: "Staples", unit: "kg", price: 68 },
-  { name: "Milk", category: "Dairy", unit: "litre", price: 58 },
+  { name: "Potato", category: "Vegetables", unit: "kg", price: 34 },
+  { name: "Carrot", category: "Vegetables", unit: "kg", price: 54 },
+  { name: "Beans", category: "Vegetables", unit: "kg", price: 82 },
+  { name: "Cabbage", category: "Vegetables", unit: "piece", price: 38 },
+  { name: "Cauliflower", category: "Vegetables", unit: "piece", price: 46 },
+  { name: "Brinjal", category: "Vegetables", unit: "kg", price: 48 },
+  { name: "Capsicum", category: "Vegetables", unit: "kg", price: 88 },
+  { name: "Green Chilli", category: "Vegetables", unit: "kg", price: 96 },
+  { name: "Coriander", category: "Greens", unit: "bunch", price: 18 },
+  { name: "Spinach", category: "Greens", unit: "bunch", price: 24 },
   { name: "Banana", category: "Fruits", unit: "dozen", price: 72 },
+  { name: "Apple", category: "Fruits", unit: "kg", price: 180 },
+  { name: "Orange", category: "Fruits", unit: "kg", price: 110 },
+  { name: "Mango", category: "Fruits", unit: "kg", price: 140 },
+  { name: "Grapes", category: "Fruits", unit: "kg", price: 120 },
+  { name: "Watermelon", category: "Fruits", unit: "piece", price: 90 },
+  { name: "Rice Sona Masoori", category: "Staples", unit: "kg", price: 68 },
+  { name: "Wheat Atta", category: "Staples", unit: "kg", price: 52 },
+  { name: "Toor Dal", category: "Staples", unit: "kg", price: 156 },
+  { name: "Urad Dal", category: "Staples", unit: "kg", price: 142 },
+  { name: "Sugar", category: "Staples", unit: "kg", price: 46 },
+  { name: "Salt", category: "Staples", unit: "kg", price: 24 },
+  { name: "Milk", category: "Dairy", unit: "litre", price: 58 },
+  { name: "Curd", category: "Dairy", unit: "500g", price: 34 },
+  { name: "Paneer", category: "Dairy", unit: "200g", price: 92 },
+  { name: "Butter", category: "Dairy", unit: "100g", price: 58 },
   { name: "Groundnut Oil", category: "Kitchen", unit: "litre", price: 168 },
+  { name: "Sunflower Oil", category: "Kitchen", unit: "litre", price: 148 },
+  { name: "Turmeric Powder", category: "Kitchen", unit: "100g", price: 36 },
+  { name: "Chilli Powder", category: "Kitchen", unit: "100g", price: 44 },
+  { name: "Tea Powder", category: "Kitchen", unit: "250g", price: 130 },
+  { name: "Coffee Powder", category: "Kitchen", unit: "200g", price: 165 },
 ];
 
 const roleLabels: Record<AppRole, string> = {
