@@ -98,7 +98,13 @@ const roleLabels: Record<AppRole, string> = {
   employee: "Employee",
 };
 
-const transientDatabaseMessages = ["schema cache", "retrying", "not accepting connections", "recovery mode", "failed to fetch"];
+const transientDatabaseMessages = [
+  "schema cache",
+  "retrying",
+  "not accepting connections",
+  "recovery mode",
+  "failed to fetch",
+];
 
 const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
@@ -107,7 +113,11 @@ function isTransientDatabaseError(message = "") {
   return transientDatabaseMessages.some((item) => normalized.includes(item));
 }
 
-async function retryTransient<T>(operation: () => Promise<T>, getMessage: (result: T) => string | undefined, attempts = 3) {
+async function retryTransient<T>(
+  operation: () => Promise<T>,
+  getMessage: (result: T) => string | undefined,
+  attempts = 3,
+) {
   let lastResult: T | undefined;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     lastResult = await operation();
@@ -146,7 +156,8 @@ function Index() {
   const createAccount = useServerFn(createStaffAccount);
   const setupStatus = useServerFn(getSetupStatus);
   const saveShop = useServerFn(saveShopDetails);
-  const [session, setSession] = useState<Awaited<ReturnType<typeof supabase.auth.getSession>>["data"]["session"]>(null);
+  const [session, setSession] =
+    useState<Awaited<ReturnType<typeof supabase.auth.getSession>>["data"]["session"]>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [roles, setRoles] = useState<AppRole[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -211,24 +222,41 @@ function Index() {
     setLoading(true);
     setError("");
 
-    const [profileRes, rolesRes, productsRes, shopsRes, salesRes, attendanceRes] = await retryTransient(
-      () => Promise.all([
-        supabase.from("profiles").select("*").eq("user_id", session.user.id).maybeSingle(),
-        supabase.from("user_roles").select("role").eq("user_id", session.user.id),
-        supabase.from("products").select("*").order("category", { ascending: true }).order("name"),
-        supabase.from("shops").select("*").order("name"),
-        supabase.from("sales").select("*").order("created_at", { ascending: false }).limit(50),
-        supabase.from("attendance").select("*").order("work_date", { ascending: false }).limit(50),
-      ]),
-      (responses) => responses.map((response) => response.error?.message).find(Boolean),
-    );
+    const [profileRes, rolesRes, productsRes, shopsRes, salesRes, attendanceRes] =
+      await retryTransient(
+        () =>
+          Promise.all([
+            supabase.from("profiles").select("*").eq("user_id", session.user.id).maybeSingle(),
+            supabase.from("user_roles").select("role").eq("user_id", session.user.id),
+            supabase
+              .from("products")
+              .select("*")
+              .order("category", { ascending: true })
+              .order("name"),
+            supabase.from("shops").select("*").order("name"),
+            supabase.from("sales").select("*").order("created_at", { ascending: false }).limit(50),
+            supabase
+              .from("attendance")
+              .select("*")
+              .order("work_date", { ascending: false })
+              .limit(50),
+          ]),
+        (responses) => responses.map((response) => response.error?.message).find(Boolean),
+      );
 
     if (requestId !== workspaceRequestRef.current) return;
     setLoading(false);
-    const workspaceError = [profileRes, rolesRes, productsRes, shopsRes, salesRes, attendanceRes].map((response) => response.error?.message).find(Boolean);
+    const workspaceError = [profileRes, rolesRes, productsRes, shopsRes, salesRes, attendanceRes]
+      .map((response) => response.error?.message)
+      .find(Boolean);
     if (workspaceError) {
-      setError(isTransientDatabaseError(workspaceError) ? "Refreshing your workspace. Please wait a moment." : workspaceError);
-      if (isTransientDatabaseError(workspaceError)) window.setTimeout(() => void loadWorkspace(), 900);
+      setError(
+        isTransientDatabaseError(workspaceError)
+          ? "Refreshing your workspace. Please wait a moment."
+          : workspaceError,
+      );
+      if (isTransientDatabaseError(workspaceError))
+        window.setTimeout(() => void loadWorkspace(), 900);
       return;
     }
 
@@ -326,9 +354,11 @@ function Index() {
 
   async function seedProducts() {
     setError("");
-    const { error: seedError } = await supabase.from("products").insert(
-      starterProducts.map((product) => ({ ...product, created_by: session?.user.id })) as never,
-    );
+    const { error: seedError } = await supabase
+      .from("products")
+      .insert(
+        starterProducts.map((product) => ({ ...product, created_by: session?.user.id })) as never,
+      );
     if (seedError) setError(seedError.message);
     else {
       setNotice("Starter grocery list added.");
@@ -429,7 +459,10 @@ function Index() {
         className="groobey-shell min-h-screen overflow-hidden px-4 py-5 text-foreground sm:px-6 lg:px-10"
         style={{ "--pointer-x": pointer.x, "--pointer-y": pointer.y } as CSSProperties}
         onPointerMove={(event) => {
-          setPointer({ x: `${Math.round((event.clientX / window.innerWidth) * 100)}%`, y: `${Math.round((event.clientY / window.innerHeight) * 100)}%` });
+          setPointer({
+            x: `${Math.round((event.clientX / window.innerWidth) * 100)}%`,
+            y: `${Math.round((event.clientY / window.innerHeight) * 100)}%`,
+          });
         }}
       >
         <section className="mx-auto grid min-h-[calc(100vh-2.5rem)] max-w-7xl items-center gap-8 lg:grid-cols-[1.05fr_0.95fr]">
@@ -442,7 +475,8 @@ function Index() {
                 Grocery work, prices, sales and attendance in one secure scroll.
               </h1>
               <p className="max-w-2xl text-lg leading-8 text-muted-foreground">
-                Owner, admins, merchants, and employees each get separate access. The owner can monitor everything while others only handle their own work.
+                Owner, admins, merchants, and employees each get separate access. The owner can
+                monitor everything while others only handle their own work.
               </p>
             </div>
             <div className="grid max-w-2xl gap-3 sm:grid-cols-3">
@@ -468,17 +502,43 @@ function Index() {
               <div className="space-y-5">
                 <form className="space-y-3" onSubmit={handleLogin}>
                   <Field name="identifier" label="Email or mobile number" icon={Mail} required />
-                  <Field name="password" label="Password" type="password" icon={LockKeyhole} required />
-                  <Button className="h-11 w-full rounded-xl" variant="groobey" type="submit" disabled={authAction === "password"}>
-                    {authAction === "password" ? <Loader2 className="size-4 animate-spin" /> : <ShieldCheck className="size-4" />} Login
+                  <Field
+                    name="password"
+                    label="Password"
+                    type="password"
+                    icon={LockKeyhole}
+                    required
+                  />
+                  <Button
+                    className="h-11 w-full rounded-xl"
+                    variant="groobey"
+                    type="submit"
+                    disabled={authAction === "password"}
+                  >
+                    {authAction === "password" ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <ShieldCheck className="size-4" />
+                    )}{" "}
+                    Login
                   </Button>
                 </form>
                 <div className="flex items-center gap-3 text-xs font-semibold text-muted-foreground">
-                  <span className="h-px flex-1 bg-border" /> OTP access <span className="h-px flex-1 bg-border" />
+                  <span className="h-px flex-1 bg-border" /> OTP access{" "}
+                  <span className="h-px flex-1 bg-border" />
                 </div>
                 <form className="flex gap-2" onSubmit={handleOtp}>
-                  <input name="otpIdentifier" className="min-w-0 flex-1 rounded-xl border border-input bg-card px-3 text-sm outline-none ring-ring transition focus:ring-2" placeholder="Email or mobile" />
-                  <Button variant="calm" type="submit" className="h-11 rounded-xl" disabled={authAction === "otp"}>
+                  <input
+                    name="otpIdentifier"
+                    className="min-w-0 flex-1 rounded-xl border border-input bg-card px-3 text-sm outline-none ring-ring transition focus:ring-2"
+                    placeholder="Email or mobile"
+                  />
+                  <Button
+                    variant="calm"
+                    type="submit"
+                    className="h-11 rounded-xl"
+                    disabled={authAction === "otp"}
+                  >
                     {authAction === "otp" && <Loader2 className="size-4 animate-spin" />} Send OTP
                   </Button>
                 </form>
@@ -496,13 +556,20 @@ function Index() {
       <header className="sticky top-0 z-20 border-b border-border bg-card/85 px-4 py-3 backdrop-blur-xl sm:px-6 lg:px-10">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="groobey-hero-gradient flex size-11 items-center justify-center rounded-xl text-primary-foreground"><Carrot className="size-5" /></div>
+            <div className="groobey-hero-gradient flex size-11 items-center justify-center rounded-xl text-primary-foreground">
+              <Carrot className="size-5" />
+            </div>
             <div>
               <p className="text-lg font-black leading-none">TLD Groobey</p>
-              <p className="text-xs font-semibold text-muted-foreground">{profile?.display_name || session.user.email || session.user.phone} · {activeRole ? roleLabels[activeRole] : "Staff"}</p>
+              <p className="text-xs font-semibold text-muted-foreground">
+                {profile?.display_name || session.user.email || session.user.phone} ·{" "}
+                {activeRole ? roleLabels[activeRole] : "Staff"}
+              </p>
             </div>
           </div>
-          <Button variant="calm" onClick={() => supabase.auth.signOut()} className="rounded-xl">Logout</Button>
+          <Button variant="calm" onClick={() => supabase.auth.signOut()} className="rounded-xl">
+            Logout
+          </Button>
         </div>
       </header>
 
@@ -517,25 +584,73 @@ function Index() {
         <Message error={error} notice={notice} loading={loading} />
 
         <section className="grid gap-5 lg:grid-cols-[1.05fr_0.95fr]">
-          <Panel title="Grocery list with live costs" icon={IndianRupee} action={isOwner && products.length === 0 ? <Button variant="groobey" onClick={seedProducts} className="rounded-xl"><Plus className="size-4" /> Add starter list</Button> : null}>
+          <Panel
+            title="Grocery list with live costs"
+            icon={IndianRupee}
+            action={
+              isOwner && products.length === 0 ? (
+                <Button variant="groobey" onClick={seedProducts} className="rounded-xl">
+                  <Plus className="size-4" /> Add starter list
+                </Button>
+              ) : null
+            }
+          >
             <div className="max-h-[29rem] space-y-4 overflow-y-auto pr-1 groobey-scrollbar">
               {Object.entries(groupedProducts).map(([category, items]) => (
                 <div key={category} className="space-y-2">
-                  <h3 className="text-sm font-black uppercase tracking-normal text-muted-foreground">{category}</h3>
+                  <h3 className="text-sm font-black uppercase tracking-normal text-muted-foreground">
+                    {category}
+                  </h3>
                   <div className="grid gap-2">
-                    {items.map((item) => <ProductRow key={item.id} item={item} />)}
+                    {items.map((item) => (
+                      <ProductRow key={item.id} item={item} />
+                    ))}
                   </div>
                 </div>
               ))}
-              {products.length === 0 && <EmptyState icon={Carrot} title="No grocery items yet" text="The owner can add products here without changing code." />}
+              {products.length === 0 && (
+                <EmptyState
+                  icon={Carrot}
+                  title="No grocery items yet"
+                  text="The owner can add products here without changing code."
+                />
+              )}
             </div>
           </Panel>
 
-          <Panel title={isOwner ? "Create separate logins" : isMerchant ? "Merchant shop and sale work" : isEmployee ? "Employee work details" : "Admin operations"} icon={UsersRound}>
+          <Panel
+            title={
+              isOwner
+                ? "Create separate logins"
+                : isMerchant
+                  ? "Merchant shop and sale work"
+                  : isEmployee
+                    ? "Employee work details"
+                    : "Admin operations"
+            }
+            icon={UsersRound}
+          >
             {isOwner && <AccountForm onCreate={handleCreateAccount} />}
-            {isMerchant && <MerchantWorkspace products={products} shops={shops} userId={session.user.id} onSaveShop={handleMerchantShop} onDone={loadWorkspace} onError={setError} />}
-            {isEmployee && <EmployeeWorkspace profile={profile} onSubmitAttendance={submitAttendance} />}
-            {!isOwner && !isMerchant && !isEmployee && <EmptyState icon={ShieldCheck} title="Admin login active" text="Use the product, shop, attendance, and verification sections below." />}
+            {isMerchant && (
+              <MerchantWorkspace
+                products={products}
+                shops={shops}
+                userId={session.user.id}
+                onSaveShop={handleMerchantShop}
+                onDone={loadWorkspace}
+                onError={setError}
+              />
+            )}
+            {isEmployee && (
+              <EmployeeWorkspace profile={profile} onSubmitAttendance={submitAttendance} />
+            )}
+            {!isOwner && !isMerchant && !isEmployee && (
+              <EmptyState
+                icon={ShieldCheck}
+                title="Admin login active"
+                text="Use the product, shop, attendance, and verification sections below."
+              />
+            )}
           </Panel>
         </section>
 
@@ -545,8 +660,13 @@ function Index() {
               <form className="grid gap-3" onSubmit={addProduct}>
                 <Field name="name" label="Product name" required />
                 <Field name="category" label="Category" required />
-                <div className="grid grid-cols-2 gap-3"><Field name="unit" label="Unit" required /><Field name="price" label="Cost" type="number" required /></div>
-                <Button variant="groobey" className="rounded-xl"><Plus className="size-4" /> Add grocery</Button>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field name="unit" label="Unit" required />
+                  <Field name="price" label="Cost" type="number" required />
+                </div>
+                <Button variant="groobey" className="rounded-xl">
+                  <Plus className="size-4" /> Add grocery
+                </Button>
               </form>
             </Panel>
           )}
@@ -557,11 +677,32 @@ function Index() {
           )}
           <Panel title="Attendance" icon={ClipboardList}>
             <div className="space-y-3">
-              {!isOwner && <Button variant="groobey" onClick={submitAttendance} className="w-full rounded-xl"><CheckCircle2 className="size-4" /> Mark present</Button>}
-              <Records items={attendance.map((item) => `${item.work_date} · ${item.status} · ${item.verification_status}`)} empty="No attendance records." />
+              {!isOwner && (
+                <Button variant="groobey" onClick={submitAttendance} className="w-full rounded-xl">
+                  <CheckCircle2 className="size-4" /> Mark present
+                </Button>
+              )}
+              <Records
+                items={attendance.map(
+                  (item) => `${item.work_date} · ${item.status} · ${item.verification_status}`,
+                )}
+                empty="No attendance records."
+              />
             </div>
           </Panel>
-          {isAdminLike && <Panel title="Verification queue" icon={BadgeCheck}><Records items={[...sales.map((sale) => `Sale ${sale.id.slice(0, 8)} · ${sale.status}`), ...attendance.map((item) => `Attendance ${item.work_date} · ${item.verification_status}`)]} empty="Nothing waiting for verification." /></Panel>}
+          {isAdminLike && (
+            <Panel title="Verification queue" icon={BadgeCheck}>
+              <Records
+                items={[
+                  ...sales.map((sale) => `Sale ${sale.id.slice(0, 8)} · ${sale.status}`),
+                  ...attendance.map(
+                    (item) => `Attendance ${item.work_date} · ${item.verification_status}`,
+                  ),
+                ]}
+                empty="Nothing waiting for verification."
+              />
+            </Panel>
+          )}
         </section>
       </div>
     </main>
@@ -572,33 +713,146 @@ function AccountForm({ onCreate }: { onCreate: (event: FormEvent<HTMLFormElement
   return (
     <form className="grid gap-3" onSubmit={onCreate}>
       <Field name="displayName" label="Name" icon={UserCog} required />
-      <div className="grid gap-3 sm:grid-cols-2"><Field name="email" label="Email" icon={Mail} /><Field name="phone" label="Mobile number" icon={Phone} /></div>
-      <select name="role" className="h-11 rounded-xl border border-input bg-card px-3 text-sm font-semibold outline-none ring-ring focus:ring-2" defaultValue="merchant">
-        <option value="admin">Admin</option><option value="merchant">Merchant</option><option value="employee">Employee / Delivery boy</option>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field name="email" label="Email" icon={Mail} />
+        <Field name="phone" label="Mobile number" icon={Phone} />
+      </div>
+      <select
+        name="role"
+        className="h-11 rounded-xl border border-input bg-card px-3 text-sm font-semibold outline-none ring-ring focus:ring-2"
+        defaultValue="merchant"
+      >
+        <option value="admin">Admin</option>
+        <option value="merchant">Merchant</option>
+        <option value="employee">Employee / Delivery boy</option>
       </select>
-      <Field name="newPassword" label="Temporary password" type="password" icon={LockKeyhole} required />
-      <Button variant="groobey" className="rounded-xl"><Plus className="size-4" /> Create login</Button>
+      <Field
+        name="newPassword"
+        label="Temporary password"
+        type="password"
+        icon={LockKeyhole}
+        required
+      />
+      <Button variant="groobey" className="rounded-xl">
+        <Plus className="size-4" /> Create login
+      </Button>
     </form>
   );
 }
 
 function OwnerSetupForm({ onCreate }: { onCreate: (event: FormEvent<HTMLFormElement>) => void }) {
-  return <div className="space-y-4"><div className="rounded-xl border border-warning bg-warning/15 p-3 text-sm font-semibold text-warning-foreground">First create the owner login. Public signup is disabled.</div><form className="grid gap-3" onSubmit={onCreate}><input type="hidden" name="role" value="main_admin" /><Field name="displayName" label="Owner name" required /><Field name="email" label="Owner email" icon={Mail} /><Field name="phone" label="Owner mobile" icon={Phone} /><Field name="newPassword" label="Owner password" type="password" icon={LockKeyhole} required /><Button variant="groobey" className="rounded-xl">Create owner login</Button></form></div>;
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl border border-warning bg-warning/15 p-3 text-sm font-semibold text-warning-foreground">
+        First create the owner login. Public signup is disabled.
+      </div>
+      <form className="grid gap-3" onSubmit={onCreate}>
+        <input type="hidden" name="role" value="main_admin" />
+        <Field name="displayName" label="Owner name" required />
+        <Field name="email" label="Owner email" icon={Mail} />
+        <Field name="phone" label="Owner mobile" icon={Phone} />
+        <Field
+          name="newPassword"
+          label="Owner password"
+          type="password"
+          icon={LockKeyhole}
+          required
+        />
+        <Button variant="groobey" className="rounded-xl">
+          Create owner login
+        </Button>
+      </form>
+    </div>
+  );
 }
 
-function MerchantWorkspace({ products, shops, userId, onSaveShop, onDone, onError }: { products: Product[]; shops: Shop[]; userId: string; onSaveShop: (event: FormEvent<HTMLFormElement>) => void; onDone: () => void; onError: (message: string) => void }) {
-  return <div className="grid gap-5"><ShopDetailsForm onSubmit={onSaveShop} buttonText="Save my shop details" /><WorkForm products={products} shops={shops} userId={userId} onDone={onDone} onError={onError} /></div>;
+function MerchantWorkspace({
+  products,
+  shops,
+  userId,
+  onSaveShop,
+  onDone,
+  onError,
+}: {
+  products: Product[];
+  shops: Shop[];
+  userId: string;
+  onSaveShop: (event: FormEvent<HTMLFormElement>) => void;
+  onDone: () => void;
+  onError: (message: string) => void;
+}) {
+  return (
+    <div className="grid gap-5">
+      <ShopDetailsForm onSubmit={onSaveShop} buttonText="Save my shop details" />
+      <WorkForm
+        products={products}
+        shops={shops}
+        userId={userId}
+        onDone={onDone}
+        onError={onError}
+      />
+    </div>
+  );
 }
 
-function EmployeeWorkspace({ profile, onSubmitAttendance }: { profile: Profile | null; onSubmitAttendance: () => void }) {
-  return <div className="grid gap-3"><div className="rounded-xl border border-border bg-card/70 p-3 text-sm font-semibold"><div className="flex items-center gap-2"><Truck className="size-4 text-primary" /> Employee details</div><p className="mt-2 text-muted-foreground">{profile?.display_name || "Employee"} · {profile?.email || profile?.phone || "Login profile"}</p></div><Button variant="groobey" onClick={onSubmitAttendance} className="rounded-xl"><CheckCircle2 className="size-4" /> Submit today's attendance</Button></div>;
+function EmployeeWorkspace({
+  profile,
+  onSubmitAttendance,
+}: {
+  profile: Profile | null;
+  onSubmitAttendance: () => void;
+}) {
+  return (
+    <div className="grid gap-3">
+      <div className="rounded-xl border border-border bg-card/70 p-3 text-sm font-semibold">
+        <div className="flex items-center gap-2">
+          <Truck className="size-4 text-primary" /> Employee details
+        </div>
+        <p className="mt-2 text-muted-foreground">
+          {profile?.display_name || "Employee"} ·{" "}
+          {profile?.email || profile?.phone || "Login profile"}
+        </p>
+      </div>
+      <Button variant="groobey" onClick={onSubmitAttendance} className="rounded-xl">
+        <CheckCircle2 className="size-4" /> Submit today's attendance
+      </Button>
+    </div>
+  );
 }
 
-function ShopDetailsForm({ onSubmit, buttonText }: { onSubmit: (event: FormEvent<HTMLFormElement>) => void; buttonText: string }) {
-  return <form className="grid gap-3" onSubmit={onSubmit}><Field name="shopName" label="Shop name" icon={Store} required /><Field name="contactName" label="Contact person" icon={UserCog} /><Field name="shopPhone" label="Shop mobile number" icon={Phone} /><Field name="address" label="Shop address" /><Button variant="groobey" className="rounded-xl"><Store className="size-4" /> {buttonText}</Button></form>;
+function ShopDetailsForm({
+  onSubmit,
+  buttonText,
+}: {
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  buttonText: string;
+}) {
+  return (
+    <form className="grid gap-3" onSubmit={onSubmit}>
+      <Field name="shopName" label="Shop name" icon={Store} required />
+      <Field name="contactName" label="Contact person" icon={UserCog} />
+      <Field name="shopPhone" label="Shop mobile number" icon={Phone} />
+      <Field name="address" label="Shop address" />
+      <Button variant="groobey" className="rounded-xl">
+        <Store className="size-4" /> {buttonText}
+      </Button>
+    </form>
+  );
 }
 
-function WorkForm({ products, shops, userId, onDone, onError }: { products: Product[]; shops: Shop[]; userId: string; onDone: () => void; onError: (message: string) => void }) {
+function WorkForm({
+  products,
+  shops,
+  userId,
+  onDone,
+  onError,
+}: {
+  products: Product[];
+  shops: Shop[];
+  userId: string;
+  onDone: () => void;
+  onError: (message: string) => void;
+}) {
   const [destination, setDestination] = useState("shop");
 
   async function submitSale(event: FormEvent<HTMLFormElement>) {
@@ -607,47 +861,233 @@ function WorkForm({ products, shops, userId, onDone, onError }: { products: Prod
     const product = products.find((item) => item.id === form.get("productId"));
     if (!product) return onError("Choose a product first.");
     const selectedDestination = String(form.get("destination"));
-    if (selectedDestination === "shop" && !form.get("shopId")) return onError("Add or choose a shop name first, or select Others and type the shop name.");
-    const { data: sale, error: saleError } = await supabase.from("sales").insert({ created_by: userId, destination_type: selectedDestination, shop_id: selectedDestination === "shop" ? String(form.get("shopId")) : null, other_shop_name: selectedDestination === "other" ? String(form.get("otherShop") || "") : null, notes: String(form.get("notes") || "") } as never).select("id").single();
+    if (selectedDestination === "shop" && !form.get("shopId"))
+      return onError("Add or choose a shop name first, or select Others and type the shop name.");
+    const { data: sale, error: saleError } = await supabase
+      .from("sales")
+      .insert({
+        created_by: userId,
+        destination_type: selectedDestination,
+        shop_id: selectedDestination === "shop" ? String(form.get("shopId")) : null,
+        other_shop_name:
+          selectedDestination === "other" ? String(form.get("otherShop") || "") : null,
+        notes: String(form.get("notes") || ""),
+      } as never)
+      .select("id")
+      .single();
     if (saleError || !sale) return onError(saleError?.message || "Unable to submit sale.");
-    const { error: itemError } = await supabase.from("sale_items").insert({ sale_id: sale.id, product_id: product.id, product_name: product.name, quantity: Number(form.get("quantity") || 1), unit_price: product.price } as never);
+    const { error: itemError } = await supabase
+      .from("sale_items")
+      .insert({
+        sale_id: sale.id,
+        product_id: product.id,
+        product_name: product.name,
+        quantity: Number(form.get("quantity") || 1),
+        unit_price: product.price,
+      } as never);
     if (itemError) return onError(itemError.message);
     event.currentTarget.reset();
     setDestination("shop");
     onDone();
   }
 
-  return <form className="grid gap-3" onSubmit={submitSale}><select name="productId" className="h-11 rounded-xl border border-input bg-card px-3 text-sm font-semibold outline-none ring-ring focus:ring-2" defaultValue=""><option value="" disabled>{products.length ? "Choose grocery item" : "Owner must add grocery list first"}</option>{products.map((product) => <option key={product.id} value={product.id}>{product.name} · ₹{product.price}/{product.unit}</option>)}</select><Field name="quantity" label="Quantity" type="number" required /><select name="destination" value={destination} onChange={(event) => setDestination(event.target.value)} className="h-11 rounded-xl border border-input bg-card px-3 text-sm font-semibold outline-none ring-ring focus:ring-2"><option value="shop">Saved shop name</option><option value="self">Self</option><option value="other">Other shop</option></select>{destination === "shop" && <><select name="shopId" className="h-11 rounded-xl border border-input bg-card px-3 text-sm font-semibold outline-none ring-ring focus:ring-2" defaultValue=""><option value="" disabled>{shops.length ? "Choose shop name" : "No saved shops yet"}</option>{shops.map((shop) => <option key={shop.id} value={shop.id}>{shop.name}</option>)}</select>{!shops.length && <p className="text-xs font-semibold text-muted-foreground">No saved shop names yet. Use Other shop to submit now, or ask the owner/admin to add shop names.</p>}</>}{destination === "other" && <Field name="otherShop" label="Other shop name" required />}<Field name="notes" label="Notes" /><Button variant="groobey" className="rounded-xl" disabled={!products.length}><ReceiptText className="size-4" /> Submit sale</Button></form>;
+  return (
+    <form className="grid gap-3" onSubmit={submitSale}>
+      <select
+        name="productId"
+        className="h-11 rounded-xl border border-input bg-card px-3 text-sm font-semibold outline-none ring-ring focus:ring-2"
+        defaultValue=""
+      >
+        <option value="" disabled>
+          {products.length ? "Choose grocery item" : "Owner must add grocery list first"}
+        </option>
+        {products.map((product) => (
+          <option key={product.id} value={product.id}>
+            {product.name} · ₹{product.price}/{product.unit}
+          </option>
+        ))}
+      </select>
+      <Field name="quantity" label="Quantity" type="number" required />
+      <select
+        name="destination"
+        value={destination}
+        onChange={(event) => setDestination(event.target.value)}
+        className="h-11 rounded-xl border border-input bg-card px-3 text-sm font-semibold outline-none ring-ring focus:ring-2"
+      >
+        <option value="shop">Saved shop name</option>
+        <option value="self">Self</option>
+        <option value="other">Other shop</option>
+      </select>
+      {destination === "shop" && (
+        <>
+          <select
+            name="shopId"
+            className="h-11 rounded-xl border border-input bg-card px-3 text-sm font-semibold outline-none ring-ring focus:ring-2"
+            defaultValue=""
+          >
+            <option value="" disabled>
+              {shops.length ? "Choose shop name" : "No saved shops yet"}
+            </option>
+            {shops.map((shop) => (
+              <option key={shop.id} value={shop.id}>
+                {shop.name}
+              </option>
+            ))}
+          </select>
+          {!shops.length && (
+            <p className="text-xs font-semibold text-muted-foreground">
+              No saved shop names yet. Use Other shop to submit now, or ask the owner/admin to add
+              shop names.
+            </p>
+          )}
+        </>
+      )}
+      {destination === "other" && <Field name="otherShop" label="Other shop name" required />}
+      <Field name="notes" label="Notes" />
+      <Button variant="groobey" className="rounded-xl" disabled={!products.length}>
+        <ReceiptText className="size-4" /> Submit sale
+      </Button>
+    </form>
+  );
 }
 
-function Field({ name, label, type = "text", icon: Icon, required = false }: { name: string; label: string; type?: string; icon?: typeof Mail; required?: boolean }) {
-  return <label className="grid gap-1.5 text-sm font-semibold text-foreground"><span>{label}</span><span className="flex h-11 items-center gap-2 rounded-xl border border-input bg-card px-3 ring-ring transition focus-within:ring-2">{Icon && <Icon className="size-4 text-muted-foreground" />}<input name={name} type={type} required={required} className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground" /></span></label>;
+function Field({
+  name,
+  label,
+  type = "text",
+  icon: Icon,
+  required = false,
+}: {
+  name: string;
+  label: string;
+  type?: string;
+  icon?: typeof Mail;
+  required?: boolean;
+}) {
+  return (
+    <label className="grid gap-1.5 text-sm font-semibold text-foreground">
+      <span>{label}</span>
+      <span className="flex h-11 items-center gap-2 rounded-xl border border-input bg-card px-3 ring-ring transition focus-within:ring-2">
+        {Icon && <Icon className="size-4 text-muted-foreground" />}
+        <input
+          name={name}
+          type={type}
+          required={required}
+          className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+        />
+      </span>
+    </label>
+  );
 }
 
-function Panel({ title, icon: Icon, children, action }: { title: string; icon: typeof Carrot; children: React.ReactNode; action?: React.ReactNode }) {
-  return <section className="groobey-card rounded-2xl border border-border p-5"><div className="mb-4 flex items-center justify-between gap-3"><div className="flex items-center gap-2"><Icon className="size-5 text-primary" /><h2 className="text-xl font-black">{title}</h2></div>{action}</div>{children}</section>;
+function Panel({
+  title,
+  icon: Icon,
+  children,
+  action,
+}: {
+  title: string;
+  icon: typeof Carrot;
+  children: React.ReactNode;
+  action?: React.ReactNode;
+}) {
+  return (
+    <section className="groobey-card rounded-2xl border border-border p-5">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Icon className="size-5 text-primary" />
+          <h2 className="text-xl font-black">{title}</h2>
+        </div>
+        {action}
+      </div>
+      {children}
+    </section>
+  );
 }
 
 function Stat({ icon: Icon, label, value }: { icon: typeof Carrot; label: string; value: string }) {
-  return <div className="groobey-card rounded-2xl border border-border p-4"><Icon className="mb-3 size-5 text-primary" /><p className="text-2xl font-black">{value}</p><p className="text-sm font-semibold text-muted-foreground">{label}</p></div>;
+  return (
+    <div className="groobey-card rounded-2xl border border-border p-4">
+      <Icon className="mb-3 size-5 text-primary" />
+      <p className="text-2xl font-black">{value}</p>
+      <p className="text-sm font-semibold text-muted-foreground">{label}</p>
+    </div>
+  );
 }
 
 function ProductRow({ item }: { item: Product }) {
-  return <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card/70 p-3 transition hover:translate-x-1"><div><p className="font-black">{item.name}</p><p className="text-xs font-semibold text-muted-foreground">{item.unit}</p></div><div className="rounded-full bg-secondary px-3 py-1 text-sm font-black text-secondary-foreground">₹{item.price}</div></div>;
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card/70 p-3 transition hover:translate-x-1">
+      <div>
+        <p className="font-black">{item.name}</p>
+        <p className="text-xs font-semibold text-muted-foreground">{item.unit}</p>
+      </div>
+      <div className="rounded-full bg-secondary px-3 py-1 text-sm font-black text-secondary-foreground">
+        ₹{item.price}
+      </div>
+    </div>
+  );
 }
 
 function Records({ items, empty }: { items: string[]; empty: string }) {
-  if (!items.length) return <EmptyState icon={AlertCircle} title={empty} text="New records will appear here automatically." />;
-  return <div className="max-h-52 space-y-2 overflow-y-auto groobey-scrollbar">{items.map((item) => <div key={item} className="rounded-xl border border-border bg-card/70 p-3 text-sm font-semibold">{item}</div>)}</div>;
+  if (!items.length)
+    return (
+      <EmptyState
+        icon={AlertCircle}
+        title={empty}
+        text="New records will appear here automatically."
+      />
+    );
+  return (
+    <div className="max-h-52 space-y-2 overflow-y-auto groobey-scrollbar">
+      {items.map((item) => (
+        <div
+          key={item}
+          className="rounded-xl border border-border bg-card/70 p-3 text-sm font-semibold"
+        >
+          {item}
+        </div>
+      ))}
+    </div>
+  );
 }
 
-function EmptyState({ icon: Icon, title, text }: { icon: typeof Carrot; title: string; text: string }) {
-  return <div className="rounded-2xl border border-dashed border-border bg-muted/50 p-5 text-center"><Icon className="mx-auto mb-2 size-6 text-primary" /><p className="font-black">{title}</p><p className="text-sm text-muted-foreground">{text}</p></div>;
+function EmptyState({
+  icon: Icon,
+  title,
+  text,
+}: {
+  icon: typeof Carrot;
+  title: string;
+  text: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-dashed border-border bg-muted/50 p-5 text-center">
+      <Icon className="mx-auto mb-2 size-6 text-primary" />
+      <p className="font-black">{title}</p>
+      <p className="text-sm text-muted-foreground">{text}</p>
+    </div>
+  );
 }
 
 function Message({ error, notice, loading }: { error: string; notice: string; loading: boolean }) {
-  if (loading) return <div className="mt-4 flex items-center gap-2 rounded-xl border border-border bg-card p-3 text-sm font-semibold"><Loader2 className="size-4 animate-spin text-primary" /> Loading</div>;
-  if (error) return <div className="mt-4 rounded-xl border border-destructive bg-destructive/10 p-3 text-sm font-semibold text-destructive">{error}</div>;
-  if (notice) return <div className="mt-4 rounded-xl border border-success bg-success/10 p-3 text-sm font-semibold text-success">{notice}</div>;
+  if (loading)
+    return (
+      <div className="mt-4 flex items-center gap-2 rounded-xl border border-border bg-card p-3 text-sm font-semibold">
+        <Loader2 className="size-4 animate-spin text-primary" /> Loading
+      </div>
+    );
+  if (error)
+    return (
+      <div className="mt-4 rounded-xl border border-destructive bg-destructive/10 p-3 text-sm font-semibold text-destructive">
+        {error}
+      </div>
+    );
+  if (notice)
+    return (
+      <div className="mt-4 rounded-xl border border-success bg-success/10 p-3 text-sm font-semibold text-success">
+        {notice}
+      </div>
+    );
   return null;
 }
