@@ -221,7 +221,7 @@ function Index() {
     }
 
     void loadWorkspace();
-  }, [session?.user?.id]);
+  }, [loadWorkspace, session?.user]);
 
   const loadWorkspace = useCallback(async () => {
     if (!session?.user) return;
