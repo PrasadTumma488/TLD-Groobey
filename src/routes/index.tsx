@@ -206,6 +206,8 @@ function Index() {
 
   async function loadWorkspace() {
     if (!session?.user) return;
+    const requestId = workspaceRequestRef.current + 1;
+    workspaceRequestRef.current = requestId;
     setLoading(true);
     setError("");
 
@@ -221,10 +223,11 @@ function Index() {
       (responses) => responses.map((response) => response.error?.message).find(Boolean),
     );
 
+    if (requestId !== workspaceRequestRef.current) return;
     setLoading(false);
     const workspaceError = [profileRes, rolesRes, productsRes, shopsRes, salesRes, attendanceRes].map((response) => response.error?.message).find(Boolean);
     if (workspaceError) {
-      setError(isTransientDatabaseError(workspaceError) ? "Backend is ready now. Refreshing your workspace automatically." : workspaceError);
+      setError(isTransientDatabaseError(workspaceError) ? "Refreshing your workspace. Please wait a moment." : workspaceError);
       if (isTransientDatabaseError(workspaceError)) window.setTimeout(() => void loadWorkspace(), 900);
       return;
     }
