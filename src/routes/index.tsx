@@ -579,22 +579,38 @@ function OwnerSetupForm({ onCreate }: { onCreate: (event: FormEvent<HTMLFormElem
   return <div className="space-y-4"><div className="rounded-xl border border-warning bg-warning/15 p-3 text-sm font-semibold text-warning-foreground">First create the owner login. Public signup is disabled.</div><form className="grid gap-3" onSubmit={onCreate}><input type="hidden" name="role" value="main_admin" /><Field name="displayName" label="Owner name" required /><Field name="email" label="Owner email" icon={Mail} /><Field name="phone" label="Owner mobile" icon={Phone} /><Field name="newPassword" label="Owner password" type="password" icon={LockKeyhole} required /><Button variant="groobey" className="rounded-xl">Create owner login</Button></form></div>;
 }
 
+function MerchantWorkspace({ products, shops, userId, onSaveShop, onDone, onError }: { products: Product[]; shops: Shop[]; userId: string; onSaveShop: (event: FormEvent<HTMLFormElement>) => void; onDone: () => void; onError: (message: string) => void }) {
+  return <div className="grid gap-5"><ShopDetailsForm onSubmit={onSaveShop} buttonText="Save my shop details" /><WorkForm products={products} shops={shops} userId={userId} onDone={onDone} onError={onError} /></div>;
+}
+
+function EmployeeWorkspace({ profile, onSubmitAttendance }: { profile: Profile | null; onSubmitAttendance: () => void }) {
+  return <div className="grid gap-3"><div className="rounded-xl border border-border bg-card/70 p-3 text-sm font-semibold"><div className="flex items-center gap-2"><Truck className="size-4 text-primary" /> Employee details</div><p className="mt-2 text-muted-foreground">{profile?.display_name || "Employee"} · {profile?.email || profile?.phone || "Login profile"}</p></div><Button variant="groobey" onClick={onSubmitAttendance} className="rounded-xl"><CheckCircle2 className="size-4" /> Submit today's attendance</Button></div>;
+}
+
+function ShopDetailsForm({ onSubmit, buttonText }: { onSubmit: (event: FormEvent<HTMLFormElement>) => void; buttonText: string }) {
+  return <form className="grid gap-3" onSubmit={onSubmit}><Field name="shopName" label="Shop name" icon={Store} required /><Field name="contactName" label="Contact person" icon={UserCog} /><Field name="shopPhone" label="Shop mobile number" icon={Phone} /><Field name="address" label="Shop address" /><Button variant="groobey" className="rounded-xl"><Store className="size-4" /> {buttonText}</Button></form>;
+}
+
 function WorkForm({ products, shops, userId, onDone, onError }: { products: Product[]; shops: Shop[]; userId: string; onDone: () => void; onError: (message: string) => void }) {
+  const [destination, setDestination] = useState("shop");
+
   async function submitSale(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const product = products.find((item) => item.id === form.get("productId"));
     if (!product) return onError("Choose a product first.");
-    const destination = String(form.get("destination"));
-    const { data: sale, error: saleError } = await supabase.from("sales").insert({ created_by: userId, destination_type: destination, shop_id: destination === "shop" ? String(form.get("shopId")) : null, other_shop_name: destination === "other" ? String(form.get("otherShop") || "") : null, notes: String(form.get("notes") || "") } as never).select("id").single();
+    const selectedDestination = String(form.get("destination"));
+    if (selectedDestination === "shop" && !form.get("shopId")) return onError("Add or choose a shop name first.");
+    const { data: sale, error: saleError } = await supabase.from("sales").insert({ created_by: userId, destination_type: selectedDestination, shop_id: selectedDestination === "shop" ? String(form.get("shopId")) : null, other_shop_name: selectedDestination === "other" ? String(form.get("otherShop") || "") : null, notes: String(form.get("notes") || "") } as never).select("id").single();
     if (saleError || !sale) return onError(saleError?.message || "Unable to submit sale.");
     const { error: itemError } = await supabase.from("sale_items").insert({ sale_id: sale.id, product_id: product.id, product_name: product.name, quantity: Number(form.get("quantity") || 1), unit_price: product.price } as never);
     if (itemError) return onError(itemError.message);
     event.currentTarget.reset();
+    setDestination("shop");
     onDone();
   }
 
-  return <form className="grid gap-3" onSubmit={submitSale}><select name="productId" className="h-11 rounded-xl border border-input bg-card px-3 text-sm font-semibold outline-none ring-ring focus:ring-2">{products.map((product) => <option key={product.id} value={product.id}>{product.name} · ₹{product.price}/{product.unit}</option>)}</select><Field name="quantity" label="Quantity" type="number" required /><select name="destination" className="h-11 rounded-xl border border-input bg-card px-3 text-sm font-semibold outline-none ring-ring focus:ring-2"><option value="shop">Shop name</option><option value="self">Self</option><option value="other">Others</option></select><select name="shopId" className="h-11 rounded-xl border border-input bg-card px-3 text-sm font-semibold outline-none ring-ring focus:ring-2">{shops.map((shop) => <option key={shop.id} value={shop.id}>{shop.name}</option>)}</select><Field name="otherShop" label="Other shop name optional" /><Field name="notes" label="Notes" /><Button variant="groobey" className="rounded-xl"><ReceiptText className="size-4" /> Submit sale</Button></form>;
+  return <form className="grid gap-3" onSubmit={submitSale}><select name="productId" className="h-11 rounded-xl border border-input bg-card px-3 text-sm font-semibold outline-none ring-ring focus:ring-2" defaultValue=""><option value="" disabled>{products.length ? "Choose grocery item" : "Owner must add grocery list first"}</option>{products.map((product) => <option key={product.id} value={product.id}>{product.name} · ₹{product.price}/{product.unit}</option>)}</select><Field name="quantity" label="Quantity" type="number" required /><select name="destination" value={destination} onChange={(event) => setDestination(event.target.value)} className="h-11 rounded-xl border border-input bg-card px-3 text-sm font-semibold outline-none ring-ring focus:ring-2"><option value="shop">Shop name</option><option value="self">Self</option><option value="other">Others</option></select>{destination === "shop" && <select name="shopId" className="h-11 rounded-xl border border-input bg-card px-3 text-sm font-semibold outline-none ring-ring focus:ring-2" defaultValue=""><option value="" disabled>{shops.length ? "Choose shop name" : "No shop names saved yet"}</option>{shops.map((shop) => <option key={shop.id} value={shop.id}>{shop.name}</option>)}</select>}{destination === "other" && <Field name="otherShop" label="Other shop name" required />}<Field name="notes" label="Notes" /><Button variant="groobey" className="rounded-xl" disabled={!products.length || (destination === "shop" && !shops.length)}><ReceiptText className="size-4" /> Submit sale</Button></form>;
 }
 
 function Field({ name, label, type = "text", icon: Icon, required = false }: { name: string; label: string; type?: string; icon?: typeof Mail; required?: boolean }) {
