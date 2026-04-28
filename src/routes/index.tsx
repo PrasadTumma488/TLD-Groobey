@@ -876,15 +876,14 @@ function WorkForm({
       .select("id")
       .single();
     if (saleError || !sale) return onError(saleError?.message || "Unable to submit sale.");
-    const { error: itemError } = await supabase
-      .from("sale_items")
-      .insert({
-        sale_id: sale.id,
-        product_id: product.id,
-        product_name: product.name,
-        quantity: Number(form.get("quantity") || 1),
-        unit_price: product.price,
-      } as never);
+    const saleItem = {
+      sale_id: sale.id,
+      product_id: product.id,
+      product_name: product.name,
+      quantity: Number(form.get("quantity") || 1),
+      unit_price: product.price,
+    } as never;
+    const { error: itemError } = await supabase.from("sale_items").insert(saleItem);
     if (itemError) return onError(itemError.message);
     event.currentTarget.reset();
     setDestination("shop");
