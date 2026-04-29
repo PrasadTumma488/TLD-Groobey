@@ -18,6 +18,7 @@ import {
   ShieldCheck,
   Store,
   Truck,
+  UserCheck,
   UserCog,
   UsersRound,
 } from "lucide-react";
@@ -39,10 +40,10 @@ import type { Database } from "@/integrations/supabase/types";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "TLD Groobey Grocery Operations" },
+      { title: "TLD Groobey Grocery App" },
       {
         name: "description",
-        content: "Secure owner, admin, merchant, and employee grocery operations for TLD Groobey.",
+        content: "Secure owner, merchant, and employee grocery operations for rates, shops, sales, and attendance.",
       },
       { property: "og:title", content: "TLD Groobey Grocery Operations" },
       {
@@ -102,6 +103,11 @@ const starterProducts = [
 const roleLabels: Record<AppRole, string> = {
   main_admin: "Owner",
   admin: "Owner helper",
+  merchant: "Merchant",
+  employee: "Employee / Delivery boy",
+};
+
+const staffRoleLabels: Record<"merchant" | "employee", string> = {
   merchant: "Merchant",
   employee: "Employee / Delivery boy",
 };
