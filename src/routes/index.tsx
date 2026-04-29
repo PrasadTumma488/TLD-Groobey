@@ -17,7 +17,6 @@ import {
   ReceiptText,
   ShieldCheck,
   Store,
-  Truck,
   UserCheck,
   UserCog,
   UsersRound,
@@ -982,12 +981,14 @@ function Field({
   type = "text",
   icon: Icon,
   required = false,
+  disabled = false,
 }: {
   name: string;
   label: string;
   type?: string;
   icon?: typeof Mail;
   required?: boolean;
+  disabled?: boolean;
 }) {
   return (
     <label className="grid gap-1.5 text-sm font-semibold text-foreground">
@@ -998,7 +999,8 @@ function Field({
           name={name}
           type={type}
           required={required}
-          className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+          disabled={disabled}
+          className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-70"
         />
       </span>
     </label>
