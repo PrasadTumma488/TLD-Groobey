@@ -677,7 +677,11 @@ function Index() {
               />
             )}
             {isEmployee && (
-              <EmployeeWorkspace profile={profile} onSubmitAttendance={submitAttendance} />
+              <EmployeeWorkspace
+                profile={profile}
+                onSaveDetails={handleEmployeeDetails}
+                onSubmitAttendance={submitAttendance}
+              />
             )}
             {!isOwner && !isMerchant && !isEmployee && (
               <EmptyState
