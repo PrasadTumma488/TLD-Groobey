@@ -101,9 +101,9 @@ const starterProducts = [
 
 const roleLabels: Record<AppRole, string> = {
   main_admin: "Owner",
-  admin: "Admin",
+  admin: "Owner helper",
   merchant: "Merchant",
-  employee: "Employee",
+  employee: "Employee / Delivery boy",
 };
 
 const transientDatabaseMessages = [
@@ -483,8 +483,8 @@ function Index() {
                 Grocery work, prices, sales and attendance in one secure scroll.
               </h1>
               <p className="max-w-2xl text-lg leading-8 text-muted-foreground">
-                Owner, admins, merchants, and employees each get separate access. The owner can
-                monitor everything while others only handle their own work.
+                Owner, merchants, and employees get separate grocery access. The owner can monitor
+                rates, shops, sales, and attendance while others handle only their own work.
               </p>
             </div>
             <div className="grid max-w-2xl gap-3 sm:grid-cols-3">
@@ -629,12 +629,12 @@ function Index() {
           <Panel
             title={
               isOwner
-                ? "Create separate logins"
+                ? "Create merchant or delivery login"
                 : isMerchant
                   ? "Merchant shop and sale work"
                   : isEmployee
                     ? "Employee work details"
-                    : "Admin operations"
+                    : "Grocery operations"
             }
             icon={UsersRound}
           >
@@ -668,7 +668,7 @@ function Index() {
               <form className="grid gap-3" onSubmit={addProduct}>
                 <Field name="name" label="Product name" required />
                 <Field name="category" label="Category" required />
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid gap-3 sm:grid-cols-2">
                   <Field name="unit" label="Unit" required />
                   <Field name="price" label="Cost" type="number" required />
                 </div>
@@ -730,7 +730,6 @@ function AccountForm({ onCreate }: { onCreate: (event: FormEvent<HTMLFormElement
         className="h-11 rounded-xl border border-input bg-card px-3 text-sm font-semibold outline-none ring-ring focus:ring-2"
         defaultValue="merchant"
       >
-        <option value="admin">Admin</option>
         <option value="merchant">Merchant</option>
         <option value="employee">Employee / Delivery boy</option>
       </select>
@@ -1024,12 +1023,12 @@ function Stat({ icon: Icon, label, value }: { icon: typeof Carrot; label: string
 
 function ProductRow({ item }: { item: Product }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card/70 p-3 transition hover:translate-x-1">
-      <div>
+    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-xl border border-border bg-card/70 p-3 transition hover:translate-x-1">
+      <div className="min-w-0">
         <p className="font-black">{item.name}</p>
         <p className="text-xs font-semibold text-muted-foreground">{item.unit}</p>
       </div>
-      <div className="rounded-full bg-secondary px-3 py-1 text-sm font-black text-secondary-foreground">
+      <div className="max-w-28 truncate rounded-full bg-secondary px-3 py-1 text-sm font-black text-secondary-foreground sm:max-w-none">
         ₹{item.price}
       </div>
     </div>

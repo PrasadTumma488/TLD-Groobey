@@ -4,6 +4,7 @@ import { z } from "zod";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
 const roleSchema = z.enum(["main_admin", "admin", "merchant", "employee"]);
+const staffRoles = new Set(["merchant", "employee"]);
 
 const createAccountSchema = z
   .object({
@@ -72,6 +73,9 @@ export const createStaffAccount = createServerFn({ method: "POST" })
 
     if (mainAdminExists) {
       await assertMainAdmin(data.requesterToken);
+      if (!staffRoles.has(data.role)) {
+        throw new Error("Owner can create only merchant and employee/delivery boy logins.");
+      }
     }
 
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
