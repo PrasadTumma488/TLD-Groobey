@@ -441,6 +441,27 @@ function Index() {
     }
   }
 
+  async function handleEmployeeDetails(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!session?.user) return;
+    setError("");
+    setNotice("");
+    const form = new FormData(event.currentTarget);
+    const { error: profileError } = await supabase
+      .from("profiles")
+      .update({
+        display_name: String(form.get("displayName") || profile?.display_name || ""),
+        phone: String(form.get("phone") || profile?.phone || "") || null,
+      } as never)
+      .eq("user_id", session.user.id);
+
+    if (profileError) setError(profileError.message);
+    else {
+      setNotice("Employee details saved.");
+      void loadWorkspace();
+    }
+  }
+
   async function submitAttendance() {
     if (!session?.user) return;
     setError("");
