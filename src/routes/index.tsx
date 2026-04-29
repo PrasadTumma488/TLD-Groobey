@@ -486,8 +486,8 @@ function Index() {
               <Carrot className="size-4 text-primary" /> TLD Groobey
             </div>
             <div className="space-y-5">
-              <h1 className="max-w-3xl text-5xl font-black leading-[0.95] tracking-normal text-foreground sm:text-6xl lg:text-7xl">
-                Grocery work, prices, sales and attendance in one secure scroll.
+              <h1 className="max-w-3xl text-4xl font-black leading-tight tracking-normal text-foreground sm:text-5xl lg:text-6xl">
+                TLD Groobey grocery rates, shop sales and delivery attendance.
               </h1>
               <p className="max-w-2xl text-lg leading-8 text-muted-foreground">
                 Owner, merchants, and employees get separate grocery access. The owner can monitor
@@ -598,9 +598,9 @@ function Index() {
 
         <Message error={error} notice={notice} loading={loading} />
 
-        <section className="grid gap-5 lg:grid-cols-[1.05fr_0.95fr]">
+        <section className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
           <Panel
-            title="Grocery list with live costs"
+            title="Owner grocery rates"
             icon={IndianRupee}
             action={
               isOwner && products.length === 0 ? (
@@ -638,9 +638,9 @@ function Index() {
               isOwner
                 ? "Create merchant or delivery login"
                 : isMerchant
-                  ? "Merchant shop and sale work"
+                    ? "Merchant onboarding and sales"
                   : isEmployee
-                    ? "Employee work details"
+                    ? "Employee / delivery work"
                     : "Grocery operations"
             }
             icon={UsersRound}
@@ -673,12 +673,12 @@ function Index() {
           {isOwner && (
             <Panel title="Add product" icon={PackagePlus}>
               <form className="grid gap-3" onSubmit={addProduct}>
-                <Field name="name" label="Product name" required />
-                <Field name="category" label="Category" required />
-                <div className="grid gap-3 sm:grid-cols-2">
+                <Field name="name" label="Grocery item" required />
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                  <Field name="category" label="Category" required />
                   <Field name="unit" label="Unit" required />
-                  <Field name="price" label="Cost" type="number" required />
                 </div>
+                <Field name="price" label="Owner rate / cost" type="number" required />
                 <Button variant="groobey" className="rounded-xl">
                   <Plus className="size-4" /> Add grocery
                 </Button>
