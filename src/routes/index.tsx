@@ -829,13 +829,14 @@ function EmployeeWorkspace({
     <div className="grid gap-3">
       <div className="rounded-xl border border-border bg-card/70 p-3 text-sm font-semibold">
         <div className="flex items-center gap-2">
-          <Truck className="size-4 text-primary" /> Employee details
+          <UserCheck className="size-4 text-primary" /> Login details
         </div>
         <p className="mt-2 text-muted-foreground">
           {profile?.display_name || "Employee"} ·{" "}
           {profile?.email || profile?.phone || "Login profile"}
         </p>
       </div>
+      <ShopDetailsForm onSubmit={(event) => event.preventDefault()} buttonText="Details saved by owner" disabled />
       <Button variant="groobey" onClick={onSubmitAttendance} className="rounded-xl">
         <CheckCircle2 className="size-4" /> Submit today's attendance
       </Button>
@@ -846,17 +847,19 @@ function EmployeeWorkspace({
 function ShopDetailsForm({
   onSubmit,
   buttonText,
+  disabled = false,
 }: {
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   buttonText: string;
+  disabled?: boolean;
 }) {
   return (
     <form className="grid gap-3" onSubmit={onSubmit}>
-      <Field name="shopName" label="Shop name" icon={Store} required />
-      <Field name="contactName" label="Contact person" icon={UserCog} />
-      <Field name="shopPhone" label="Shop mobile number" icon={Phone} />
-      <Field name="address" label="Shop address" />
-      <Button variant="groobey" className="rounded-xl">
+      <Field name="shopName" label="Shop name" icon={Store} required disabled={disabled} />
+      <Field name="contactName" label="Contact person" icon={UserCog} disabled={disabled} />
+      <Field name="shopPhone" label="Shop mobile number" icon={Phone} disabled={disabled} />
+      <Field name="address" label="Shop address" disabled={disabled} />
+      <Button variant="groobey" className="rounded-xl" disabled={disabled}>
         <Store className="size-4" /> {buttonText}
       </Button>
     </form>
