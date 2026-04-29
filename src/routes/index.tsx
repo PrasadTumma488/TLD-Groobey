@@ -101,9 +101,9 @@ const starterProducts = [
 
 const roleLabels: Record<AppRole, string> = {
   main_admin: "Owner",
-  admin: "Admin",
+  admin: "Owner helper",
   merchant: "Merchant",
-  employee: "Employee",
+  employee: "Employee / Delivery boy",
 };
 
 const transientDatabaseMessages = [
@@ -483,8 +483,8 @@ function Index() {
                 Grocery work, prices, sales and attendance in one secure scroll.
               </h1>
               <p className="max-w-2xl text-lg leading-8 text-muted-foreground">
-                Owner, admins, merchants, and employees each get separate access. The owner can
-                monitor everything while others only handle their own work.
+                Owner, merchants, and employees get separate grocery access. The owner can monitor
+                rates, shops, sales, and attendance while others handle only their own work.
               </p>
             </div>
             <div className="grid max-w-2xl gap-3 sm:grid-cols-3">
