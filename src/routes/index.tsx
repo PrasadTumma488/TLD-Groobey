@@ -17,7 +17,7 @@ import {
   ReceiptText,
   ShieldCheck,
   Store,
-  Truck,
+  UserCheck,
   UserCog,
   UsersRound,
 } from "lucide-react";
@@ -39,10 +39,10 @@ import type { Database } from "@/integrations/supabase/types";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "TLD Groobey Grocery Operations" },
+      { title: "TLD Groobey Grocery App" },
       {
         name: "description",
-        content: "Secure owner, admin, merchant, and employee grocery operations for TLD Groobey.",
+        content: "Secure owner, merchant, and employee grocery operations for rates, shops, sales, and attendance.",
       },
       { property: "og:title", content: "TLD Groobey Grocery Operations" },
       {
@@ -102,6 +102,11 @@ const starterProducts = [
 const roleLabels: Record<AppRole, string> = {
   main_admin: "Owner",
   admin: "Owner helper",
+  merchant: "Merchant",
+  employee: "Employee / Delivery boy",
+};
+
+const staffRoleLabels: Record<"merchant" | "employee", string> = {
   merchant: "Merchant",
   employee: "Employee / Delivery boy",
 };
@@ -182,7 +187,7 @@ function Index() {
 
   const activeRole = roles[0];
   const isOwner = roles.includes("main_admin");
-  const isAdminLike = roles.includes("main_admin") || roles.includes("admin");
+  const isAdminLike = roles.includes("main_admin");
   const isMerchant = roles.includes("merchant");
   const isEmployee = roles.includes("employee");
 
@@ -340,6 +345,7 @@ function Index() {
     setNotice("");
     const form = new FormData(event.currentTarget);
     const role = String(form.get("role")) as AppRole;
+    const accountKind = role === "employee" ? "employee / delivery boy" : role === "merchant" ? "merchant" : "owner";
 
     try {
       await createAccount({
@@ -353,7 +359,7 @@ function Index() {
         },
       });
       setHasOwner(true);
-      setNotice(`${roleLabels[role]} account created.`);
+      setNotice(`${accountKind} login created.`);
       event.currentTarget.reset();
     } catch (accountError) {
       setError(accountError instanceof Error ? accountError.message : "Unable to create account.");
@@ -389,6 +395,21 @@ function Index() {
     else {
       event.currentTarget.reset();
       setNotice("Product added.");
+      void loadWorkspace();
+    }
+  }
+
+  async function updateProductRate(productId: string, nextPrice: number) {
+    setError("");
+    setNotice("");
+    const { error: productError } = await supabase
+      .from("products")
+      .update({ price: nextPrice } as never)
+      .eq("id", productId);
+
+    if (productError) setError(productError.message);
+    else {
+      setNotice("Grocery rate updated.");
       void loadWorkspace();
     }
   }
@@ -432,6 +453,27 @@ function Index() {
       void loadWorkspace();
     } catch (shopError) {
       setError(shopError instanceof Error ? shopError.message : "Unable to save shop details.");
+    }
+  }
+
+  async function handleEmployeeDetails(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!session?.user) return;
+    setError("");
+    setNotice("");
+    const form = new FormData(event.currentTarget);
+    const { error: profileError } = await supabase
+      .from("profiles")
+      .update({
+        display_name: String(form.get("displayName") || profile?.display_name || ""),
+        phone: String(form.get("phone") || profile?.phone || "") || null,
+      } as never)
+      .eq("user_id", session.user.id);
+
+    if (profileError) setError(profileError.message);
+    else {
+      setNotice("Employee details saved.");
+      void loadWorkspace();
     }
   }
 
@@ -479,8 +521,8 @@ function Index() {
               <Carrot className="size-4 text-primary" /> TLD Groobey
             </div>
             <div className="space-y-5">
-              <h1 className="max-w-3xl text-5xl font-black leading-[0.95] tracking-normal text-foreground sm:text-6xl lg:text-7xl">
-                Grocery work, prices, sales and attendance in one secure scroll.
+              <h1 className="max-w-3xl text-4xl font-black leading-tight tracking-normal text-foreground sm:text-5xl lg:text-6xl">
+                TLD Groobey grocery rates, shop sales and delivery attendance.
               </h1>
               <p className="max-w-2xl text-lg leading-8 text-muted-foreground">
                 Owner, merchants, and employees get separate grocery access. The owner can monitor
@@ -582,7 +624,7 @@ function Index() {
       </header>
 
       <div className="mx-auto flex max-h-[calc(100vh-68px)] max-w-7xl flex-col gap-5 overflow-y-auto px-4 py-5 sm:px-6 lg:px-10 groobey-scrollbar">
-        <section className="grid gap-4 md:grid-cols-4">
+        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Stat icon={PackagePlus} label="Products" value={products.length.toString()} />
           <Stat icon={Store} label="Shops" value={shops.length.toString()} />
           <Stat icon={ReceiptText} label="Submissions" value={sales.length.toString()} />
@@ -591,9 +633,9 @@ function Index() {
 
         <Message error={error} notice={notice} loading={loading} />
 
-        <section className="grid gap-5 lg:grid-cols-[1.05fr_0.95fr]">
+        <section className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
           <Panel
-            title="Grocery list with live costs"
+            title="Owner grocery rates"
             icon={IndianRupee}
             action={
               isOwner && products.length === 0 ? (
@@ -611,7 +653,12 @@ function Index() {
                   </h3>
                   <div className="grid gap-2">
                     {items.map((item) => (
-                      <ProductRow key={item.id} item={item} />
+                      <ProductRow
+                        key={item.id}
+                        item={item}
+                        canEdit={isOwner}
+                        onRateUpdate={updateProductRate}
+                      />
                     ))}
                   </div>
                 </div>
@@ -631,9 +678,9 @@ function Index() {
               isOwner
                 ? "Create merchant or delivery login"
                 : isMerchant
-                  ? "Merchant shop and sale work"
+                    ? "Merchant onboarding and sales"
                   : isEmployee
-                    ? "Employee work details"
+                    ? "Employee / delivery work"
                     : "Grocery operations"
             }
             icon={UsersRound}
@@ -650,7 +697,11 @@ function Index() {
               />
             )}
             {isEmployee && (
-              <EmployeeWorkspace profile={profile} onSubmitAttendance={submitAttendance} />
+              <EmployeeWorkspace
+                profile={profile}
+                onSaveDetails={handleEmployeeDetails}
+                onSubmitAttendance={submitAttendance}
+              />
             )}
             {!isOwner && !isMerchant && !isEmployee && (
               <EmptyState
@@ -662,16 +713,16 @@ function Index() {
           </Panel>
         </section>
 
-        <section className="grid gap-5 lg:grid-cols-3">
+        <section className="grid gap-5 xl:grid-cols-3">
           {isOwner && (
             <Panel title="Add product" icon={PackagePlus}>
               <form className="grid gap-3" onSubmit={addProduct}>
-                <Field name="name" label="Product name" required />
-                <Field name="category" label="Category" required />
-                <div className="grid gap-3 sm:grid-cols-2">
+                <Field name="name" label="Grocery item" required />
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                  <Field name="category" label="Category" required />
                   <Field name="unit" label="Unit" required />
-                  <Field name="price" label="Cost" type="number" required />
                 </div>
+                <Field name="price" label="Owner rate / cost" type="number" required />
                 <Button variant="groobey" className="rounded-xl">
                   <Plus className="size-4" /> Add grocery
                 </Button>
@@ -718,21 +769,32 @@ function Index() {
 }
 
 function AccountForm({ onCreate }: { onCreate: (event: FormEvent<HTMLFormElement>) => void }) {
+  const [selectedRole, setSelectedRole] = useState<"merchant" | "employee">("merchant");
+
   return (
     <form className="grid gap-3" onSubmit={onCreate}>
-      <Field name="displayName" label="Name" icon={UserCog} required />
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field name="email" label="Email" icon={Mail} />
-        <Field name="phone" label="Mobile number" icon={Phone} />
+      <div className="rounded-xl border border-border bg-muted/60 p-3 text-sm font-semibold leading-6 text-muted-foreground">
+        Owner can create only merchant and employee / delivery boy logins.
       </div>
+      <Field
+        name="displayName"
+        label={`${staffRoleLabels[selectedRole]} name`}
+        icon={UserCog}
+        required
+      />
       <select
         name="role"
         className="h-11 rounded-xl border border-input bg-card px-3 text-sm font-semibold outline-none ring-ring focus:ring-2"
-        defaultValue="merchant"
+        value={selectedRole}
+        onChange={(event) => setSelectedRole(event.target.value as "merchant" | "employee")}
       >
         <option value="merchant">Merchant</option>
         <option value="employee">Employee / Delivery boy</option>
       </select>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field name="email" label="Login email" icon={Mail} />
+        <Field name="phone" label="Login mobile number" icon={Phone} />
+      </div>
       <Field
         name="newPassword"
         label="Temporary password"
@@ -741,7 +803,7 @@ function AccountForm({ onCreate }: { onCreate: (event: FormEvent<HTMLFormElement
         required
       />
       <Button variant="groobey" className="rounded-xl">
-        <Plus className="size-4" /> Create login
+        <Plus className="size-4" /> Create {selectedRole === "merchant" ? "merchant" : "employee"} login
       </Button>
     </form>
   );
@@ -790,6 +852,9 @@ function MerchantWorkspace({
 }) {
   return (
     <div className="grid gap-5">
+      <div className="rounded-xl border border-border bg-muted/60 p-3 text-sm font-semibold text-muted-foreground">
+        First save your shop details, then submit grocery sales from the owner’s rate list.
+      </div>
       <ShopDetailsForm onSubmit={onSaveShop} buttonText="Save my shop details" />
       <WorkForm
         products={products}
@@ -804,22 +869,31 @@ function MerchantWorkspace({
 
 function EmployeeWorkspace({
   profile,
+  onSaveDetails,
   onSubmitAttendance,
 }: {
   profile: Profile | null;
+  onSaveDetails: (event: FormEvent<HTMLFormElement>) => void;
   onSubmitAttendance: () => void;
 }) {
   return (
     <div className="grid gap-3">
       <div className="rounded-xl border border-border bg-card/70 p-3 text-sm font-semibold">
         <div className="flex items-center gap-2">
-          <Truck className="size-4 text-primary" /> Employee details
+          <UserCheck className="size-4 text-primary" /> Login details
         </div>
         <p className="mt-2 text-muted-foreground">
           {profile?.display_name || "Employee"} ·{" "}
           {profile?.email || profile?.phone || "Login profile"}
         </p>
       </div>
+      <form className="grid gap-3" onSubmit={onSaveDetails}>
+        <Field name="displayName" label="Employee / delivery boy name" icon={UserCheck} />
+        <Field name="phone" label="Mobile number" icon={Phone} />
+        <Button variant="calm" className="rounded-xl">
+          <UserCheck className="size-4" /> Save my details
+        </Button>
+      </form>
       <Button variant="groobey" onClick={onSubmitAttendance} className="rounded-xl">
         <CheckCircle2 className="size-4" /> Submit today's attendance
       </Button>
@@ -830,17 +904,19 @@ function EmployeeWorkspace({
 function ShopDetailsForm({
   onSubmit,
   buttonText,
+  disabled = false,
 }: {
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   buttonText: string;
+  disabled?: boolean;
 }) {
   return (
     <form className="grid gap-3" onSubmit={onSubmit}>
-      <Field name="shopName" label="Shop name" icon={Store} required />
-      <Field name="contactName" label="Contact person" icon={UserCog} />
-      <Field name="shopPhone" label="Shop mobile number" icon={Phone} />
-      <Field name="address" label="Shop address" />
-      <Button variant="groobey" className="rounded-xl">
+      <Field name="shopName" label="Shop name" icon={Store} required disabled={disabled} />
+      <Field name="contactName" label="Contact person" icon={UserCog} disabled={disabled} />
+      <Field name="shopPhone" label="Shop mobile number" icon={Phone} disabled={disabled} />
+      <Field name="address" label="Shop address" disabled={disabled} />
+      <Button variant="groobey" className="rounded-xl" disabled={disabled}>
         <Store className="size-4" /> {buttonText}
       </Button>
     </form>
@@ -963,12 +1039,14 @@ function Field({
   type = "text",
   icon: Icon,
   required = false,
+  disabled = false,
 }: {
   name: string;
   label: string;
   type?: string;
   icon?: typeof Mail;
   required?: boolean;
+  disabled?: boolean;
 }) {
   return (
     <label className="grid gap-1.5 text-sm font-semibold text-foreground">
@@ -979,7 +1057,8 @@ function Field({
           name={name}
           type={type}
           required={required}
-          className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+          disabled={disabled}
+          className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-70"
         />
       </span>
     </label>
@@ -1021,16 +1100,52 @@ function Stat({ icon: Icon, label, value }: { icon: typeof Carrot; label: string
   );
 }
 
-function ProductRow({ item }: { item: Product }) {
+function ProductRow({
+  item,
+  canEdit = false,
+  onRateUpdate,
+}: {
+  item: Product;
+  canEdit?: boolean;
+  onRateUpdate?: (productId: string, nextPrice: number) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [price, setPrice] = useState(String(item.price));
+
+  function saveRate() {
+    const nextPrice = Number(price || item.price);
+    if (!Number.isFinite(nextPrice) || nextPrice < 0) return;
+    onRateUpdate?.(item.id, nextPrice);
+    setEditing(false);
+  }
+
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-xl border border-border bg-card/70 p-3 transition hover:translate-x-1">
       <div className="min-w-0">
         <p className="font-black">{item.name}</p>
         <p className="text-xs font-semibold text-muted-foreground">{item.unit}</p>
       </div>
-      <div className="max-w-28 truncate rounded-full bg-secondary px-3 py-1 text-sm font-black text-secondary-foreground sm:max-w-none">
-        ₹{item.price}
-      </div>
+      {editing ? (
+        <div className="flex min-w-0 items-center gap-2">
+          <input
+            value={price}
+            onChange={(event) => setPrice(event.target.value)}
+            className="h-9 w-20 rounded-lg border border-input bg-card px-2 text-sm font-black outline-none ring-ring focus:ring-2"
+            type="number"
+          />
+          <Button type="button" variant="calm" className="h-9 rounded-lg px-3" onClick={saveRate}>
+            Save
+          </Button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          className="max-w-32 truncate rounded-full bg-secondary px-3 py-1 text-sm font-black text-secondary-foreground sm:max-w-none"
+          onClick={() => canEdit && setEditing(true)}
+        >
+          ₹{item.price}
+        </button>
+      )}
     </div>
   );
 }
