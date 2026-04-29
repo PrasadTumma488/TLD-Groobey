@@ -188,7 +188,7 @@ function Index() {
 
   const activeRole = roles[0];
   const isOwner = roles.includes("main_admin");
-  const isAdminLike = roles.includes("main_admin") || roles.includes("admin");
+  const isAdminLike = roles.includes("main_admin");
   const isMerchant = roles.includes("merchant");
   const isEmployee = roles.includes("employee");
 
@@ -346,6 +346,7 @@ function Index() {
     setNotice("");
     const form = new FormData(event.currentTarget);
     const role = String(form.get("role")) as AppRole;
+    const accountKind = role === "employee" ? "employee / delivery boy" : role === "merchant" ? "merchant" : "owner";
 
     try {
       await createAccount({
@@ -359,7 +360,7 @@ function Index() {
         },
       });
       setHasOwner(true);
-      setNotice(`${roleLabels[role]} account created.`);
+      setNotice(`${accountKind} login created.`);
       event.currentTarget.reset();
     } catch (accountError) {
       setError(accountError instanceof Error ? accountError.message : "Unable to create account.");
