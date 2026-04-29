@@ -725,21 +725,27 @@ function Index() {
 }
 
 function AccountForm({ onCreate }: { onCreate: (event: FormEvent<HTMLFormElement>) => void }) {
+  const [selectedRole, setSelectedRole] = useState<"merchant" | "employee">("merchant");
+
   return (
     <form className="grid gap-3" onSubmit={onCreate}>
-      <Field name="displayName" label="Name" icon={UserCog} required />
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field name="email" label="Email" icon={Mail} />
-        <Field name="phone" label="Mobile number" icon={Phone} />
+      <div className="rounded-xl border border-border bg-muted/60 p-3 text-sm font-semibold text-muted-foreground">
+        Owner can create only merchant and employee / delivery boy logins.
       </div>
+      <Field name="displayName" label={`${staffRoleLabels[selectedRole]} name`} icon={UserCog} required />
       <select
         name="role"
         className="h-11 rounded-xl border border-input bg-card px-3 text-sm font-semibold outline-none ring-ring focus:ring-2"
-        defaultValue="merchant"
+        value={selectedRole}
+        onChange={(event) => setSelectedRole(event.target.value as "merchant" | "employee")}
       >
         <option value="merchant">Merchant</option>
         <option value="employee">Employee / Delivery boy</option>
       </select>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field name="email" label="Login email" icon={Mail} />
+        <Field name="phone" label="Login mobile number" icon={Phone} />
+      </div>
       <Field
         name="newPassword"
         label="Temporary password"
@@ -748,7 +754,7 @@ function AccountForm({ onCreate }: { onCreate: (event: FormEvent<HTMLFormElement
         required
       />
       <Button variant="groobey" className="rounded-xl">
-        <Plus className="size-4" /> Create login
+        <Plus className="size-4" /> Create {selectedRole === "merchant" ? "merchant" : "employee"} login
       </Button>
     </form>
   );
@@ -797,6 +803,9 @@ function MerchantWorkspace({
 }) {
   return (
     <div className="grid gap-5">
+      <div className="rounded-xl border border-border bg-muted/60 p-3 text-sm font-semibold text-muted-foreground">
+        First save your shop details, then submit grocery sales from the owner’s rate list.
+      </div>
       <ShopDetailsForm onSubmit={onSaveShop} buttonText="Save my shop details" />
       <WorkForm
         products={products}
