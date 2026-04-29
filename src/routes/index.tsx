@@ -624,7 +624,7 @@ function Index() {
       </header>
 
       <div className="mx-auto flex max-h-[calc(100vh-68px)] max-w-7xl flex-col gap-5 overflow-y-auto px-4 py-5 sm:px-6 lg:px-10 groobey-scrollbar">
-        <section className="grid gap-4 md:grid-cols-4">
+        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Stat icon={PackagePlus} label="Products" value={products.length.toString()} />
           <Stat icon={Store} label="Shops" value={shops.length.toString()} />
           <Stat icon={ReceiptText} label="Submissions" value={sales.length.toString()} />
@@ -713,7 +713,7 @@ function Index() {
           </Panel>
         </section>
 
-        <section className="grid gap-5 lg:grid-cols-3">
+        <section className="grid gap-5 xl:grid-cols-3">
           {isOwner && (
             <Panel title="Add product" icon={PackagePlus}>
               <form className="grid gap-3" onSubmit={addProduct}>
@@ -773,10 +773,15 @@ function AccountForm({ onCreate }: { onCreate: (event: FormEvent<HTMLFormElement
 
   return (
     <form className="grid gap-3" onSubmit={onCreate}>
-      <div className="rounded-xl border border-border bg-muted/60 p-3 text-sm font-semibold text-muted-foreground">
+      <div className="rounded-xl border border-border bg-muted/60 p-3 text-sm font-semibold leading-6 text-muted-foreground">
         Owner can create only merchant and employee / delivery boy logins.
       </div>
-      <Field name="displayName" label={`${staffRoleLabels[selectedRole]} name`} icon={UserCog} required />
+      <Field
+        name="displayName"
+        label={`${staffRoleLabels[selectedRole]} name`}
+        icon={UserCog}
+        required
+      />
       <select
         name="role"
         className="h-11 rounded-xl border border-input bg-card px-3 text-sm font-semibold outline-none ring-ring focus:ring-2"
