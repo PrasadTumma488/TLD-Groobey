@@ -1095,16 +1095,52 @@ function Stat({ icon: Icon, label, value }: { icon: typeof Carrot; label: string
   );
 }
 
-function ProductRow({ item }: { item: Product }) {
+function ProductRow({
+  item,
+  canEdit = false,
+  onRateUpdate,
+}: {
+  item: Product;
+  canEdit?: boolean;
+  onRateUpdate?: (productId: string, nextPrice: number) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [price, setPrice] = useState(String(item.price));
+
+  function saveRate() {
+    const nextPrice = Number(price || item.price);
+    if (!Number.isFinite(nextPrice) || nextPrice < 0) return;
+    onRateUpdate?.(item.id, nextPrice);
+    setEditing(false);
+  }
+
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-xl border border-border bg-card/70 p-3 transition hover:translate-x-1">
       <div className="min-w-0">
         <p className="font-black">{item.name}</p>
         <p className="text-xs font-semibold text-muted-foreground">{item.unit}</p>
       </div>
-      <div className="max-w-28 truncate rounded-full bg-secondary px-3 py-1 text-sm font-black text-secondary-foreground sm:max-w-none">
-        ₹{item.price}
-      </div>
+      {editing ? (
+        <div className="flex min-w-0 items-center gap-2">
+          <input
+            value={price}
+            onChange={(event) => setPrice(event.target.value)}
+            className="h-9 w-20 rounded-lg border border-input bg-card px-2 text-sm font-black outline-none ring-ring focus:ring-2"
+            type="number"
+          />
+          <Button type="button" variant="calm" className="h-9 rounded-lg px-3" onClick={saveRate}>
+            Save
+          </Button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          className="max-w-32 truncate rounded-full bg-secondary px-3 py-1 text-sm font-black text-secondary-foreground sm:max-w-none"
+          onClick={() => canEdit && setEditing(true)}
+        >
+          ₹{item.price}
+        </button>
+      )}
     </div>
   );
 }
