@@ -730,7 +730,6 @@ function AccountForm({ onCreate }: { onCreate: (event: FormEvent<HTMLFormElement
         className="h-11 rounded-xl border border-input bg-card px-3 text-sm font-semibold outline-none ring-ring focus:ring-2"
         defaultValue="merchant"
       >
-        <option value="admin">Admin</option>
         <option value="merchant">Merchant</option>
         <option value="employee">Employee / Delivery boy</option>
       </select>
@@ -1024,12 +1023,12 @@ function Stat({ icon: Icon, label, value }: { icon: typeof Carrot; label: string
 
 function ProductRow({ item }: { item: Product }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card/70 p-3 transition hover:translate-x-1">
-      <div>
+    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-xl border border-border bg-card/70 p-3 transition hover:translate-x-1">
+      <div className="min-w-0">
         <p className="font-black">{item.name}</p>
         <p className="text-xs font-semibold text-muted-foreground">{item.unit}</p>
       </div>
-      <div className="rounded-full bg-secondary px-3 py-1 text-sm font-black text-secondary-foreground">
+      <div className="max-w-28 truncate rounded-full bg-secondary px-3 py-1 text-sm font-black text-secondary-foreground sm:max-w-none">
         ₹{item.price}
       </div>
     </div>
