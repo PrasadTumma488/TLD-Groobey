@@ -844,9 +844,11 @@ function MerchantWorkspace({
 
 function EmployeeWorkspace({
   profile,
+  onSaveDetails,
   onSubmitAttendance,
 }: {
   profile: Profile | null;
+  onSaveDetails: (event: FormEvent<HTMLFormElement>) => void;
   onSubmitAttendance: () => void;
 }) {
   return (
@@ -860,7 +862,13 @@ function EmployeeWorkspace({
           {profile?.email || profile?.phone || "Login profile"}
         </p>
       </div>
-      <ShopDetailsForm onSubmit={(event) => event.preventDefault()} buttonText="Details saved by owner" disabled />
+      <form className="grid gap-3" onSubmit={onSaveDetails}>
+        <Field name="displayName" label="Employee / delivery boy name" icon={UserCheck} />
+        <Field name="phone" label="Mobile number" icon={Phone} />
+        <Button variant="calm" className="rounded-xl">
+          <UserCheck className="size-4" /> Save my details
+        </Button>
+      </form>
       <Button variant="groobey" onClick={onSubmitAttendance} className="rounded-xl">
         <CheckCircle2 className="size-4" /> Submit today's attendance
       </Button>
