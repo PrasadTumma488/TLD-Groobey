@@ -399,6 +399,21 @@ function Index() {
     }
   }
 
+  async function updateProductRate(productId: string, nextPrice: number) {
+    setError("");
+    setNotice("");
+    const { error: productError } = await supabase
+      .from("products")
+      .update({ price: nextPrice } as never)
+      .eq("id", productId);
+
+    if (productError) setError(productError.message);
+    else {
+      setNotice("Grocery rate updated.");
+      void loadWorkspace();
+    }
+  }
+
   async function addShop(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -638,7 +653,12 @@ function Index() {
                   </h3>
                   <div className="grid gap-2">
                     {items.map((item) => (
-                      <ProductRow key={item.id} item={item} />
+                      <ProductRow
+                        key={item.id}
+                        item={item}
+                        canEdit={isOwner}
+                        onRateUpdate={updateProductRate}
+                      />
                     ))}
                   </div>
                 </div>
