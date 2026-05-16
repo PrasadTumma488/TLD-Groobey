@@ -1,0 +1,11 @@
+# Optional: copy to ".dev.vars" in the project root for Wrangler-only dev/preview
+# when vars are not picked up from .env. Same keys as .env server block.
+# Never commit .dev.vars (it is gitignored).
+
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+RESEND_API_KEY=
+# Verified domain sender, e.g. Groobey <bills@yourdomain.com>
+RESEND_FROM_EMAIL=
+# Dev: Resend account inbox (bills retry here when sandbox blocks customer address)
+RESEND_REDIRECT_TO=

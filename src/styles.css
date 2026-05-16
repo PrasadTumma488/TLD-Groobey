@@ -69,6 +69,10 @@
 }
 
 :root {
+  /* TLD Groobey logo greens — used for primary UI, gradients, and glows */
+  --groobey-lime: #9acd32;
+  --groobey-lime-dark: #92c82e;
+
   --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --radius: 0.75rem;
   --background: oklch(0.985 0.024 105.2);
@@ -77,7 +81,7 @@
   --card-foreground: oklch(0.18 0.035 154.5);
   --popover: oklch(0.998 0.01 105.2);
   --popover-foreground: oklch(0.18 0.035 154.5);
-  --primary: oklch(0.56 0.16 145.4);
+  --primary: var(--groobey-lime-dark);
   --primary-foreground: oklch(0.985 0.02 115.6);
   --secondary: oklch(0.9 0.08 97.5);
   --secondary-foreground: oklch(0.25 0.05 120.4);
@@ -89,15 +93,25 @@
   --destructive-foreground: oklch(0.984 0.003 247.858);
   --border: oklch(0.84 0.047 114.8);
   --input: oklch(0.9 0.04 110.7);
-  --ring: oklch(0.59 0.17 145.4);
-  --success: oklch(0.62 0.16 150.7);
+  --ring: var(--groobey-lime-dark);
+  --success: var(--groobey-lime);
   --success-foreground: oklch(0.985 0.02 115.6);
   --warning: oklch(0.78 0.16 74.4);
   --warning-foreground: oklch(0.22 0.04 72.4);
-  --gradient-hero: linear-gradient(135deg, oklch(0.57 0.17 145.4), oklch(0.78 0.16 74.4));
-  --gradient-soft: radial-gradient(circle at var(--pointer-x, 72%) var(--pointer-y, 18%), oklch(0.84 0.14 91.4 / 52%), transparent 26rem), linear-gradient(145deg, oklch(0.985 0.024 105.2), oklch(0.91 0.055 145.8));
-  --shadow-soft: 0 22px 70px -34px oklch(0.25 0.08 145.4 / 45%);
-  --shadow-glow: 0 18px 48px -28px oklch(0.72 0.16 80.4 / 70%);
+  --gradient-hero: linear-gradient(135deg, var(--groobey-lime-dark), var(--groobey-lime));
+  --gradient-soft:
+    radial-gradient(
+      circle at var(--pointer-x, 72%) var(--pointer-y, 18%),
+      color-mix(in oklab, var(--groobey-lime) 52%, transparent),
+      transparent 26rem
+    ),
+    linear-gradient(
+      145deg,
+      oklch(0.985 0.024 105.2),
+      color-mix(in oklab, var(--groobey-lime-dark) 18%, oklch(0.91 0.055 145.8))
+    );
+  --shadow-soft: 0 22px 70px -34px color-mix(in oklab, var(--groobey-lime-dark) 45%, transparent);
+  --shadow-glow: 0 18px 48px -28px color-mix(in oklab, var(--groobey-lime) 70%, transparent);
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
@@ -172,6 +186,14 @@
     backdrop-filter: blur(18px);
   }
 
+  @media (hover: hover) and (pointer: fine) {
+    .groobey-stat-tile:hover {
+      border-color: color-mix(in oklab, var(--primary) 35%, var(--border));
+      box-shadow: var(--shadow-glow);
+      transform: translateY(-2px);
+    }
+  }
+
   .groobey-hero-gradient {
     background: var(--gradient-hero);
   }
@@ -183,6 +205,116 @@
   .groobey-scrollbar {
     scrollbar-width: thin;
     scrollbar-color: var(--primary) transparent;
+  }
+
+  .groobey-tab-scroll {
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    touch-action: pan-x;
+    scrollbar-width: none;
+  }
+
+  .groobey-tab-scroll::-webkit-scrollbar {
+    display: none;
+  }
+
+  .groobey-tab-item {
+    scroll-snap-align: start;
+    flex-shrink: 0;
+  }
+
+  /* Native <select> — same visual language as Radix SelectTrigger (groobey dashboards + login). */
+  .groobey-select {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    color: var(--foreground);
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    line-height: 1.35;
+    background-color: color-mix(in oklab, var(--card) 88%, var(--primary) 12%);
+    background-image:
+      linear-gradient(
+        45deg,
+        transparent 50%,
+        color-mix(in oklab, var(--primary) 55%, var(--foreground) 45%) 50%
+      ),
+      linear-gradient(
+        135deg,
+        color-mix(in oklab, var(--primary) 55%, var(--foreground) 45%) 50%,
+        transparent 50%
+      );
+    background-position:
+      calc(100% - 1.125rem) calc(50% - 2px),
+      calc(100% - 0.5rem) calc(50% - 2px);
+    background-size: 7px 7px, 7px 7px;
+    background-repeat: no-repeat;
+    border: 2px solid color-mix(in oklab, var(--border) 85%, var(--primary) 15%);
+    border-radius: 1rem;
+    box-shadow:
+      inset 0 1px 0 color-mix(in oklab, white 55%, transparent),
+      0 1px 2px color-mix(in oklab, var(--foreground) 6%, transparent);
+    padding-right: 2.75rem;
+    padding-left: 1rem;
+    transition:
+      border-color 0.18s ease,
+      box-shadow 0.18s ease,
+      background-color 0.18s ease;
+  }
+
+  .groobey-select:hover {
+    background-color: color-mix(in oklab, var(--card) 82%, var(--primary) 18%);
+    border-color: color-mix(in oklab, var(--border) 55%, var(--primary) 45%);
+    box-shadow:
+      inset 0 1px 0 color-mix(in oklab, white 45%, transparent),
+      0 4px 18px -6px color-mix(in oklab, var(--primary) 35%, transparent);
+  }
+
+  .groobey-select:focus {
+    outline: none;
+  }
+
+  .groobey-select:focus-visible {
+    border-color: color-mix(in oklab, var(--primary) 72%, var(--border));
+    box-shadow:
+      0 0 0 3px color-mix(in oklab, var(--primary) 26%, transparent),
+      inset 0 1px 0 color-mix(in oklab, white 40%, transparent);
+  }
+
+  .groobey-select:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+
+  .groobey-select option {
+    white-space: normal;
+    font-weight: 600;
+    background-color: var(--card);
+    color: var(--foreground);
+  }
+
+  .groobey-select--sm {
+    min-height: 2.25rem;
+    padding-top: 0.3125rem;
+    padding-bottom: 0.3125rem;
+    padding-left: 0.75rem;
+    padding-right: 2.25rem;
+    font-size: 0.8125rem;
+    border-radius: 0.75rem;
+    background-position:
+      calc(100% - 0.75rem) calc(50% - 2px),
+      calc(100% - 0.375rem) calc(50% - 2px);
+    background-size: 6px 6px, 6px 6px;
+  }
+
+  @media (max-width: 640px) {
+    .groobey-select:not(.groobey-select--sm) {
+      min-height: 3rem;
+      font-size: 1rem;
+      border-radius: 1.05rem;
+      padding-left: 0.9375rem;
+    }
   }
 }
 

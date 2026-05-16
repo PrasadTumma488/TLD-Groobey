@@ -9,8 +9,32 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as StaffRouteImport } from './routes/staff'
+import { Route as ShopOwnerRouteImport } from './routes/shop-owner'
+import { Route as PlatformAdminRouteImport } from './routes/platform-admin'
+import { Route as OrdersRouteImport } from './routes/orders'
 import { Route as IndexRouteImport } from './routes/index'
 
+const StaffRoute = StaffRouteImport.update({
+  id: '/staff',
+  path: '/staff',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ShopOwnerRoute = ShopOwnerRouteImport.update({
+  id: '/shop-owner',
+  path: '/shop-owner',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PlatformAdminRoute = PlatformAdminRouteImport.update({
+  id: '/platform-admin',
+  path: '/platform-admin',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OrdersRoute = OrdersRouteImport.update({
+  id: '/orders',
+  path: '/orders',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -19,28 +43,78 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/orders': typeof OrdersRoute
+  '/platform-admin': typeof PlatformAdminRoute
+  '/shop-owner': typeof ShopOwnerRoute
+  '/staff': typeof StaffRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/orders': typeof OrdersRoute
+  '/platform-admin': typeof PlatformAdminRoute
+  '/shop-owner': typeof ShopOwnerRoute
+  '/staff': typeof StaffRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/orders': typeof OrdersRoute
+  '/platform-admin': typeof PlatformAdminRoute
+  '/shop-owner': typeof ShopOwnerRoute
+  '/staff': typeof StaffRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/orders' | '/platform-admin' | '/shop-owner' | '/staff'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/orders' | '/platform-admin' | '/shop-owner' | '/staff'
+  id:
+    | '__root__'
+    | '/'
+    | '/orders'
+    | '/platform-admin'
+    | '/shop-owner'
+    | '/staff'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  OrdersRoute: typeof OrdersRoute
+  PlatformAdminRoute: typeof PlatformAdminRoute
+  ShopOwnerRoute: typeof ShopOwnerRoute
+  StaffRoute: typeof StaffRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/staff': {
+      id: '/staff'
+      path: '/staff'
+      fullPath: '/staff'
+      preLoaderRoute: typeof StaffRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/shop-owner': {
+      id: '/shop-owner'
+      path: '/shop-owner'
+      fullPath: '/shop-owner'
+      preLoaderRoute: typeof ShopOwnerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/platform-admin': {
+      id: '/platform-admin'
+      path: '/platform-admin'
+      fullPath: '/platform-admin'
+      preLoaderRoute: typeof PlatformAdminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/orders': {
+      id: '/orders'
+      path: '/orders'
+      fullPath: '/orders'
+      preLoaderRoute: typeof OrdersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -53,6 +127,10 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  OrdersRoute: OrdersRoute,
+  PlatformAdminRoute: PlatformAdminRoute,
+  ShopOwnerRoute: ShopOwnerRoute,
+  StaffRoute: StaffRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

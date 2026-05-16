@@ -1,0 +1,54 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "headers": [
+    {
+      "source": "/manifest.webmanifest",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/manifest+json; charset=utf-8"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/sw.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/workbox-(.*).js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/groobey-logo.png",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=86400, immutable"
+        }
+      ]
+    },
+    {
+      "source": "/groobey-logo-bill.png",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=86400, immutable"
+        }
+      ]
+    }
+  ]
+}
