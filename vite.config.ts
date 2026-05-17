@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 import type { Plugin } from "vite";
 import { loadEnv, mergeConfig } from "vite";
+import { nitro } from "nitro/vite";
 import { VitePWA } from "vite-plugin-pwa";
 
 /** Directory containing vite.config.ts (stable even if `process.cwd()` is not the repo root). */
@@ -77,6 +78,7 @@ export default defineConfig({
       cacheDir: path.join(process.env.LOCALAPPDATA || projectRoot, "groobey-vite-cache"),
       define: {} as Record<string, string>,
       plugins: [
+        nitro({ preset: "vercel" }),
         groobeyDotenvIntoProcessEnvPlugin(),
         supabaseEnvPresencePlugin(),
         VitePWA({

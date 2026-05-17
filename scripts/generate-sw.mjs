@@ -9,12 +9,18 @@ import esbuild from "esbuild";
 import { injectManifest } from "workbox-build";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-const distClient = path.join(root, "dist", "client");
+const distClient =
+  [
+    path.join(root, ".vercel", "output", "static"),
+    path.join(root, "dist", "client"),
+  ].find((dir) => existsSync(dir)) ?? path.join(root, "dist", "client");
 const swSrc = path.join(root, "src", "sw.ts");
 const swBundled = path.join(distClient, "sw-bundled.js");
 
 if (!existsSync(distClient)) {
-  console.error("[generate-sw] dist/client missing — run vite build first.");
+  console.error(
+    "[generate-sw] static output missing — run vite build first (.vercel/output/static or dist/client).",
+  );
   process.exit(1);
 }
 
