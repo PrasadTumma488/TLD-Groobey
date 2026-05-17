@@ -25,6 +25,7 @@ import {
 import { BillKindButtons } from "@/components/groobey/groobey-bill-buttons";
 import type { BillKind } from "@/lib/groobey-dual-bill";
 
+import { CustomerOrderDeliveryFields } from "./customer-order-delivery-fields";
 import { Field, InlineFeedback } from "./workspace-ui";
 
 type Shop = Database["public"]["Tables"]["shops"]["Row"];
@@ -89,6 +90,7 @@ export function OrderTakerWorkspace({
   const [typeQuery, setTypeQuery] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
   const [cartLines, setCartLines] = useState<GroceryCartLine[]>([]);
+  const [deliveryCharge, setDeliveryCharge] = useState(0);
 
   const pickerOrders = useMemo(() => ordersForBillPicker(orders), [orders]);
   const billedOrders = useMemo(() => ordersWithBillNumbers(orders), [orders]);
@@ -123,6 +125,7 @@ export function OrderTakerWorkspace({
     setTypeQuery("");
     setPickedOrderId("");
     setCustomerEmail("");
+    setDeliveryCharge(0);
   }, [resetNonce]);
 
   useEffect(() => {
@@ -383,7 +386,6 @@ export function OrderTakerWorkspace({
           <InlineFeedback {...feedback} />
           <Field name="customerName" label="Customer name" required />
           <input type="hidden" name="customerPhone" value="" />
-          <input type="hidden" name="deliveryAddress" value="" />
           <input type="hidden" name="shopId" value={defaultShopId} />
           <input type="hidden" name="orderItems" value={orderItemsText} />
           <input type="hidden" name="totalAmount" value={String(cartTotal)} />
@@ -395,8 +397,22 @@ export function OrderTakerWorkspace({
             onLinesChange={setCartLines}
             disabled={saving}
           />
+          <CustomerOrderDeliveryFields
+            shops={shops}
+            products={products}
+            resetNonce={resetNonce}
+            disabled={saving}
+            cartItemsSummary={orderItemsText}
+            onDeliveryChargeChange={setDeliveryCharge}
+          />
           <p className="text-sm font-black text-foreground">
-            Bill total: ₹{Math.round(cartTotal)}
+            Grocery: ₹{Math.round(cartTotal)}
+            {deliveryCharge > 0 ?
+              <span className="font-semibold text-muted-foreground">
+                {" "}
+                + delivery ₹{deliveryCharge} = ₹{Math.round(cartTotal + deliveryCharge)}
+              </span>
+            : null}
           </p>
           <Button
             type="submit"

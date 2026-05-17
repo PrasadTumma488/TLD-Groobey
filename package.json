@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
-    "pwa:icons": "node scripts/generate-pwa-icons.mjs && node scripts/generate-bill-logo.mjs",
+    "pwa:icons": "node scripts/generate-pwa-icons.mjs",
+    "bill-logo": "node scripts/generate-bill-logo.mjs",
     "prebuild": "npm run pwa:icons",
     "build": "vite build && node scripts/generate-sw.mjs",
     "build:dev": "vite build --mode development",

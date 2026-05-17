@@ -10,10 +10,11 @@ import {
 } from "@/components/groobey/groobey-brand-logo";
 import { Button } from "@/components/ui/button";
 import { Field, Message, PasswordField } from "@/components/groobey/workspace-ui";
-import { supabase } from "@/integrations/supabase/client";
+import { hydratePublicSupabaseEnvFromApi, supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import { parseRoleFromAuthClaims } from "@/lib/groobey-auth-role";
 import { resolvePrimaryDashboard } from "@/lib/groobey-dashboard-path";
+import { isGroobeyPlatformAdminEmail } from "@/lib/groobey-platform-admin";
 import { sendPasswordResetEmail } from "@/lib/tldGroobey.functions";
 
 export const Route = createFileRoute("/")({
@@ -59,13 +60,15 @@ function phoneCandidates(identifier: string) {
   return Array.from(candidates).filter(Boolean);
 }
 
-function friendlyAuthError(message: string) {
+function friendlyAuthError(message: string, platformAdminSignIn: boolean) {
   const normalized = message.toLowerCase();
   if (normalized.includes("email not confirmed")) {
     return "Email is not confirmed yet. Ask platform admin to recreate this login or use the confirmed account.";
   }
   if (normalized.includes("invalid login") || normalized.includes("invalid credentials")) {
-    return "Login details are not matching. Check the email/mobile number and password, or use reset password.";
+    return platformAdminSignIn ?
+        "Login details are not matching. Check email and password, or use forgot password below."
+      : "Login details are not matching. Check your email/mobile and password, or contact platform admin for help.";
   }
   return message;
 }
@@ -86,7 +89,8 @@ function Index() {
     useState<Awaited<ReturnType<typeof supabase.auth.getSession>>["data"]["session"]>(null);
   const [loading, setLoading] = useState(true);
   const [authAction, setAuthAction] = useState<AuthAction>("");
-  const [loginPortal, setLoginPortal] = useState<LoginPortal>("main_admin");
+  const [loginPortal, setLoginPortal] = useState<LoginPortal>("merchant");
+  const [platformAdminSignIn, setPlatformAdminSignIn] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [isRecoveryFlow, setIsRecoveryFlow] = useState(false);
@@ -97,24 +101,46 @@ function Index() {
 
   useEffect(() => {
     let mounted = true;
-    supabase.auth.getSession().then(({ data }) => {
+    void (async () => {
+      await hydratePublicSupabaseEnvFromApi();
+      const { data } = await supabase.auth.getSession();
       if (!mounted) return;
       setSession(data.session);
       if (typeof window !== "undefined") {
         const hash = window.location.hash.toLowerCase();
         const search = window.location.search.toLowerCase();
         if (hash.includes("type=recovery") || search.includes("type=recovery")) {
-          setIsRecoveryFlow(true);
-          setNotice("Recovery link verified. Set your new password now.");
+          const recoveryEmail = data.session?.user?.email;
+          if (isGroobeyPlatformAdminEmail(recoveryEmail)) {
+            setIsRecoveryFlow(true);
+            setNotice("Recovery link verified. Set your new password now.");
+          } else {
+            void supabase.auth.signOut();
+            setError(
+              "Password reset is only for platform administrators. Contact platform admin for a new password.",
+            );
+          }
         }
       }
+      setLoading(false);
+    })().catch((e) => {
+      if (!mounted) return;
+      setError(e instanceof Error ? e.message : "Unable to start app.");
       setLoading(false);
     });
     const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
       setSession(nextSession);
       if (event === "PASSWORD_RECOVERY") {
-        setIsRecoveryFlow(true);
-        setNotice("Recovery verified. Please set a new password.");
+        const recoveryEmail = nextSession?.user?.email;
+        if (isGroobeyPlatformAdminEmail(recoveryEmail)) {
+          setIsRecoveryFlow(true);
+          setNotice("Recovery verified. Please set a new password.");
+        } else {
+          void supabase.auth.signOut();
+          setError(
+            "Password reset is only for platform administrators. Contact platform admin for a new password.",
+          );
+        }
       }
     });
     return () => {
@@ -196,7 +222,7 @@ function Index() {
 
     setAuthAction("");
     if (loginError) {
-      setError(friendlyAuthError(loginError.message));
+      setError(friendlyAuthError(loginError.message, platformAdminSignIn));
       return;
     }
 
@@ -219,16 +245,22 @@ function Index() {
       loggedInUserId,
       loginPortal,
       user ? (parseRoleFromAuthClaims(user) ?? user.user_metadata?.role) : undefined,
+      user?.email,
     );
     if (!accessAllowed) {
       await supabase.auth.signOut();
-      setError(`This account is not allowed for ${loginPortalLabels[loginPortal]} login.`);
+      setError(
+        loginPortal === "main_admin" ?
+          "Platform admin access is limited to authorized administrator emails."
+        : `This account is not allowed for ${loginPortalLabels[loginPortal]} login.`,
+      );
       return;
     }
   }
 
   async function handleResetPassword(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!platformAdminSignIn) return;
     setError("");
     setNotice("");
     setIsSendingReset(true);
@@ -312,7 +344,15 @@ function Index() {
     return portal === role;
   }
 
-  async function verifyPortalRole(userId: string, portal: LoginPortal, metadataRole?: unknown) {
+  async function verifyPortalRole(
+    userId: string,
+    portal: LoginPortal,
+    metadataRole?: unknown,
+    userEmail?: string | null,
+  ) {
+    if (portal === "main_admin" && !isGroobeyPlatformAdminEmail(userEmail)) {
+      return false;
+    }
     const { data, error: rolesError } = await supabase
       .from("user_roles")
       .select("role")
@@ -347,10 +387,7 @@ function Index() {
       >
         <section className="mx-auto grid h-full max-w-7xl items-center gap-6 lg:grid-cols-[1.05fr_0.95fr]">
           <div className="space-y-5">
-            <div className="inline-flex items-center gap-3 rounded-full border-2 border-primary/30 bg-card px-4 py-2 shadow-soft">
-              <GroobeyBrandLogo size="sm" withPlate />
-              <span className="text-sm font-bold text-foreground">TLD Groobey</span>
-            </div>
+            <GroobeyBrandLogo size="xl" withPlate className="max-w-[min(100%,20rem)]" />
             <div className="space-y-4">
               <h1 className="max-w-3xl text-3xl font-black leading-tight tracking-normal text-foreground sm:text-4xl lg:text-5xl">
                 Grocery pricing, shop sales, and staff attendance - built for general grocery trade.
@@ -385,12 +422,39 @@ function Index() {
                     onChange={(event) => setLoginPortal(event.target.value as LoginPortal)}
                     className="groobey-select h-11 w-full"
                   >
-                    <option value="main_admin">Platform Admin login</option>
-                    <option value="merchant">Shop Owner login</option>
-                    <option value="order_taker">Order Taker login</option>
-                    <option value="employee">Delivery boy login</option>
+                    {platformAdminSignIn ?
+                      <option value="main_admin">Platform Admin</option>
+                    : null}
+                    <option value="merchant">Shop Owner</option>
+                    <option value="order_taker">Order Taker</option>
+                    <option value="employee">Delivery boy</option>
                   </select>
                 </label>
+                {!platformAdminSignIn ?
+                  <button
+                    type="button"
+                    className="text-left text-xs font-semibold text-primary underline-offset-2 hover:underline"
+                    onClick={() => {
+                      setPlatformAdminSignIn(true);
+                      setLoginPortal("main_admin");
+                      setError("");
+                    }}
+                  >
+                    Platform administrator sign-in
+                  </button>
+                : (
+                  <button
+                    type="button"
+                    className="text-left text-xs font-semibold text-muted-foreground underline-offset-2 hover:underline"
+                    onClick={() => {
+                      setPlatformAdminSignIn(false);
+                      setLoginPortal("merchant");
+                      setError("");
+                    }}
+                  >
+                    Back to staff / shop owner login
+                  </button>
+                )}
                 <Field name="email" label="Email or mobile number" icon={Mail} required />
                 <PasswordField
                   name="password"
@@ -413,26 +477,38 @@ function Index() {
                   Login
                 </Button>
               </form>
-              <form
-                className="space-y-2 rounded-xl border border-border bg-muted/40 p-3"
-                onSubmit={handleResetPassword}
-              >
-                <p className="text-xs font-semibold text-muted-foreground">Forgot password?</p>
-                <input
-                  name="resetEmail"
-                  type="email"
-                  className="h-10 w-full rounded-xl border border-input bg-card px-3 text-sm outline-none ring-ring transition focus:ring-2"
-                  placeholder="Registered email for reset link"
-                />
-                <Button
-                  type="submit"
-                  variant="outline"
-                  className="h-10 w-full rounded-xl"
-                  disabled={isSendingReset}
+              {platformAdminSignIn ?
+                <form
+                  className="space-y-2 rounded-xl border border-border bg-muted/40 p-3"
+                  onSubmit={handleResetPassword}
                 >
-                  {isSendingReset ? <Loader2 className="size-4 animate-spin" /> : null} Send reset email
-                </Button>
-              </form>
+                  <p className="text-xs font-semibold text-muted-foreground">
+                    Forgot password? (platform admin only)
+                  </p>
+                  <input
+                    name="resetEmail"
+                    type="email"
+                    className="h-10 w-full rounded-xl border border-input bg-card px-3 text-sm outline-none ring-ring transition focus:ring-2"
+                    placeholder="Your platform admin email"
+                  />
+                  <Button
+                    type="submit"
+                    variant="outline"
+                    className="h-10 w-full rounded-xl"
+                    disabled={isSendingReset}
+                  >
+                    {isSendingReset ?
+                      <Loader2 className="size-4 animate-spin" />
+                    : null}{" "}
+                    Send reset email
+                  </Button>
+                </form>
+              : (
+                <p className="rounded-xl border border-border bg-muted/40 p-3 text-xs font-semibold leading-relaxed text-muted-foreground">
+                  Passwords are set by platform admin when your login is created. Contact platform
+                  admin if you need help signing in.
+                </p>
+              )}
             </div>
             <Message error={error} notice={notice} loading={loading} />
           </div>

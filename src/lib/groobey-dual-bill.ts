@@ -366,11 +366,34 @@ export type CustomerOrderBillSource = {
   delivery_address?: string | null;
   order_items: string;
   total_amount: number | null;
+  grocery_subtotal?: number | null;
+  delivery_charge?: number | null;
+  delivery_time_slot?: string | null;
+  items_delivered_text?: string | null;
   merchant_settlement_amount?: number | null;
   trade_margin_percent_applied?: number | null;
   notes?: string | null;
   created_at?: string | null;
 };
+
+export function customerOrderBillTotals(order: CustomerOrderBillSource) {
+  const deliveryCharge = Math.max(0, Math.round(Number(order.delivery_charge ?? 0)));
+  const grandRetail = Math.round(Number(order.total_amount || 0));
+  const grocerySubtotal = Math.max(
+    0,
+    Math.round(
+      Number(order.grocery_subtotal ?? 0) > 0 ?
+        Number(order.grocery_subtotal)
+      : grandRetail - deliveryCharge,
+    ),
+  );
+  const grandTrade = Math.round(Number(order.merchant_settlement_amount ?? grandRetail));
+  const groceryTrade =
+    deliveryCharge > 0 && grandRetail > deliveryCharge ?
+      Math.max(0, grandTrade - deliveryCharge)
+    : grandTrade;
+  return { grocerySubtotal, deliveryCharge, grandRetail, groceryTrade, grandTrade };
+}
 
 /** Open customer / settlement bill for a customer_orders row (order taker bills). */
 export function printCustomerOrderBill(params: {
@@ -381,8 +404,7 @@ export function printCustomerOrderBill(params: {
   /** Customer bill only: email / preview modal options. */
   preview?: BillPreviewShowOptions;
 }): boolean {
-  const retail = Number(params.order.total_amount || 0);
-  const trade = Number(params.order.merchant_settlement_amount ?? retail);
+  const totals = customerOrderBillTotals(params.order);
   const marginPct = clampMarginPercent(Number(params.order.trade_margin_percent_applied ?? 0));
   const html = buildCustomerOrderBillHtml({
     kind: params.kind,
@@ -393,9 +415,12 @@ export function printCustomerOrderBill(params: {
     customerName: params.order.customer_name,
     customerPhone: params.order.customer_phone,
     deliveryAddress: params.order.delivery_address,
+    deliveryTimeSlot: params.order.delivery_time_slot,
     orderItemsText: params.order.order_items,
-    totalRetail: retail,
-    totalMerchant: trade,
+    grocerySubtotal: totals.grocerySubtotal,
+    deliveryCharge: totals.deliveryCharge,
+    totalRetail: totals.grandRetail,
+    totalMerchant: totals.grandTrade,
     appliedGroobeyMarginPercent: marginPct,
     notes: params.order.notes,
   });
@@ -416,7 +441,10 @@ export function buildCustomerOrderBillHtml(params: {
   customerName: string;
   customerPhone?: string | null;
   deliveryAddress?: string | null;
+  deliveryTimeSlot?: string | null;
   orderItemsText: string;
+  grocerySubtotal?: number;
+  deliveryCharge?: number;
   totalRetail: number;
   totalMerchant: number;
   appliedGroobeyMarginPercent?: number | null;
@@ -431,12 +459,26 @@ export function buildCustomerOrderBillHtml(params: {
     customerName,
     customerPhone,
     deliveryAddress,
+    deliveryTimeSlot,
     orderItemsText,
     totalRetail,
     totalMerchant,
     appliedGroobeyMarginPercent,
     notes,
   } = params;
+  const deliveryCharge = Math.max(0, Math.round(Number(params.deliveryCharge ?? 0)));
+  const grocerySubtotal = Math.max(
+    0,
+    Math.round(
+      Number(params.grocerySubtotal ?? 0) > 0 ?
+        Number(params.grocerySubtotal)
+      : totalRetail - deliveryCharge,
+    ),
+  );
+  const groceryTrade =
+    deliveryCharge > 0 && totalRetail > deliveryCharge ?
+      Math.max(0, Math.round(totalMerchant - deliveryCharge))
+    : totalMerchant;
   const marginPct =
     kind === "merchant" &&
     appliedGroobeyMarginPercent != null &&
@@ -454,6 +496,10 @@ export function buildCustomerOrderBillHtml(params: {
         { label: "Customer", value: customerName },
         ...(customerPhone?.trim() ? [{ label: "Phone", value: customerPhone.trim() }] : []),
         ...(deliveryAddress?.trim() ? [{ label: "Address", value: deliveryAddress.trim() }] : []),
+        ...(deliveryTimeSlot?.trim() ? [{ label: "Delivery time", value: deliveryTimeSlot.trim() }] : []),
+        ...(deliveryCharge > 0 ?
+          [{ label: "Delivery charge", value: formatInr(deliveryCharge) }]
+        : []),
       ]
     : [
         ...billIdMetaRowsForKind(billNumber, dateLabel, kind, "Pending"),
@@ -462,15 +508,36 @@ export function buildCustomerOrderBillHtml(params: {
         { label: "Customer", value: customerName },
         ...(customerPhone?.trim() ? [{ label: "Phone", value: customerPhone.trim() }] : []),
         ...(deliveryAddress?.trim() ? [{ label: "Address", value: deliveryAddress.trim() }] : []),
+        ...(deliveryTimeSlot?.trim() ? [{ label: "Delivery time", value: deliveryTimeSlot.trim() }] : []),
       ];
 
   const tableRows = customerOrderItemsToRows(
     orderItemsText,
     kind,
-    totalRetail,
-    totalMerchant,
+    grocerySubtotal,
+    groceryTrade,
     marginPct,
   );
+  if (deliveryCharge > 0) {
+    tableRows.push(
+      kind === "merchant" ?
+        {
+          item: "Delivery charge",
+          qty: "",
+          kgs: "",
+          retail: formatInr(deliveryCharge),
+          tradeRate: formatInr(deliveryCharge),
+          amount: formatInr(deliveryCharge),
+        }
+      : {
+          item: "Delivery charge",
+          qty: "",
+          kgs: "",
+          rate: formatInr(deliveryCharge),
+          amount: formatInr(deliveryCharge),
+        },
+    );
+  }
   if (tableRows.length > 1) {
     tableRows.push(
       kind === "merchant" ?

@@ -1,11 +1,11 @@
 import { cn } from "@/lib/utils";
-import { GROOBEY_LOGO_DISPLAY, GROOBEY_LOGO_PATH } from "@/lib/groobey-brand";
+import { GROOBEY_LOGO_DISPLAY, GROOBEY_WEB_LOGO_PATH } from "@/lib/groobey-brand";
 
 const sizeClass = {
-  sm: "h-10",
-  md: "h-12",
-  lg: "h-16",
-  xl: "h-20",
+  sm: "h-12",
+  md: "h-16",
+  lg: "h-[5.25rem]",
+  xl: "h-28",
 } as const;
 
 const sizePx = {
@@ -22,16 +22,20 @@ export function GroobeyBrandLogo({
 }: {
   className?: string;
   size?: keyof typeof sizeClass;
-  /** Light background so the full logo is visible on dark or busy headers. */
+  /** Subtle frame so the black logo field reads on light cards. */
   withPlate?: boolean;
 }) {
   const img = (
     <img
-      src={GROOBEY_LOGO_PATH}
+      src={GROOBEY_WEB_LOGO_PATH}
       alt="TLD Groobey"
-      width={Math.round(sizePx[size] * 2.8)}
+      width={Math.round(sizePx[size] * 1.35)}
       height={sizePx[size]}
-      className={cn("w-auto shrink-0 object-contain", sizeClass[size], !withPlate && className)}
+      className={cn(
+        "w-auto max-w-[min(100%,16rem)] shrink-0 object-contain",
+        sizeClass[size],
+        !withPlate && className,
+      )}
       decoding="async"
     />
   );
@@ -41,7 +45,7 @@ export function GroobeyBrandLogo({
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center justify-center rounded-xl border border-primary/35 bg-white p-2 shadow-sm",
+        "inline-flex shrink-0 items-center justify-center rounded-xl border border-primary/40 bg-[#0a0a0a] p-2 shadow-[0_8px_24px_-8px_rgba(154,205,50,0.45)]",
         className,
       )}
     >
@@ -63,10 +67,9 @@ export function GroobeyLoadingScreen({ message = "Loading…" }: { message?: str
 /** Logo + title block for auth cards (login, recovery). */
 export function GroobeyAuthBrand({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
-    <div className="mb-5 flex flex-col items-center gap-3 text-center sm:flex-row sm:items-center sm:text-left">
-      <GroobeyBrandLogo size="lg" withPlate className="mx-auto sm:mx-0" />
-      <div className="min-w-0 sm:border-l-2 sm:border-primary/30 sm:pl-4">
-        <p className="text-xs font-bold uppercase tracking-widest text-primary">TLD Groobey</p>
+    <div className="mb-6 flex flex-col items-center gap-4 text-center">
+      <GroobeyBrandLogo size="lg" withPlate className="mx-auto" />
+      <div className="min-w-0">
         <h1 className="text-2xl font-black text-foreground sm:text-3xl">{title}</h1>
         {subtitle ?
           <p className="mt-1 text-sm font-semibold text-muted-foreground">{subtitle}</p>

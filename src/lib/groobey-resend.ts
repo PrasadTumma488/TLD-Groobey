@@ -45,13 +45,33 @@ export function extractEmailFromFromHeader(from: string): string {
 }
 
 function normalizeResendFromRaw(raw: string): string {
-  const trimmed = raw.trim();
+  const trimmed = trimResendEnv(raw);
   if (trimmed.includes("<") && trimmed.includes(">")) return trimmed;
   // `Groobey app@domain.com` (space, no brackets) → `Groobey <app@domain.com>`
   const spaced = trimmed.match(/^(.+?)\s+([^\s<>]+@[^\s<>]+)$/);
   if (spaced) return `${spaced[1].trim()} <${spaced[2].trim()}>`;
+  // `Groobey app.groobey.in` (missing @) → `Groobey <app@groobey.in>`
+  const nameThenHost = trimmed.match(
+    /^(.+?)\s+([a-zA-Z0-9][a-zA-Z0-9._-]*)\.([a-zA-Z0-9][a-zA-Z0-9.-]*\.[a-zA-Z]{2,})$/,
+  );
+  if (nameThenHost) {
+    return `${nameThenHost[1].trim()} <${nameThenHost[2]}@${nameThenHost[3]}>`;
+  }
+  // bare `app.groobey.in` (no @, no display name)
+  if (/^[^\s@<>]+\.[^\s@<>]+$/u.test(trimmed) && !trimmed.includes("@")) {
+    const dot = trimmed.indexOf(".");
+    const local = trimmed.slice(0, dot);
+    const domain = trimmed.slice(dot + 1);
+    if (local && domain.includes(".")) return `Groobey <${local}@${domain}>`;
+  }
   if (trimmed.includes("@")) return `Groobey <${trimmed}>`;
   return trimmed;
+}
+
+/** Resend requires `email@x.com` or `Name <email@x.com>`. */
+export function isValidResendFromHeader(from: string): boolean {
+  const addr = extractEmailFromFromHeader(from);
+  return /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/u.test(addr);
 }
 
 export function getResendFromEmail(): string {

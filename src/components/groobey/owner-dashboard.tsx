@@ -1,6 +1,7 @@
-import { useServerFn } from "@tanstack/react-start";
+﻿import { useServerFn } from "@tanstack/react-start";
 import {
   Bike,
+  ChevronRight,
   ClipboardList,
   Download,
   IndianRupee,
@@ -18,7 +19,15 @@ import {
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import { PRESET_GROCERY_NAMES } from "@/lib/groobey-preset-grocery-names";
@@ -47,8 +56,13 @@ import { backfillCustomerOrdersClient, ordersMissingBillId } from "@/lib/groobey
 import {
   CUSTOMER_ORDER_SELECT,
   CUSTOMER_ORDER_SELECT_LEGACY,
+  CUSTOMER_ORDER_SELECT_WITHOUT_DELIVERY_EXTRA,
   isMissingCustomerOrderShopIdError,
 } from "@/lib/groobey-customer-order-columns";
+import {
+  isMissingCustomerOrderDeliveryFieldsError,
+  supabaseErrorMessage,
+} from "@/lib/groobey-delivery-order-fields";
 import { GroobeyDashboardHeader } from "./groobey-brand-logo";
 import { BillKindButtons } from "./groobey-bill-buttons";
 import {
@@ -90,6 +104,18 @@ import {
   Stat,
   VerifyList,
 } from "./workspace-ui";
+
+const ADMIN_PEOPLE_MODAL_TABS = [
+  "shop-owners",
+  "staff",
+  "orders-team",
+  "attendance",
+] as const;
+type AdminPeopleModalTab = (typeof ADMIN_PEOPLE_MODAL_TABS)[number];
+
+function isAdminPeopleModalTab(value: string): value is AdminPeopleModalTab {
+  return (ADMIN_PEOPLE_MODAL_TABS as readonly string[]).includes(value);
+}
 
 type AppRole = Database["public"]["Enums"]["app_role"];
 type Product = Database["public"]["Tables"]["products"]["Row"];
@@ -191,12 +217,16 @@ export function OwnerDashboard() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const sampleSeedIndex = useRef(0);
   const [editingStaff, setEditingStaff] = useState<StaffRow | null>(null);
+  const [selectedStaff, setSelectedStaff] = useState<StaffRow | null>(null);
+  const [selectedAttendance, setSelectedAttendance] = useState<Attendance | null>(null);
   const [editingOrderTakerMargin, setEditingOrderTakerMargin] = useState("0");
   const [staffFormResetNonce, setStaffFormResetNonce] = useState(0);
   const hasSyncedWorkspace = useRef(false);
   const saleBillBackfillAttempted = useRef(false);
   const customerOrderBillBackfillAttempted = useRef(false);
   const customerOrderShopIdReady = useRef(true);
+  const customerOrderDeliveryFieldsReady = useRef(true);
+  const [assigningDeliveryOrderId, setAssigningDeliveryOrderId] = useState<string | null>(null);
   const hasSyncedGroobeyCodes = useRef(false);
   const hasEnsuredOwnGroobeyCode = useRef(false);
   const workspaceLoadInFlight = useRef(false);
@@ -305,10 +335,11 @@ export function OwnerDashboard() {
           .select(CUSTOMER_ORDER_SELECT)
           .order("created_at", { ascending: false })
           .limit(200);
+        const customerOrdersErrText = supabaseErrorMessage(customerOrdersRes.error);
         if (
           customerOrdersRes.error &&
           customerOrderShopIdReady.current &&
-          isMissingCustomerOrderShopIdError(customerOrdersRes.error.message)
+          isMissingCustomerOrderShopIdError(customerOrdersErrText)
         ) {
           customerOrderShopIdReady.current = false;
           customerOrdersRes = await supabase
@@ -317,14 +348,30 @@ export function OwnerDashboard() {
             .order("created_at", { ascending: false })
             .limit(200);
         }
+        const customerOrdersErrText2 = supabaseErrorMessage(customerOrdersRes.error);
+        if (
+          customerOrdersRes.error &&
+          isMissingCustomerOrderDeliveryFieldsError(customerOrdersErrText2)
+        ) {
+          customerOrderDeliveryFieldsReady.current = false;
+          const fallbackSelect = customerOrderShopIdReady.current
+            ? CUSTOMER_ORDER_SELECT_WITHOUT_DELIVERY_EXTRA
+            : CUSTOMER_ORDER_SELECT_LEGACY;
+          customerOrdersRes = await supabase
+            .from("customer_orders")
+            .select(fallbackSelect)
+            .order("created_at", { ascending: false })
+            .limit(200);
+        }
         if (customerOrdersRes.error) {
+          const errMsg = supabaseErrorMessage(customerOrdersRes.error);
           setNotice("");
-          const hint = schemaSetupHint(customerOrdersRes.error.message);
+          const hint = schemaSetupHint(errMsg);
           setError(
             hint ??
-              (isTransientDatabaseError(customerOrdersRes.error.message) ?
+              (isTransientDatabaseError(errMsg) ?
                 "Refreshing data. Please wait."
-              : customerOrdersRes.error.message),
+              : errMsg),
           );
           return;
         }
@@ -421,14 +468,30 @@ export function OwnerDashboard() {
   useEffect(() => {
     if (!session?.user) return;
     if (
-      activeTab === "shop-owners" ||
-      activeTab === "staff" ||
-      activeTab === "orders-team" ||
+      isAdminPeopleModalTab(activeTab) ||
       activeTab === "create-logins"
     ) {
       void loadStaff();
     }
   }, [activeTab, loadStaff, session?.user]);
+
+  function openStaffDetail(row: StaffRow) {
+    setSelectedStaff(row);
+    setEditingStaff(row);
+  }
+
+  function closeStaffDetail() {
+    setSelectedStaff(null);
+    setEditingStaff(null);
+  }
+
+  function openAttendanceDetail(row: Attendance) {
+    setSelectedAttendance(row);
+  }
+
+  function closeAttendanceDetail() {
+    setSelectedAttendance(null);
+  }
 
   useEffect(() => {
     if (!session?.access_token || hasSyncedGroobeyCodes.current) return;
@@ -479,10 +542,10 @@ export function OwnerDashboard() {
         return;
       }
       const live = sessionData.session;
-      // Prefer React state (auth listener / memory) then persisted session — they can diverge briefly.
+      // Prefer React state (auth listener / memory) then persisted session â€” they can diverge briefly.
       let accessToken = (session?.access_token || live?.access_token || "").trim();
       const refreshToken = (session?.refresh_token || live?.refresh_token || "").trim();
-      // `refreshSession()` throws "Auth session missing!" if there is no refresh token — only call when we have one.
+      // `refreshSession()` throws "Auth session missing!" if there is no refresh token â€” only call when we have one.
       if (!accessToken && refreshToken) {
         const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
         if (refreshError) {
@@ -620,7 +683,7 @@ export function OwnerDashboard() {
         }
       }
       setNotice("Staff login updated.");
-      setEditingStaff(null);
+      closeStaffDetail();
       void loadWorkspace({ silent: true });
       void loadStaff();
     } catch (e) {
@@ -666,7 +729,8 @@ export function OwnerDashboard() {
         data: { requesterToken: session.access_token, userId: row.userId },
       });
       setNotice("Staff login deleted.");
-      setEditingStaff((prev) => (prev?.userId === row.userId ? null : prev));
+      if (selectedStaff?.userId === row.userId) closeStaffDetail();
+      else setEditingStaff((prev) => (prev?.userId === row.userId ? null : prev));
       setStaffRows((prev) => prev.filter((item) => item.userId !== row.userId));
       void loadStaff();
     } catch (e) {
@@ -766,7 +830,7 @@ export function OwnerDashboard() {
       const warn =
         parsed.errors.length ? ` ${parsed.errors.slice(0, 3).join(" ")}` : "";
       setNotice(
-        `Excel import: ${parsed.rows.length} row(s) — ${created} added, ${updated} updated.${warn}`,
+        `Excel import: ${parsed.rows.length} row(s) â€” ${created} added, ${updated} updated.${warn}`,
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Excel import failed.");
@@ -996,7 +1060,7 @@ export function OwnerDashboard() {
           displayName,
           groobeyCode: staffRow?.groobeyId ?? null,
         })
-      : "—";
+      : "â€”";
     const marginPct = resolveTradeMarginPercent({
       saleApplied: sale.trade_margin_percent_applied,
       shopMargin: shop?.trade_margin_percent,
@@ -1013,6 +1077,31 @@ export function OwnerDashboard() {
       appliedGroobeyMarginPercent: kind === "merchant" ? marginPct : undefined,
     });
     openBillPrintGuarded(html, kind);
+  }
+
+  async function assignOrderDeliveryBoy(orderId: string, deliveryUserId: string) {
+    if (!customerOrderDeliveryFieldsReady.current) {
+      setError("Run the latest database migration to assign delivery boys.");
+      return;
+    }
+    setAssigningDeliveryOrderId(orderId);
+    const { error } = await supabase
+      .from("customer_orders")
+      .update({ assigned_delivery_user_id: deliveryUserId || null } as never)
+      .eq("id", orderId);
+    setAssigningDeliveryOrderId(null);
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    setCustomerOrders((prev) =>
+      prev.map((row) =>
+        row.id === orderId ?
+          { ...row, assigned_delivery_user_id: deliveryUserId || null }
+        : row,
+      ),
+    );
+    setNotice("Delivery boy assigned for this order.");
   }
 
   function exportCustomerOrderBill(orderId: string, kind: "customer" | "merchant") {
@@ -1033,7 +1122,7 @@ export function OwnerDashboard() {
       orderTakerLabel,
     });
     if (opened && kind === "merchant") {
-      setNotice("Settlement bill opened — same Bill ID as the customer copy.");
+      setNotice("Settlement bill opened â€” same Bill ID as the customer copy.");
     }
   }
 
@@ -1042,9 +1131,9 @@ export function OwnerDashboard() {
     if (!sale || sale.status === "pending") return;
     const ok = window.confirm(
       "Remove this sale from the sales list?\n\n" +
-        "• Weekly and monthly totals stay the same\n" +
-        "• Bill numbers are kept for monthly settlement\n" +
-        "• You can still export this month’s settlement below",
+        "â€¢ Weekly and monthly totals stay the same\n" +
+        "â€¢ Bill numbers are kept for monthly settlement\n" +
+        "â€¢ You can still export this monthâ€™s settlement below",
     );
     if (!ok) return;
     setError("");
@@ -1359,6 +1448,10 @@ export function OwnerDashboard() {
   }, [shops]);
   const isProfileView = activeTab === "profile";
 
+  function directoryShellClass(wide = false) {
+    return cn("owner-admin-directory-shell", wide && "owner-admin-directory-shell--wide");
+  }
+
   function renderStaffTable(rows: StaffRow[], emptyText: string, showLocation = false) {
     if (staffLoading) {
       return (
@@ -1371,174 +1464,364 @@ export function OwnerDashboard() {
       return <p className="text-sm font-semibold text-muted-foreground">{emptyText}</p>;
     }
     return (
-      <div className="space-y-3">
-        <div className="grid gap-3 md:hidden">
+      <div className="owner-admin-directory space-y-3">
+        <p className="text-center text-xs font-semibold text-muted-foreground sm:text-left">
+          Tap a person to view details and manage their login.
+        </p>
+        <div
+          className={cn(
+            "grid gap-2.5 lg:hidden",
+            showLocation ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1",
+          )}
+        >
           {rows.map((row) => (
-            <div key={row.userId} className="rounded-2xl border border-border bg-card/70 p-3">
-              <p className="text-base font-black leading-tight">{row.displayName || "-"}</p>
-              <p className="mt-0.5 text-xs font-semibold text-muted-foreground">
-                {roleLabel(row.role)}
-              </p>
-              <div className="mt-2 grid gap-1 text-sm">
-                <p className="truncate">
-                  <span className="font-semibold">Groobey ID:</span> {row.groobeyId ?? "-"}
+            <button
+              key={row.userId}
+              type="button"
+              className="owner-admin-people-card"
+              onClick={() => openStaffDetail(row)}
+            >
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-black leading-tight">{row.displayName || "-"}</p>
+                <p className="mt-0.5 truncate text-xs font-semibold text-muted-foreground">
+                  {showLocation
+                    ? (shopNameByOwnerId.get(row.userId) ?? "No shop")
+                    : roleLabel(row.role)}
                 </p>
-                <p className="truncate">
-                  <span className="font-semibold">Email:</span> {row.email ?? "-"}
+                <p className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground">
+                  {row.groobeyId ?? "-"}
                 </p>
-                <p className="truncate">
-                  <span className="font-semibold">Phone:</span> {row.phone ?? "-"}
-                </p>
-                {showLocation ? (
-                  <p className="truncate">
-                    <span className="font-semibold">Shop:</span>{" "}
-                    {shopNameByOwnerId.get(row.userId) ?? "-"}
-                  </p>
-                ) : null}
-                {showLocation ? (
-                  <p className="truncate">
-                    <span className="font-semibold">Location:</span>{" "}
-                    {shopLocationByOwnerId.get(row.userId) ?? "-"}
-                  </p>
-                ) : null}
               </div>
-              <div className="mt-3 flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant={row.isActive ? "outline" : "groobey"}
-                  className="h-9 flex-1 rounded-lg text-xs"
-                  onClick={() => void toggleStaff(row.userId, !row.isActive)}
+              <div className="flex shrink-0 flex-col items-end gap-1">
+                <span
+                  className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
+                    row.isActive
+                      ? "bg-primary/15 text-primary"
+                      : "bg-muted text-muted-foreground"
+                  }`}
                 >
-                  {row.isActive ? "Deactivate" : "Activate"}
-                </Button>
-                <Button
-                  type="button"
-                  variant="calm"
-                  className="h-9 flex-1 rounded-lg text-xs"
-                  onClick={() => {
-                    setEditingStaff(row);
-                  }}
-                >
-                  <Pencil className="size-3.5" /> Edit
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-9 flex-1 rounded-lg text-xs text-destructive hover:bg-destructive/10"
-                  onClick={() => void handleDeleteStaff(row)}
-                >
-                  <Trash2 className="size-3.5" /> Delete
-                </Button>
+                  {row.isActive ? "Active" : "Off"}
+                </span>
+                <ChevronRight className="size-4 text-primary" aria-hidden />
               </div>
-            </div>
+            </button>
           ))}
         </div>
-        <div className="hidden overflow-x-auto md:block">
-          <table className="w-full table-fixed text-left text-sm">
-            <colgroup>
-              {showLocation ? (
-                <>
-                  <col className="w-[12%]" />
-                  <col className="w-[9%]" />
-                  <col className="w-[17%]" />
-                  <col className="w-[18%]" />
-                  <col className="w-[11%]" />
-                  <col className="w-[14%]" />
-                  <col className="w-[9%]" />
-                  <col className="w-[10%]" />
-                </>
-              ) : (
-                <>
-                  <col className="w-[17%]" />
-                  <col className="w-[10%]" />
-                  <col className="w-[24%]" />
-                  <col className="w-[25%]" />
-                  <col className="w-[10%]" />
-                  <col className="w-[14%]" />
-                </>
-              )}
-            </colgroup>
+        <div className="owner-admin-directory-table-wrap hidden lg:block">
+          <table className="text-left">
             <thead>
-              <tr className="border-b border-border text-muted-foreground">
-                <th className="py-2 pr-3 font-semibold">Name</th>
-                <th className="py-2 pr-3 font-semibold">Role</th>
-                <th className="py-2 pr-3 font-semibold">ID</th>
-                <th className="py-2 pr-3 font-semibold">Email</th>
-                <th className="py-2 pr-3 font-semibold">Phone</th>
-                {showLocation ? <th className="py-2 pr-3 font-semibold">Shop Name</th> : null}
-                {showLocation ? <th className="py-2 pr-3 font-semibold">Location</th> : null}
-                <th className="py-2 font-semibold">Status</th>
+              <tr className="border-b border-border bg-muted/30 text-xs text-muted-foreground">
+                <th className="px-4 py-2.5 font-semibold">Name</th>
+                {showLocation ? (
+                  <th className="px-4 py-2.5 font-semibold">Shop</th>
+                ) : (
+                  <th className="px-4 py-2.5 font-semibold">Role</th>
+                )}
+                <th className="px-4 py-2.5 font-semibold">Groobey ID</th>
+                <th className="px-4 py-2.5 font-semibold">Status</th>
+                <th className="w-12 px-2 py-2.5" aria-hidden />
               </tr>
             </thead>
             <tbody>
               {rows.map((row) => (
-                <tr key={row.userId} className="border-b border-border/60">
-                  <td className="truncate py-2 pr-3 font-semibold" title={row.displayName || "-"}>
+                <tr
+                  key={row.userId}
+                  className="border-b border-border/50 last:border-0"
+                  onClick={() => openStaffDetail(row)}
+                >
+                  <td className="max-w-[12rem] truncate px-4 py-3 font-semibold">
                     {row.displayName || "-"}
                   </td>
-                  <td className="truncate py-2 pr-3" title={roleLabel(row.role)}>
-                    {roleLabel(row.role)}
-                  </td>
-                  <td className="truncate py-2 pr-3 font-mono text-xs" title={row.groobeyId ?? "-"}>
-                    {row.groobeyId ?? "-"}
-                  </td>
-                  <td className="truncate py-2 pr-3" title={row.email ?? "-"}>
-                    {row.email ?? "-"}
-                  </td>
-                  <td className="truncate py-2 pr-3" title={row.phone ?? "-"}>
-                    {row.phone ?? "-"}
-                  </td>
                   {showLocation ? (
-                    <td
-                      className="truncate py-2 pr-3"
-                      title={shopNameByOwnerId.get(row.userId) ?? "-"}
-                    >
+                    <td className="max-w-[10rem] truncate px-4 py-3 text-sm">
                       {shopNameByOwnerId.get(row.userId) ?? "-"}
                     </td>
-                  ) : null}
-                  {showLocation ? (
-                    <td
-                      className="truncate py-2 pr-3"
-                      title={shopLocationByOwnerId.get(row.userId) ?? "-"}
+                  ) : (
+                    <td className="truncate px-4 py-3 text-sm">{roleLabel(row.role)}</td>
+                  )}
+                  <td className="truncate px-4 py-3 font-mono text-xs">{row.groobeyId ?? "-"}</td>
+                  <td className="px-4 py-3">
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
+                        row.isActive
+                          ? "bg-primary/15 text-primary"
+                          : "bg-muted text-muted-foreground"
+                      }`}
                     >
-                      {shopLocationByOwnerId.get(row.userId) ?? "-"}
-                    </td>
-                  ) : null}
-                  <td className="py-2">
-                    <div className="flex flex-nowrap items-center gap-1.5 whitespace-nowrap">
-                      <Button
-                        type="button"
-                        variant={row.isActive ? "outline" : "groobey"}
-                        className="h-8 rounded-lg px-2 text-xs"
-                        onClick={() => void toggleStaff(row.userId, !row.isActive)}
-                      >
-                        {row.isActive ? "Deactivate" : "Activate"}
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="calm"
-                        className="h-8 rounded-lg px-2 text-xs"
-                        onClick={() => {
-                          setEditingStaff(row);
-                        }}
-                      >
-                        <Pencil className="size-3.5" /> Edit
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="h-8 rounded-lg px-2 text-xs text-destructive hover:bg-destructive/10"
-                        onClick={() => void handleDeleteStaff(row)}
-                      >
-                        <Trash2 className="size-3.5" /> Delete
-                      </Button>
-                    </div>
+                      {row.isActive ? "Active" : "Off"}
+                    </span>
+                  </td>
+                  <td className="px-2 py-3 text-primary">
+                    <ChevronRight className="size-4" aria-hidden />
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+      </div>
+    );
+  }
+
+  function renderStaffEditForm() {
+    if (!selectedStaff) return null;
+    const row = selectedStaff;
+    if (row.role === "merchant") {
+      return (
+        <form className="grid gap-3" onSubmit={handleUpdateStaff} key={row.userId}>
+          <Field name="displayName" label="Shop Owner name" required defaultValue={row.displayName} />
+          <Field name="email" label="Login email" defaultValue={row.email ?? ""} />
+          <Field name="phone" label="Login mobile number" defaultValue={row.phone ?? ""} />
+          <Field name="shopName" label="Shop name" required defaultValue={shopByOwnerId.get(row.userId)?.name ?? ""} />
+          <Field name="shopAddress" label="Location" required defaultValue={shopByOwnerId.get(row.userId)?.address ?? ""} />
+          <Field name="tradeMarginPercent" label="Groobey margin % (whole shop bill)" type="number" required defaultValue={String(shopByOwnerId.get(row.userId)?.trade_margin_percent ?? 0)} />
+          <Button type="submit" variant="groobey" className="min-h-11 w-fit rounded-xl">Save changes</Button>
+        </form>
+      );
+    }
+    if (row.role === "employee") {
+      return (
+        <form className="grid gap-3" onSubmit={handleUpdateStaff} key={row.userId}>
+          <Field name="displayName" label="Delivery boy name" required defaultValue={row.displayName} />
+          <Field name="email" label="Login email" defaultValue={row.email ?? ""} />
+          <Field name="phone" label="Login mobile number" defaultValue={row.phone ?? ""} />
+          <Button type="submit" variant="groobey" className="min-h-11 w-fit rounded-xl">Save changes</Button>
+        </form>
+      );
+    }
+    return (
+      <form className="grid gap-3" onSubmit={handleUpdateStaff} key={row.userId}>
+        <Field name="displayName" label="Order taker name" required defaultValue={row.displayName} />
+        <Field name="email" label="Login email" defaultValue={row.email ?? ""} />
+        <Field name="phone" label="Login mobile number" defaultValue={row.phone ?? ""} />
+        <label className="grid gap-1.5 text-sm font-semibold text-foreground">
+          Groobey margin % (whole order bill)
+          <input name="tradeMarginPercent" type="number" min={0} max={100} step="0.01" required value={editingOrderTakerMargin} onChange={(e) => setEditingOrderTakerMargin(e.target.value)} className="h-11 max-w-[10rem] rounded-xl border border-input bg-card px-3 text-sm font-semibold outline-none ring-ring focus:ring-2" />
+        </label>
+        <Button type="submit" variant="groobey" className="min-h-11 w-fit rounded-xl">Save changes</Button>
+      </form>
+    );
+  }
+
+  function renderStaffDetailDialogContent() {
+    if (!selectedStaff) return null;
+    const row = selectedStaff;
+    return (
+      <div className="space-y-5">
+        <div className="grid gap-3 rounded-2xl border border-border bg-muted/25 p-4 sm:grid-cols-2">
+          <div><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Name</p><p className="mt-0.5 font-black">{row.displayName || "—"}</p></div>
+          <div><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Role</p><p className="mt-0.5 font-semibold">{roleLabel(row.role)}</p></div>
+          <div><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Groobey ID</p><p className="mt-0.5 font-mono text-sm font-semibold">{row.groobeyId ?? "—"}</p></div>
+          <div><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Status</p><p className="mt-0.5 font-semibold">{row.isActive ? "Active" : "Inactive"}</p></div>
+          <div className="sm:col-span-2"><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Email</p><p className="mt-0.5 break-all font-semibold">{row.email ?? "—"}</p></div>
+          <div className="sm:col-span-2"><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Phone</p><p className="mt-0.5 font-semibold">{row.phone ?? "—"}</p></div>
+          {row.role === "merchant" ? (
+            <>
+              <div><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Shop</p><p className="mt-0.5 font-semibold">{shopNameByOwnerId.get(row.userId) ?? "—"}</p></div>
+              <div><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Location</p><p className="mt-0.5 font-semibold">{shopLocationByOwnerId.get(row.userId) ?? "—"}</p></div>
+            </>
+          ) : null}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant={row.isActive ? "outline" : "groobey"} className="min-h-10 rounded-xl" onClick={() => void toggleStaff(row.userId, !row.isActive)}>
+            {row.isActive ? "Deactivate login" : "Activate login"}
+          </Button>
+          <Button type="button" variant="outline" className="min-h-10 rounded-xl text-destructive hover:bg-destructive/10" onClick={() => void handleDeleteStaff(row)}>
+            <Trash2 className="size-4" /> Delete login
+          </Button>
+        </div>
+        <div className="border-t border-border pt-4">
+          <p className="mb-3 text-sm font-black text-foreground">Edit details</p>
+          {renderStaffEditForm()}
+        </div>
+      </div>
+    );
+  }
+
+  function renderAttendanceDetailDialogContent() {
+    if (!selectedAttendance) return null;
+    const row = selectedAttendance;
+    const details = parseAttendanceNotes(row.notes);
+    return (
+      <div className="space-y-5">
+        <div className="grid gap-3 rounded-2xl border border-border bg-muted/25 p-4 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Worker</p>
+            <p className="mt-0.5 font-black">{staffNameByUserId.get(row.worker_id) ?? "Staff"}</p>
+            <p className="mt-0.5 font-mono text-xs text-muted-foreground">{groobeyIdForUser(row.worker_id, groobeyByUserId)}</p>
+          </div>
+          <div><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Work date</p><p className="mt-0.5 font-semibold">{row.work_date}</p></div>
+          <div><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Verification</p><span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${verificationBadgeClass(row.verification_status)}`}>{verificationLabel(row.verification_status)}</span></div>
+          <div className="sm:col-span-2"><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Destination</p><p className="mt-0.5 font-semibold">{details.destination}</p></div>
+          <div className="sm:col-span-2"><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Items</p><p className="mt-0.5 break-words font-semibold">{details.items}</p></div>
+          <div className="sm:col-span-2"><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Time</p><p className="mt-0.5 font-semibold">{details.time}</p></div>
+        </div>
+        <label className="grid max-w-xs gap-1.5 text-sm font-semibold">
+          Day status
+          <select className="groobey-select groobey-select--sm w-full" value={row.status} onChange={(e) => void updateAttendanceStatus(row.id, e.target.value as Database["public"]["Enums"]["attendance_status"])}>
+            <option value="present">Present</option>
+            <option value="absent">Absent</option>
+            <option value="half_day">Half day</option>
+          </select>
+        </label>
+        {row.verification_status === "pending" ? (
+          <div className="flex flex-wrap gap-2">
+            <Button variant="calm" className="min-h-10 rounded-xl" onClick={() => void updateAttendanceVerification(row.id, "verified")}>Approve attendance</Button>
+            <Button variant="outline" className="min-h-10 rounded-xl" onClick={() => void updateAttendanceVerification(row.id, "rejected")}>Reject attendance</Button>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  function renderAttendancePanel() {
+    return (
+      <div className={cn(directoryShellClass(true), "space-y-4")}>
+        <div className="owner-admin-attendance-toolbar">
+          <Button variant="outline" className="w-full rounded-xl sm:w-auto" onClick={exportCsv}>
+            <Download className="size-4" /> Export CSV
+          </Button>
+          <div
+            className="inline-flex w-full overflow-x-auto rounded-xl border border-border bg-card/70 p-1 sm:w-auto"
+            role="tablist"
+            aria-label="Attendance verification filter"
+          >
+            {(
+              [
+                ["all", `All (${attendance.length})`],
+                [
+                  "pending",
+                  `Pending (${attendance.filter((r) => r.verification_status === "pending").length})`,
+                ],
+                [
+                  "verified",
+                  `Verified (${attendance.filter((r) => r.verification_status === "verified").length})`,
+                ],
+                [
+                  "rejected",
+                  `Rejected (${attendance.filter((r) => r.verification_status === "rejected").length})`,
+                ],
+              ] as const
+            ).map(([value, label]) => {
+              const active = attendanceFilter === value;
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  className={`h-9 rounded-lg px-3 text-xs font-semibold transition sm:text-sm ${
+                    active ?
+                      "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:bg-muted"
+                  }`}
+                  onClick={() => setAttendanceFilter(value)}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <Panel title="Attendance records" icon={ClipboardList}>
+          <div className="owner-admin-directory space-y-3">
+            <p className="text-center text-xs font-semibold text-muted-foreground sm:text-left">
+              Tap a record to review details and approve or reject.
+            </p>
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:hidden">
+            {filteredAttendance.map((row) => (
+              <button
+                key={row.id}
+                type="button"
+                className="owner-admin-attendance-card"
+                onClick={() => openAttendanceDetail(row)}
+              >
+                {(() => {
+                  const details = parseAttendanceNotes(row.notes);
+                  return (
+                    <div className="flex items-start gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="truncate text-sm font-black leading-tight">
+                            {staffNameByUserId.get(row.worker_id) ?? "Staff"}
+                          </p>
+                          <span
+                            className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${verificationBadgeClass(
+                              row.verification_status,
+                            )}`}
+                          >
+                            {verificationLabel(row.verification_status)}
+                          </span>
+                        </div>
+                        <p className="mt-0.5 text-xs font-semibold text-muted-foreground">
+                          {row.work_date} · {attendanceStatusLabel(row.status)}
+                        </p>
+                        <p className="mt-1 truncate text-xs text-muted-foreground">
+                          {details.destination}
+                        </p>
+                      </div>
+                      <ChevronRight className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />
+                    </div>
+                  );
+                })()}
+              </button>
+            ))}
+          </div>
+          <div className="owner-admin-directory-table-wrap hidden lg:block">
+            <table className="text-left">
+              <thead>
+                <tr className="border-b border-border bg-muted/30 text-xs text-muted-foreground">
+                  <th className="px-4 py-2.5 font-semibold">Date</th>
+                  <th className="px-4 py-2.5 font-semibold">Worker</th>
+                  <th className="px-4 py-2.5 font-semibold">Destination</th>
+                  <th className="px-4 py-2.5 font-semibold">Verification</th>
+                  <th className="w-12 px-2 py-2.5" aria-hidden />
+                </tr>
+              </thead>
+              <tbody>
+                {filteredAttendance.map((row) => {
+                  const details = parseAttendanceNotes(row.notes);
+                  return (
+                    <tr
+                      key={row.id}
+                      className="border-b border-border/50 last:border-0"
+                      onClick={() => openAttendanceDetail(row)}
+                    >
+                      <td className="whitespace-nowrap px-4 py-3 font-semibold">{row.work_date}</td>
+                      <td className="max-w-[9rem] truncate px-4 py-3 text-sm font-semibold">
+                        {staffNameByUserId.get(row.worker_id) ?? "Staff"}
+                      </td>
+                      <td
+                        className="max-w-[14rem] truncate px-4 py-3 text-sm text-muted-foreground"
+                        title={details.destination}
+                      >
+                        {details.destination}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${verificationBadgeClass(
+                            row.verification_status,
+                          )}`}
+                        >
+                          {verificationLabel(row.verification_status)}
+                        </span>
+                      </td>
+                      <td className="px-2 py-3 text-primary">
+                        <ChevronRight className="size-4" aria-hidden />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          {filteredAttendance.length === 0 && (
+            <EmptyState
+              icon={ClipboardList}
+              title="No attendance"
+              text="Delivery staff submit attendance from their portal."
+            />
+          )}
+          </div>
+        </Panel>
       </div>
     );
   }
@@ -1603,52 +1886,52 @@ export function OwnerDashboard() {
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         {!isProfileView ? (
-          <TabsList className="mb-4 grid h-auto w-full grid-cols-2 gap-1 bg-muted/80 p-1 sm:grid-cols-3 lg:flex lg:max-w-full lg:flex-nowrap lg:overflow-x-auto lg:overflow-y-hidden">
+          <TabsList className="owner-admin-tabs groobey-tab-scroll mb-4 flex h-auto w-full max-w-full gap-1.5 rounded-xl p-2 md:grid md:grid-cols-4 md:overflow-visible lg:inline-flex lg:flex-nowrap">
           <TabsTrigger
             value="overview"
-            className="min-h-10 gap-1 px-2 text-xs sm:text-sm lg:flex-shrink-0 lg:gap-1.5 lg:px-3"
+            className="groobey-tab-item min-h-11 min-w-[7.25rem] gap-1.5 rounded-lg px-3 text-xs shadow-none sm:min-w-0 sm:text-sm md:min-w-0 data-[state=active]:shadow-sm"
           >
             <LayoutDashboard className="size-4 shrink-0" /> Overview
           </TabsTrigger>
           <TabsTrigger
             value="create-logins"
-            className="min-h-10 gap-1 px-2 text-xs sm:text-sm lg:flex-shrink-0 lg:gap-1.5 lg:px-3"
+            className="groobey-tab-item min-h-11 min-w-[8.5rem] gap-1.5 rounded-lg px-3 text-xs shadow-none sm:min-w-0 sm:text-sm md:min-w-0 data-[state=active]:shadow-sm"
           >
             <UsersRound className="size-4 shrink-0" /> Create Logins
           </TabsTrigger>
           <TabsTrigger
             value="shop-owners"
-            className="min-h-10 gap-1 px-2 text-xs sm:text-sm lg:flex-shrink-0 lg:gap-1.5 lg:px-3"
+            className="groobey-tab-item min-h-11 min-w-[8.25rem] gap-1.5 rounded-lg px-3 text-xs shadow-none sm:min-w-0 sm:text-sm md:min-w-0 data-[state=active]:shadow-sm"
           >
             <UsersRound className="size-4 shrink-0" /> Shop Owners
           </TabsTrigger>
           <TabsTrigger
             value="staff"
-            className="min-h-10 gap-1 px-2 text-xs sm:text-sm lg:flex-shrink-0 lg:gap-1.5 lg:px-3"
+            className="groobey-tab-item min-h-11 min-w-[6.5rem] gap-1.5 rounded-lg px-3 text-xs shadow-none sm:min-w-0 sm:text-sm md:min-w-0 data-[state=active]:shadow-sm"
           >
             <UsersRound className="size-4 shrink-0" /> Staff
           </TabsTrigger>
           <TabsTrigger
             value="orders-team"
-            className="min-h-10 gap-1 px-2 text-xs sm:text-sm lg:flex-shrink-0 lg:gap-1.5 lg:px-3"
+            className="groobey-tab-item min-h-11 min-w-[8.5rem] gap-1.5 rounded-lg px-3 text-xs shadow-none sm:min-w-0 sm:text-sm md:min-w-0 data-[state=active]:shadow-sm"
           >
             <UsersRound className="size-4 shrink-0" /> Orders Team
           </TabsTrigger>
           <TabsTrigger
             value="catalog"
-            className="min-h-10 gap-1 px-2 text-xs sm:text-sm lg:flex-shrink-0 lg:gap-1.5 lg:px-3"
+            className="groobey-tab-item min-h-11 min-w-[7rem] gap-1.5 rounded-lg px-3 text-xs shadow-none sm:min-w-0 sm:text-sm md:min-w-0 data-[state=active]:shadow-sm"
           >
             <IndianRupee className="size-4 shrink-0" /> Grocery
           </TabsTrigger>
           <TabsTrigger
             value="sales"
-            className="min-h-10 gap-1 px-2 text-xs sm:text-sm lg:flex-shrink-0 lg:gap-1.5 lg:px-3"
+            className="groobey-tab-item min-h-11 min-w-[6.5rem] gap-1.5 rounded-lg px-3 text-xs shadow-none sm:min-w-0 sm:text-sm md:min-w-0 data-[state=active]:shadow-sm"
           >
             <ReceiptText className="size-4 shrink-0" /> Sales
           </TabsTrigger>
           <TabsTrigger
             value="attendance"
-            className="min-h-10 gap-1 px-2 text-xs sm:text-sm lg:flex-shrink-0 lg:gap-1.5 lg:px-3"
+            className="groobey-tab-item min-h-11 min-w-[8.5rem] gap-1.5 rounded-lg px-3 text-xs shadow-none sm:min-w-0 sm:text-sm md:min-w-0 data-[state=active]:shadow-sm"
           >
             <ClipboardList className="size-4 shrink-0" /> Attendance
           </TabsTrigger>
@@ -1844,7 +2127,7 @@ export function OwnerDashboard() {
               </p>
               <p className="mt-1 text-3xl font-black tabular-nums text-primary">{globalTradeMargin}%</p>
               <p className="mt-1 text-xs font-semibold text-muted-foreground">
-                Set on Sales tab · off retail on trade / settlement bills
+                Set on Sales tab Â· off retail on trade / settlement bills
               </p>
             </div>
           </div>
@@ -1854,7 +2137,7 @@ export function OwnerDashboard() {
                 title="Pending attendance"
                 records={pendingAttendance.map((a) => ({
                   id: a.id,
-                  label: `${a.work_date} · ${a.status} · ${formatPersonWithGroobeyId({
+                  label: `${a.work_date} Â· ${a.status} Â· ${formatPersonWithGroobeyId({
                     userId: a.worker_id,
                     displayName: staffNameByUserId.get(a.worker_id),
                     groobeyByUserId,
@@ -1896,202 +2179,52 @@ export function OwnerDashboard() {
           </div>
         </TabsContent>
 
-        <TabsContent value="shop-owners" className="space-y-6">
-          <InlineFeedback {...alertsFor("shop-owners")} />
-          <Panel title="Shop Owners Directory" icon={UsersRound}>
-            {renderStaffTable(merchantStaffRows, "No shop owner logins yet.", true)}
-          </Panel>
-          {editingStaff?.role === "merchant" ? (
-            <Panel
-              title="Edit Shop Owner login"
-              icon={Pencil}
-              action={
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="min-h-10 rounded-xl text-sm"
-                  onClick={() => setEditingStaff(null)}
-                >
-                  Cancel
-                </Button>
-              }
-            >
-              <form
-                className="grid gap-3 md:max-w-xl"
-                onSubmit={handleUpdateStaff}
-                key={editingStaff.userId}
-              >
-                <Field
-                  name="displayName"
-                  label="Shop Owner name"
-                  required
-                  defaultValue={editingStaff.displayName}
-                />
-                <Field name="email" label="Login email" defaultValue={editingStaff.email ?? ""} />
-                <Field
-                  name="phone"
-                  label="Login mobile number"
-                  defaultValue={editingStaff.phone ?? ""}
-                />
-                <Field
-                  name="shopName"
-                  label="Shop name"
-                  required
-                  defaultValue={shopByOwnerId.get(editingStaff.userId)?.name ?? ""}
-                />
-                <Field
-                  name="shopAddress"
-                  label="Location"
-                  required
-                  defaultValue={shopByOwnerId.get(editingStaff.userId)?.address ?? ""}
-                />
-                <Field
-                  name="tradeMarginPercent"
-                  label="Groobey margin % (whole shop bill)"
-                  type="number"
-                  required
-                  defaultValue={String(
-                    shopByOwnerId.get(editingStaff.userId)?.trade_margin_percent ?? 0,
-                  )}
-                />
-                <Button type="submit" variant="groobey" className="min-h-11 w-fit rounded-xl">
-                  Save Shop Owner changes
-                </Button>
-              </form>
-            </Panel>
-          ) : null}
-          {!staffLoading && merchantStaffRows.length === 0 ? (
-            <EmptyState
-              icon={UsersRound}
-              title="No shop owners yet"
-              text="Use Create Logins tab to add shop owner logins."
-            />
-          ) : null}
-        </TabsContent>
-
-        <TabsContent value="staff" className="space-y-6">
-          <InlineFeedback {...alertsFor("staff")} />
-          <Panel title="Staff Directory" icon={UsersRound}>
-            {renderStaffTable(deliveryStaffRows, "No delivery boy logins yet.")}
-          </Panel>
-          {editingStaff?.role === "employee" ? (
-            <Panel
-              title="Edit Delivery boy login"
-              icon={Pencil}
-              action={
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="min-h-10 rounded-xl text-sm"
-                  onClick={() => setEditingStaff(null)}
-                >
-                  Cancel
-                </Button>
-              }
-            >
-              <form
-                className="grid gap-3 md:max-w-xl"
-                onSubmit={handleUpdateStaff}
-                key={editingStaff.userId}
-              >
-                <Field
-                  name="displayName"
-                  label="Delivery boy name"
-                  required
-                  defaultValue={editingStaff.displayName}
-                />
-                <Field name="email" label="Login email" defaultValue={editingStaff.email ?? ""} />
-                <Field
-                  name="phone"
-                  label="Login mobile number"
-                  defaultValue={editingStaff.phone ?? ""}
-                />
-                <Button type="submit" variant="groobey" className="min-h-11 w-fit rounded-xl">
-                  Save Delivery boy changes
-                </Button>
-              </form>
-            </Panel>
-          ) : null}
-          {!staffLoading && deliveryStaffRows.length === 0 ? (
-            <EmptyState
-              icon={UsersRound}
-              title="No delivery boys yet"
-              text="Use Create Logins tab to add users."
-            />
-          ) : null}
-        </TabsContent>
-
-        <TabsContent value="orders-team" className="space-y-6">
-          <InlineFeedback {...alertsFor("orders-team")} />
-          <Panel title="Order Taker Directory" icon={UsersRound}>
-            {renderStaffTable(orderTakerRows, "No order taker logins yet.")}
-          </Panel>
-          {editingStaff?.role === "order_taker" ? (
-            <Panel
-              title="Edit Order Taker login"
-              icon={Pencil}
-              action={
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="min-h-10 rounded-xl text-sm"
-                  onClick={() => setEditingStaff(null)}
-                >
-                  Cancel
-                </Button>
-              }
-            >
-              <form
-                className="grid gap-3 md:max-w-xl"
-                onSubmit={handleUpdateStaff}
-                key={editingStaff.userId}
-              >
-                <Field
-                  name="displayName"
-                  label="Order taker name"
-                  required
-                  defaultValue={editingStaff.displayName}
-                />
-                <Field name="email" label="Login email" defaultValue={editingStaff.email ?? ""} />
-                <Field
-                  name="phone"
-                  label="Login mobile number"
-                  defaultValue={editingStaff.phone ?? ""}
-                />
-                <label className="grid gap-1.5 text-sm font-semibold text-foreground">
-                  Groobey margin % (whole order bill)
-                  <input
-                    name="tradeMarginPercent"
-                    type="number"
-                    min={0}
-                    max={100}
-                    step="0.01"
-                    required
-                    value={editingOrderTakerMargin}
-                    onChange={(e) => setEditingOrderTakerMargin(e.target.value)}
-                    className="h-11 max-w-[10rem] rounded-xl border border-input bg-card px-3 text-sm font-semibold outline-none ring-ring focus:ring-2"
-                  />
-                </label>
-                <Button type="submit" variant="groobey" className="min-h-11 w-fit rounded-xl">
-                  Save Order Taker changes
-                </Button>
-              </form>
-            </Panel>
-          ) : null}
-          {!staffLoading && orderTakerRows.length === 0 ? (
-            <EmptyState
-              icon={UsersRound}
-              title="No order takers yet"
-              text="Use Create Logins tab to add order taker users."
-            />
-          ) : null}
-        </TabsContent>
-
         <TabsContent value="create-logins" className="space-y-6">
           <InlineFeedback {...alertsFor("create-logins")} />
           <Panel title="Create shop owner, staff, or order taker login" icon={UsersRound}>
             <AccountForm onCreate={handleCreateStaff} resetNonce={staffFormResetNonce} />
           </Panel>
+        </TabsContent>
+
+        <TabsContent value="shop-owners" className="space-y-6">
+          <InlineFeedback {...alertsFor("shop-owners")} />
+          <div className={directoryShellClass(true)}>
+            <Panel title="Shop Owners Directory" icon={UsersRound}>
+              {renderStaffTable(merchantStaffRows, "No shop owner logins yet.", true)}
+            </Panel>
+            {!staffLoading && merchantStaffRows.length === 0 ? (
+              <EmptyState icon={UsersRound} title="No shop owners yet" text="Use Create Logins tab to add shop owner logins." />
+            ) : null}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="staff" className="space-y-6">
+          <InlineFeedback {...alertsFor("staff")} />
+          <div className={directoryShellClass()}>
+            <Panel title="Delivery Staff Directory" icon={UsersRound}>
+              {renderStaffTable(deliveryStaffRows, "No delivery boy logins yet.")}
+            </Panel>
+            {!staffLoading && deliveryStaffRows.length === 0 ? (
+              <EmptyState icon={UsersRound} title="No delivery boys yet" text="Use Create Logins tab to add users." />
+            ) : null}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="orders-team" className="space-y-6">
+          <InlineFeedback {...alertsFor("orders-team")} />
+          <div className={directoryShellClass()}>
+            <Panel title="Order Taker Directory" icon={UsersRound}>
+              {renderStaffTable(orderTakerRows, "No order taker logins yet.")}
+            </Panel>
+            {!staffLoading && orderTakerRows.length === 0 ? (
+              <EmptyState icon={UsersRound} title="No order takers yet" text="Use Create Logins tab to add order taker users." />
+            ) : null}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="attendance" className="space-y-4">
+          <InlineFeedback {...alertsFor("attendance")} />
+          {renderAttendancePanel()}
         </TabsContent>
 
         <TabsContent value="catalog" className="space-y-6">
@@ -2313,7 +2446,7 @@ export function OwnerDashboard() {
           <InlineFeedback {...alertsFor("sales")} />
           <TradeMarginPanel
             title="Groobey margin (all active shops)"
-            description="One margin for every shop. New sales: trade = retail minus this % (e.g. 8% → ₹100 retail → ₹92 trade). Settlement bills use this %."
+            description="One margin for every shop. New sales: trade = retail minus this % (e.g. 8% â†’ â‚¹100 retail â†’ â‚¹92 trade). Settlement bills use this %."
             marginPercent={globalTradeMargin}
             saving={savingGlobalMargin}
             onSave={saveGlobalTradeMargin}
@@ -2321,8 +2454,9 @@ export function OwnerDashboard() {
           <Panel title="Order taker bills" icon={ClipboardList}>
             <p className="mb-3 text-xs font-semibold text-muted-foreground">
               Bills created from the Orders dashboard sync here automatically ({monthOrderTakerOrders.length}{" "}
-              this month, {pendingOrderTakerOrders.length} pending). Same Bill ID for customer and
-              settlement copies.
+              this month, {pendingOrderTakerOrders.length} pending). Assign a delivery boy before
+              handoff â€” they only see orders assigned to them. Same Bill ID for customer and settlement
+              copies.
             </p>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -2330,6 +2464,7 @@ export function OwnerDashboard() {
                   <tr className="border-b border-border text-muted-foreground">
                     <th className="py-2 text-left">Customer</th>
                     <th className="py-2 text-left">Order taker</th>
+                    <th className="py-2 text-left">Delivery boy</th>
                     <th className="py-2 text-left">Shop</th>
                     <th className="py-2 text-left">Status</th>
                     <th className="py-2 text-left">Created</th>
@@ -2341,6 +2476,7 @@ export function OwnerDashboard() {
                 <tbody>
                   {customerOrders.map((order) => {
                     const retail = Math.round(Number(order.total_amount || 0));
+                    const deliveryCharge = Math.round(Number(order.delivery_charge ?? 0));
                     const trade = Math.round(Number(order.merchant_settlement_amount ?? retail));
                     const margin = retail - trade;
                     const shop = order.shop_id ? shops.find((s) => s.id === order.shop_id) : undefined;
@@ -2349,22 +2485,53 @@ export function OwnerDashboard() {
                       staffNameByUserId.get(order.created_by) ||
                       takerRow?.displayName?.trim() ||
                       "Order taker";
+                    const assignedBoy = deliveryStaffRows.find(
+                      (r) => r.userId === order.assigned_delivery_user_id,
+                    );
                     return (
                       <tr key={order.id} className="border-b border-border/60">
                         <td className="py-2 text-xs font-semibold">{order.customer_name}</td>
                         <td className="py-2 text-xs">{takerName}</td>
-                        <td className="py-2 text-xs">{shop?.name ?? "—"}</td>
+                        <td className="min-w-[10rem] py-2 text-xs">
+                          <select
+                            className="groobey-select h-9 w-full max-w-[12rem] text-xs"
+                            value={order.assigned_delivery_user_id ?? ""}
+                            disabled={
+                              assigningDeliveryOrderId === order.id ||
+                              !customerOrderDeliveryFieldsReady.current
+                            }
+                            onChange={(e) =>
+                              void assignOrderDeliveryBoy(order.id, e.target.value)
+                            }
+                          >
+                            <option value="">Unassigned</option>
+                            {deliveryStaffRows
+                              .filter((r) => r.isActive)
+                              .map((boy) => (
+                                <option key={boy.userId} value={boy.userId}>
+                                  {boy.displayName}
+                                  {boy.groobeyId ? ` (${boy.groobeyId})` : ""}
+                                </option>
+                              ))}
+                          </select>
+                          {assignedBoy ?
+                            <p className="mt-1 text-[10px] font-semibold text-muted-foreground">
+                              {assignedBoy.email ?? "â€”"}
+                            </p>
+                          : null}
+                        </td>
+                        <td className="py-2 text-xs">{shop?.name ?? "â€”"}</td>
                         <td className="py-2 text-xs">
                           {orderStatusLabel[order.status] ?? order.status}
                         </td>
                         <td className="py-2 text-xs">{order.created_at?.slice(0, 16)}</td>
                         <td className="py-2 text-xs font-semibold">
-                          <div>₹{retail} retail</div>
+                          <div>â‚¹{retail} retail</div>
                           <div className="text-[11px] font-semibold text-muted-foreground">
-                            ₹{trade} trade · ₹{margin} margin
+                            â‚¹{trade} trade Â· â‚¹{margin} margin
                           </div>
                         </td>
-                        <td className="py-2 font-mono text-xs">{order.bill_number || "—"}</td>
+                        <td className="py-2 font-mono text-xs">{order.bill_number || "â€”"}</td>
                         <td className="py-2">
                           <BillKindButtons
                             compact
@@ -2387,7 +2554,7 @@ export function OwnerDashboard() {
           </Panel>
           <Panel title="Monthly settlement export" icon={Download}>
             <p className="text-sm font-semibold text-muted-foreground">
-              Verified merchant sales plus order-taker bills for {month} — for monthly Groobey settlement.
+              Verified merchant sales plus order-taker bills for {month} â€” for monthly Groobey settlement.
             </p>
             <Button
               type="button"
@@ -2441,12 +2608,12 @@ export function OwnerDashboard() {
                       <td className="py-2">{sale.status}</td>
                       <td className="py-2 text-xs">{sale.created_at?.slice(0, 16)}</td>
                       <td className="py-2 text-xs font-semibold">
-                        <div>₹{Math.round(retailT)} retail</div>
+                        <div>â‚¹{Math.round(retailT)} retail</div>
                         <div className="text-[11px] font-semibold text-muted-foreground">
-                          ₹{Math.round(merchantT)} trade · ₹{margin} margin
+                          â‚¹{Math.round(merchantT)} trade Â· â‚¹{margin} margin
                         </div>
                       </td>
-                      <td className="py-2 font-mono text-xs">{sale.bill_number || "—"}</td>
+                      <td className="py-2 font-mono text-xs">{sale.bill_number || "â€”"}</td>
                       <td className="py-2">
                         <BillKindButtons
                           compact
@@ -2464,7 +2631,7 @@ export function OwnerDashboard() {
                             <Trash2 className="size-3.5" />
                             Remove
                           </Button>
-                        : <span className="text-xs text-muted-foreground">—</span>}
+                        : <span className="text-xs text-muted-foreground">â€”</span>}
                       </td>
                     </tr>
                     );
@@ -2482,237 +2649,60 @@ export function OwnerDashboard() {
           </Panel>
         </TabsContent>
 
-        <TabsContent value="attendance" className="space-y-4">
-          <InlineFeedback {...alertsFor("attendance")} />
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" className="rounded-xl" onClick={exportCsv}>
-              <Download className="size-4" /> Export CSV
-            </Button>
-            <div
-              className="inline-flex overflow-hidden rounded-xl border border-border bg-card/70 p-1"
-              role="tablist"
-              aria-label="Attendance verification filter"
-            >
-              {(
-                [
-                  ["all", `All (${attendance.length})`],
-                  [
-                    "pending",
-                    `Pending (${attendance.filter((r) => r.verification_status === "pending").length})`,
-                  ],
-                  [
-                    "verified",
-                    `Verified (${attendance.filter((r) => r.verification_status === "verified").length})`,
-                  ],
-                  [
-                    "rejected",
-                    `Rejected (${attendance.filter((r) => r.verification_status === "rejected").length})`,
-                  ],
-                ] as const
-              ).map(([value, label]) => {
-                const active = attendanceFilter === value;
-                return (
-                  <button
-                    key={value}
-                    type="button"
-                    className={`h-9 rounded-lg px-3 text-xs font-semibold transition sm:text-sm ${
-                      active
-                        ? "bg-primary text-primary-foreground shadow-sm"
-                        : "text-muted-foreground hover:bg-muted"
-                    }`}
-                    onClick={() => setAttendanceFilter(value)}
-                  >
-                    {label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          <Panel title="Attendance records" icon={ClipboardList}>
-            <div className="grid gap-3 md:hidden">
-              {filteredAttendance.map((row) => (
-                <div key={row.id} className="rounded-2xl border border-border bg-card/70 p-3 shadow-soft">
-                  {(() => {
-                    const details = parseAttendanceNotes(row.notes);
-                    return (
-                      <>
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="font-black leading-tight">
-                            {staffNameByUserId.get(row.worker_id) ?? "Staff"}
-                          </p>
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-xs font-semibold ${verificationBadgeClass(
-                              row.verification_status,
-                            )}`}
-                          >
-                            {verificationLabel(row.verification_status)}
-                          </span>
-                        </div>
-                        <p className="mt-1 text-xs font-mono text-muted-foreground">
-                          {row.work_date} · {groobeyIdForUser(row.worker_id, groobeyByUserId)}
-                        </p>
-                        <div className="mt-2 grid gap-1 text-xs text-muted-foreground">
-                          <p>
-                            <span className="font-semibold text-foreground">Destination:</span>{" "}
-                            {details.destination}
-                          </p>
-                          <p className="break-words">
-                            <span className="font-semibold text-foreground">Items:</span>{" "}
-                            {details.items}
-                          </p>
-                          <p>
-                            <span className="font-semibold text-foreground">Time:</span>{" "}
-                            {details.time}
-                          </p>
-                        </div>
-                        <div className="mt-2 flex flex-wrap items-center gap-2">
-                          <select
-                            className="groobey-select groobey-select--sm w-auto min-w-[7.5rem]"
-                            value={row.status}
-                            onChange={(e) =>
-                              void updateAttendanceStatus(
-                                row.id,
-                                e.target.value as Database["public"]["Enums"]["attendance_status"],
-                              )
-                            }
-                          >
-                            <option value="present">Present</option>
-                            <option value="absent">Absent</option>
-                            <option value="half_day">Half day</option>
-                          </select>
-                          {row.verification_status === "pending" ? (
-                            <>
-                              <Button
-                                size="sm"
-                                variant="calm"
-                                className="h-8 rounded-lg text-xs"
-                                onClick={() =>
-                                  void updateAttendanceVerification(row.id, "verified")
-                                }
-                              >
-                                Approve
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-8 rounded-lg text-xs"
-                                onClick={() =>
-                                  void updateAttendanceVerification(row.id, "rejected")
-                                }
-                              >
-                                Reject
-                              </Button>
-                            </>
-                          ) : null}
-                        </div>
-                      </>
-                    );
-                  })()}
+        <Dialog open={selectedStaff != null} onOpenChange={(open) => !open && closeStaffDetail()}>
+          <DialogContent
+            className={cn(
+              "flex max-h-[min(92vh,880px)] w-[min(calc(100vw-1rem),32rem)] max-w-none flex-col gap-0 overflow-hidden border-border p-0 sm:rounded-2xl",
+            )}
+            onOpenAutoFocus={(e) => e.preventDefault()}
+          >
+            {selectedStaff ? (
+              <>
+                <DialogHeader className="shrink-0 space-y-1 border-b border-border bg-card px-4 py-4 pr-12 text-left sm:px-6">
+                  <DialogTitle className="text-lg font-black tracking-tight">
+                    {selectedStaff.displayName || "Staff login"}
+                  </DialogTitle>
+                  <DialogDescription className="text-sm font-semibold">
+                    {roleLabel(selectedStaff.role)}
+                    {selectedStaff.groobeyId ? ` · ${selectedStaff.groobeyId}` : ""}
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="min-h-0 flex-1 overflow-y-auto groobey-scrollbar px-4 py-4 sm:px-6 sm:py-5">
+                  {renderStaffDetailDialogContent()}
                 </div>
-              ))}
-            </div>
-            <div className="hidden overflow-x-auto md:block">
-              <table className="w-full min-w-[920px] text-sm">
-                <thead>
-                  <tr className="border-b border-border text-muted-foreground">
-                    <th className="py-2 text-left">Date</th>
-                    <th className="py-2 text-left">Worker</th>
-                    <th className="py-2 text-left">Destination</th>
-                    <th className="py-2 text-left">Items</th>
-                    <th className="py-2 text-left">Time</th>
-                    <th className="py-2 text-left">Day status</th>
-                    <th className="py-2 text-left">Verification</th>
-                    <th className="py-2 text-left">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredAttendance.map((row) => {
-                    const details = parseAttendanceNotes(row.notes);
-                    return (
-                      <tr key={row.id} className="border-b border-border/60 align-middle">
-                        <td className="py-2 font-semibold">{row.work_date}</td>
-                        <td className="py-2 text-xs">
-                          <span className="font-semibold">
-                            {formatPersonWithGroobeyId({
-                              userId: row.worker_id,
-                              displayName: staffNameByUserId.get(row.worker_id),
-                              groobeyByUserId,
-                            })}
-                          </span>
-                        </td>
-                        <td className="max-w-[170px] truncate py-2 text-xs" title={details.destination}>
-                          {details.destination}
-                        </td>
-                        <td className="max-w-[260px] truncate py-2 text-xs" title={details.items}>
-                          {details.items}
-                        </td>
-                        <td className="py-2 text-xs">{details.time}</td>
-                        <td className="py-2">
-                          <select
-                            className="groobey-select groobey-select--sm w-full min-w-[7.5rem] max-w-[11rem]"
-                            value={row.status}
-                            onChange={(e) =>
-                              void updateAttendanceStatus(
-                                row.id,
-                                e.target.value as Database["public"]["Enums"]["attendance_status"],
-                              )
-                            }
-                          >
-                            <option value="present">Present</option>
-                            <option value="absent">Absent</option>
-                            <option value="half_day">Half day</option>
-                          </select>
-                        </td>
-                        <td className="py-2">
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-xs font-semibold ${verificationBadgeClass(
-                              row.verification_status,
-                            )}`}
-                          >
-                            {verificationLabel(row.verification_status)}
-                          </span>
-                        </td>
-                        <td className="py-2">
-                          {row.verification_status === "pending" ? (
-                            <div className="flex gap-1.5">
-                              <Button
-                                size="sm"
-                                variant="calm"
-                                className="h-8 rounded-lg text-xs"
-                                onClick={() => void updateAttendanceVerification(row.id, "verified")}
-                              >
-                                Approve
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-8 rounded-lg text-xs"
-                                onClick={() => void updateAttendanceVerification(row.id, "rejected")}
-                              >
-                                Reject
-                              </Button>
-                            </div>
-                          ) : (
-                            <span className="text-xs font-semibold text-muted-foreground">
-                              {attendanceStatusLabel(row.status)}
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              {filteredAttendance.length === 0 && (
-                <EmptyState
-                  icon={ClipboardList}
-                  title="No attendance"
-                  text="Delivery staff submit attendance from their portal."
-                />
-              )}
-            </div>
-          </Panel>
-        </TabsContent>
+              </>
+            ) : null}
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={selectedAttendance != null}
+          onOpenChange={(open) => !open && closeAttendanceDetail()}
+        >
+          <DialogContent
+            className={cn(
+              "flex max-h-[min(92vh,880px)] w-[min(calc(100vw-1rem),32rem)] max-w-none flex-col gap-0 overflow-hidden border-border p-0 sm:rounded-2xl",
+            )}
+            onOpenAutoFocus={(e) => e.preventDefault()}
+          >
+            {selectedAttendance ? (
+              <>
+                <DialogHeader className="shrink-0 space-y-1 border-b border-border bg-card px-4 py-4 pr-12 text-left sm:px-6">
+                  <DialogTitle className="text-lg font-black tracking-tight">
+                    Attendance · {selectedAttendance.work_date}
+                  </DialogTitle>
+                  <DialogDescription className="text-sm font-semibold">
+                    {staffNameByUserId.get(selectedAttendance.worker_id) ?? "Delivery staff"}
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="min-h-0 flex-1 overflow-y-auto groobey-scrollbar px-4 py-4 sm:px-6 sm:py-5">
+                  {renderAttendanceDetailDialogContent()}
+                </div>
+              </>
+            ) : null}
+          </DialogContent>
+        </Dialog>
+
       </Tabs>
     </div>
     </>

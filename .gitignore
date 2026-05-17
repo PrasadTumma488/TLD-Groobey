@@ -35,3 +35,4 @@ dev-dist
 # Vercel CLI link output (optional; do not commit project/org metadata)
 .vercel
 ".env" 
+.env*.local

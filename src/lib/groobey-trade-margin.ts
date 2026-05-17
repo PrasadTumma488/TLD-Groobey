@@ -41,7 +41,10 @@ export function schemaSetupHint(errorMessage: string): string | null {
     errorMessage.includes("trade_margin_percent_applied") ||
     errorMessage.includes("merchant_settlement_amount") ||
     errorMessage.includes("bill_number") ||
-    errorMessage.includes("product_unit")
+    errorMessage.includes("product_unit") ||
+    errorMessage.includes("grocery_subtotal") ||
+    errorMessage.includes("delivery_charge") ||
+    errorMessage.includes("assigned_delivery_user_id")
   ) {
     return `${errorMessage} — Apply database updates: open Supabase → SQL Editor → run the file supabase/scripts/apply_pending_schema.sql (or run supabase db push).`;
   }

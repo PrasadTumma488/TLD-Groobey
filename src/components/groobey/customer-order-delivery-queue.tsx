@@ -3,7 +3,11 @@ import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import type { Database } from "@/integrations/supabase/types";
-import { buildCustomerOrderBillHtml, openBillPrintGuarded } from "@/lib/groobey-dual-bill";
+import {
+  buildCustomerOrderBillHtml,
+  customerOrderBillTotals,
+  openBillPrintGuarded,
+} from "@/lib/groobey-dual-bill";
 import type { BillPreviewShowOptions } from "@/lib/groobey-bill-preview-bridge";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -76,7 +80,7 @@ export function CustomerOrderDeliveryQueue({
   }
 
   function printHandoff(order: CustomerOrder) {
-    const retail = Number(order.total_amount || 0);
+    const totals = customerOrderBillTotals(order);
     const html = buildCustomerOrderBillHtml({
       kind: "customer",
       billNumber: order.bill_number,
@@ -86,9 +90,12 @@ export function CustomerOrderDeliveryQueue({
       customerName: order.customer_name,
       customerPhone: order.customer_phone,
       deliveryAddress: order.delivery_address,
+      deliveryTimeSlot: order.delivery_time_slot,
       orderItemsText: order.order_items,
-      totalRetail: retail,
-      totalMerchant: retail,
+      grocerySubtotal: totals.grocerySubtotal,
+      deliveryCharge: totals.deliveryCharge,
+      totalRetail: totals.grandRetail,
+      totalMerchant: totals.grandTrade,
       notes: order.notes,
     });
     openBillPrintGuarded(html, "customer", billPreviewOptions?.(order));

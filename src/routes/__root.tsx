@@ -4,6 +4,10 @@ import { GroobeyBillPreviewModal } from "@/components/groobey/groobey-bill-previ
 import { GroobeyBrandLogo } from "@/components/groobey/groobey-brand-logo";
 import { PwaRegister } from "@/components/groobey/pwa-register";
 import { GROOBEY_FAVICON_VERSION } from "@/lib/groobey-favicon-version";
+import {
+  buildPublicEnvInlineScript,
+  publicSupabaseMetaTags,
+} from "@/lib/groobey-public-env";
 import appCss from "../styles.css?url";
 
 const favicon = (file: string) => `${file}?v=${GROOBEY_FAVICON_VERSION}`;
@@ -73,14 +77,29 @@ export const Route = createRootRoute({
 });
 
 function RootShell({ children }: { children: React.ReactNode }) {
+  const supabaseMeta = publicSupabaseMetaTags();
   return (
     <html lang="en">
       <head>
+        {supabaseMeta.url ?
+          <meta name="groobey-supabase-url" content={supabaseMeta.url} />
+        : null}
+        {supabaseMeta.publishableKey ?
+          <meta
+            name="groobey-supabase-publishable-key"
+            content={supabaseMeta.publishableKey}
+          />
+        : null}
         <link rel="icon" href={favicon("/favicon.ico")} sizes="any" />
         <link rel="icon" type="image/png" sizes="32x32" href={favicon("/favicon-32x32.png")} />
         <HeadContent />
       </head>
       <body>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: buildPublicEnvInlineScript(),
+          }}
+        />
         {children}
         <PwaRegister />
         <Scripts />

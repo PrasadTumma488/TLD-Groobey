@@ -55,13 +55,19 @@ export type Database = {
       };
       customer_orders: {
         Row: {
+          assigned_delivery_user_id: string | null;
           bill_number: string | null;
           created_at: string;
           created_by: string;
           customer_name: string;
           customer_phone: string | null;
           delivery_address: string | null;
+          delivery_charge: number;
+          delivery_destination: string | null;
+          delivery_time_slot: string | null;
+          grocery_subtotal: number;
           id: string;
+          items_delivered_text: string | null;
           merchant_settlement_amount: number;
           notes: string | null;
           order_items: string;
@@ -71,15 +77,22 @@ export type Database = {
           total_amount: number;
           trade_margin_percent_applied: number;
           updated_at: string;
+          work_from_shop_id: string | null;
         };
         Insert: {
+          assigned_delivery_user_id?: string | null;
           bill_number?: string | null;
           created_at?: string;
           created_by: string;
           customer_name: string;
           customer_phone?: string | null;
           delivery_address?: string | null;
+          delivery_charge?: number;
+          delivery_destination?: string | null;
+          delivery_time_slot?: string | null;
+          grocery_subtotal?: number;
           id?: string;
+          items_delivered_text?: string | null;
           merchant_settlement_amount?: number;
           notes?: string | null;
           order_items: string;
@@ -89,15 +102,22 @@ export type Database = {
           total_amount?: number;
           trade_margin_percent_applied?: number;
           updated_at?: string;
+          work_from_shop_id?: string | null;
         };
         Update: {
+          assigned_delivery_user_id?: string | null;
           bill_number?: string | null;
           created_at?: string;
           created_by?: string;
           customer_name?: string;
           customer_phone?: string | null;
           delivery_address?: string | null;
+          delivery_charge?: number;
+          delivery_destination?: string | null;
+          delivery_time_slot?: string | null;
+          grocery_subtotal?: number;
           id?: string;
+          items_delivered_text?: string | null;
           merchant_settlement_amount?: number;
           notes?: string | null;
           order_items?: string;
@@ -107,6 +127,7 @@ export type Database = {
           total_amount?: number;
           trade_margin_percent_applied?: number;
           updated_at?: string;
+          work_from_shop_id?: string | null;
         };
         Relationships: [
           {

@@ -36,7 +36,7 @@
       ]
     },
     {
-      "source": "/groobey-logo.png",
+      "source": "/tld-groobey-web-logo.png",
       "headers": [
         {
           "key": "Cache-Control",

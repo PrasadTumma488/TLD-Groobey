@@ -10,6 +10,7 @@ import type { Plugin } from "vite";
 import { loadEnv, mergeConfig } from "vite";
 import { nitro } from "nitro/vite";
 import { VitePWA } from "vite-plugin-pwa";
+import { resolvePublicSupabaseEnv } from "./src/lib/groobey-public-env";
 
 /** Directory containing vite.config.ts (stable even if `process.cwd()` is not the repo root). */
 const projectRoot = path.dirname(fileURLToPath(import.meta.url));
@@ -40,6 +41,28 @@ function groobeyDotenvIntoProcessEnvPlugin(): Plugin {
           process.env[k] = val;
         }
       }
+    },
+  };
+}
+
+/** Bake public Supabase config into the client bundle when Vercel/.env provides it at build time. */
+function groobeyInjectPublicSupabaseEnvPlugin(): Plugin {
+  return {
+    name: "groobey-inject-public-supabase-env",
+    config(_config, { mode }) {
+      const loaded = loadEnv(mode, projectRoot, "");
+      const record: Record<string, string | undefined> = { ...process.env, ...loaded };
+      const { url, publishableKey } = resolvePublicSupabaseEnv(record);
+      const projectId =
+        record.VITE_SUPABASE_PROJECT_ID?.trim() || record.SUPABASE_PROJECT_ID?.trim();
+      if (!url && !publishableKey && !projectId) return {};
+      const define: Record<string, string> = {};
+      if (url) define["import.meta.env.VITE_SUPABASE_URL"] = JSON.stringify(url);
+      if (publishableKey) {
+        define["import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY"] = JSON.stringify(publishableKey);
+      }
+      if (projectId) define["import.meta.env.VITE_SUPABASE_PROJECT_ID"] = JSON.stringify(projectId);
+      return { define };
     },
   };
 }
@@ -80,6 +103,7 @@ export default defineConfig({
       plugins: [
         nitro({ preset: "vercel" }),
         groobeyDotenvIntoProcessEnvPlugin(),
+        groobeyInjectPublicSupabaseEnvPlugin(),
         supabaseEnvPresencePlugin(),
         VitePWA({
           registerType: "autoUpdate",
@@ -90,7 +114,7 @@ export default defineConfig({
             "favicon-32x32.png",
             "favicon-48x48.png",
             "apple-touch-icon.png",
-            "groobey-logo.png",
+            "tld-groobey-web-logo.png",
             "groobey-logo-bill.png",
           ],
           manifest: {

@@ -37,9 +37,15 @@ import { runCustomerOrderBillBackfill, ordersMissingBillId } from "@/lib/groobey
 import {
   CUSTOMER_ORDER_SELECT,
   CUSTOMER_ORDER_SELECT_LEGACY,
+  CUSTOMER_ORDER_SELECT_WITHOUT_DELIVERY_EXTRA,
   isMissingCustomerOrderShopIdError,
   notesWithShopFallback,
 } from "@/lib/groobey-customer-order-columns";
+import {
+  buildOrderDeliveryAddress,
+  isMissingCustomerOrderDeliveryFieldsError,
+  parseCustomerOrderDeliveryFromForm,
+} from "@/lib/groobey-delivery-order-fields";
 import type {
   BillPreviewEmailResult,
   BillPreviewShowOptions,
@@ -101,6 +107,7 @@ export function OrdersDashboard() {
   const [formResetNonce, setFormResetNonce] = useState(0);
   const [shopIdColumnReady, setShopIdColumnReady] = useState(true);
   const shopIdColumnReadyRef = useRef(true);
+  const deliveryFieldsReadyRef = useRef(true);
   const [saving, setSaving] = useState(false);
   const [emailingOrderId, setEmailingOrderId] = useState<string | null>(null);
   const [pageAlert, setPageAlert] = useState<{ error?: string; notice?: string }>({});
@@ -155,6 +162,22 @@ export function OrdersDashboard() {
           r = await supabase
             .from("customer_orders")
             .select(CUSTOMER_ORDER_SELECT_LEGACY)
+            .eq("created_by", session.user.id)
+            .order("created_at", { ascending: false })
+            .limit(200);
+        }
+        if (
+          r.error &&
+          deliveryFieldsReadyRef.current &&
+          isMissingCustomerOrderDeliveryFieldsError(r.error.message)
+        ) {
+          deliveryFieldsReadyRef.current = false;
+          const fallbackSelect = shopIdColumnReadyRef.current
+            ? CUSTOMER_ORDER_SELECT_WITHOUT_DELIVERY_EXTRA
+            : CUSTOMER_ORDER_SELECT_LEGACY;
+          r = await supabase
+            .from("customer_orders")
+            .select(fallbackSelect)
             .eq("created_by", session.user.id)
             .order("created_at", { ascending: false })
             .limit(200);
@@ -470,28 +493,53 @@ export function OrdersDashboard() {
     const form = new FormData(formElement);
     const customerName = String(form.get("customerName") || "").trim();
     const customerPhone = String(form.get("customerPhone") || "").trim();
-    const deliveryAddress = String(form.get("deliveryAddress") || "").trim();
     const shopId = String(form.get("shopId") || "").trim();
     const orderItems = String(form.get("orderItems") || "").trim();
-    const totalAmount = Number(form.get("totalAmount") || 0);
+    const grocerySubtotal = Number(form.get("totalAmount") || 0);
     const requiredDate = String(form.get("requiredDate") || "").trim();
     const notes = String(form.get("notes") || "").trim();
+    const delivery = parseCustomerOrderDeliveryFromForm(form);
 
     if (!customerName) {
       setSaving(false);
       setOrderFormAlert({ error: "Customer name is required." });
       return;
     }
+    if (!delivery.deliveryTimeSlot) {
+      setSaving(false);
+      setOrderFormAlert({ error: "Choose delivery time (hour and 10-minute slot)." });
+      return;
+    }
+    if (delivery.destination === "shop" && !delivery.workFromShopId) {
+      setSaving(false);
+      setOrderFormAlert({ error: "Choose work from shop for this delivery." });
+      return;
+    }
+    if (delivery.destination === "other" && !delivery.otherDestination) {
+      setSaving(false);
+      setOrderFormAlert({ error: "Enter the other delivery destination." });
+      return;
+    }
     const resolvedShopId =
-      shopId || (shopIdColumnReady && shops.length === 1 ? shops[0]?.id : "") || "";
+      delivery.workFromShopId ||
+      shopId ||
+      (shopIdColumnReady && shops.length === 1 ? shops[0]?.id : "") ||
+      "";
+    const shopName = resolvedShopId ? shops.find((s) => s.id === resolvedShopId)?.name : undefined;
+    const deliveryAddress = buildOrderDeliveryAddress({
+      destination: delivery.destination,
+      shopName,
+      otherDestination: delivery.otherDestination,
+      customerAddress: delivery.customerAddress,
+    });
     if (shopIdColumnReady && shops.length > 1 && !resolvedShopId) {
       setSaving(false);
       setOrderFormAlert({ error: "No shop configured — ask Platform Admin." });
       return;
     }
-    if (!orderItems) {
+    if (!orderItems && !delivery.itemsDelivered) {
       setSaving(false);
-      setOrderFormAlert({ error: "Add at least one grocery item from the catalog." });
+      setOrderFormAlert({ error: "Add grocery items or items delivered." });
       return;
     }
 
@@ -508,20 +556,22 @@ export function OrdersDashboard() {
       return;
     }
 
-    const retail = Number.isFinite(totalAmount) ? Math.max(0, totalAmount) : 0;
+    const grocery = Number.isFinite(grocerySubtotal) ? Math.max(0, grocerySubtotal) : 0;
+    const deliveryCharge = delivery.deliveryCharge;
+    const retail = grocery + deliveryCharge;
     const marginPct = adminMarginPercent;
-    const trade = tradeAmountFromRetail(retail, marginPct);
-    const shopName = resolvedShopId ? shops.find((s) => s.id === resolvedShopId)?.name : undefined;
+    const trade = tradeAmountFromRetail(grocery, marginPct) + deliveryCharge;
     const orderNotes = shopIdColumnReady
       ? notes || null
       : notesWithShopFallback(shopName, notes);
+    const itemsText = orderItems || delivery.itemsDelivered || "";
 
     const baseRow = {
       created_by: session.user.id,
       customer_name: customerName,
       customer_phone: customerPhone || null,
       delivery_address: deliveryAddress || null,
-      order_items: orderItems,
+      order_items: itemsText,
       total_amount: retail,
       merchant_settlement_amount: trade,
       trade_margin_percent_applied: marginPct,
@@ -530,6 +580,16 @@ export function OrdersDashboard() {
       notes: orderNotes,
       status: "pending" as const,
     };
+    const deliveryExtras = deliveryFieldsReadyRef.current
+      ? {
+          grocery_subtotal: grocery,
+          delivery_charge: deliveryCharge,
+          delivery_destination: delivery.destination,
+          work_from_shop_id: delivery.workFromShopId,
+          items_delivered_text: delivery.itemsDelivered,
+          delivery_time_slot: delivery.deliveryTimeSlot,
+        }
+      : {};
 
     let inserted: { id: string } | null = null;
     let insertError: { message: string } | null = null;
@@ -537,16 +597,30 @@ export function OrdersDashboard() {
     if (shopIdColumnReady) {
       const res = await supabase
         .from("customer_orders")
-        .insert({ ...baseRow, shop_id: resolvedShopId || null } as never)
+        .insert({ ...baseRow, ...deliveryExtras, shop_id: resolvedShopId || null } as never)
         .select("id")
         .single();
       inserted = res.data as { id: string } | null;
       insertError = res.error;
       if (
         insertError &&
+        isMissingCustomerOrderDeliveryFieldsError(insertError.message)
+      ) {
+        deliveryFieldsReadyRef.current = false;
+        const retry = await supabase
+          .from("customer_orders")
+          .insert({ ...baseRow, shop_id: resolvedShopId || null } as never)
+          .select("id")
+          .single();
+        inserted = retry.data as { id: string } | null;
+        insertError = retry.error;
+      }
+      if (
+        insertError &&
         isMissingCustomerOrderShopIdError(insertError.message)
       ) {
         setShopIdColumnReady(false);
+        shopIdColumnReadyRef.current = false;
         const fallback = await supabase
           .from("customer_orders")
           .insert({
@@ -563,12 +637,29 @@ export function OrdersDashboard() {
         .from("customer_orders")
         .insert({
           ...baseRow,
+          ...deliveryExtras,
           notes: notesWithShopFallback(shopName, notes),
         } as never)
         .select("id")
         .single();
       inserted = res.data as { id: string } | null;
       insertError = res.error;
+      if (
+        insertError &&
+        isMissingCustomerOrderDeliveryFieldsError(insertError.message)
+      ) {
+        deliveryFieldsReadyRef.current = false;
+        const retry = await supabase
+          .from("customer_orders")
+          .insert({
+            ...baseRow,
+            notes: notesWithShopFallback(shopName, notes),
+          } as never)
+          .select("id")
+          .single();
+        inserted = retry.data as { id: string } | null;
+        insertError = retry.error;
+      }
     }
 
     setSaving(false);
@@ -592,7 +683,14 @@ export function OrdersDashboard() {
         customer_name: customerName,
         customer_phone: customerPhone || null,
         delivery_address: deliveryAddress || null,
-        order_items: orderItems,
+        order_items: itemsText,
+        grocery_subtotal: grocery,
+        delivery_charge: deliveryCharge,
+        delivery_destination: delivery.destination,
+        work_from_shop_id: delivery.workFromShopId,
+        items_delivered_text: delivery.itemsDelivered,
+        delivery_time_slot: delivery.deliveryTimeSlot,
+        assigned_delivery_user_id: null,
         total_amount: retail,
         merchant_settlement_amount: trade,
         trade_margin_percent_applied: marginPct,

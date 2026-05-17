@@ -1,0 +1,46 @@
+  function renderStaffEditForm() {
+    if (!selectedStaff) return null;
+    const row = selectedStaff;
+    if (row.role === "merchant") {
+      return (
+        <form className="grid gap-3" onSubmit={handleUpdateStaff} key={row.userId}>
+          <Field name="displayName" label="Shop Owner name" required defaultValue={row.displayName} />
+          <Field name="email" label="Login email" defaultValue={row.email ?? ""} />
+          <Field name="phone" label="Login mobile number" defaultValue={row.phone ?? ""} />
+          <Field name="shopName" label="Shop name" required defaultValue={shopByOwnerId.get(row.userId)?.name ?? ""} />
+          <Field name="shopAddress" label="Location" required defaultValue={shopByOwnerId.get(row.userId)?.address ?? ""} />
+          <Field name="tradeMarginPercent" label="Groobey margin % (whole shop bill)" type="number" required defaultValue={String(shopByOwnerId.get(row.userId)?.trade_margin_percent ?? 0)} />
+          <Button type="submit" variant="groobey" className="min-h-11 w-fit rounded-xl">Save changes</Button>
+        </form>
+      );
+    }
+    if (row.role === "employee") {
+      return (
+        <form className="grid gap-3" onSubmit={handleUpdateStaff} key={row.userId}>
+          <Field name="displayName" label="Delivery boy name" required defaultValue={row.displayName} />
+          <Field name="email" label="Login email" defaultValue={row.email ?? ""} />
+          <Field name="phone" label="Login mobile number" defaultValue={row.phone ?? ""} />
+          <Button type="submit" variant="groobey" className="min-h-11 w-fit rounded-xl">Save changes</Button>
+        </form>
+      );
+    }
+    return (
+      <form className="grid gap-3" onSubmit={handleUpdateStaff} key={row.userId}>
+        <Field name="displayName" label="Order taker name" required defaultValue={row.displayName} />
+        <Field name="email" label="Login email" defaultValue={row.email ?? ""} />
+        <Field name="phone" label="Login mobile number" defaultValue={row.phone ?? ""} />
+        <label className="grid gap-1.5 text-sm font-semibold text-foreground">
+          Groobey margin % (whole order bill)
+          <input name="tradeMarginPercent" type="number" min={0} max={100} step="0.01" required value={editingOrderTakerMargin} onChange={(e) => setEditingOrderTakerMargin(e.target.value)} className="h-11 max-w-[10rem] rounded-xl border border-input bg-card px-3 text-sm font-semibold outline-none ring-ring focus:ring-2" />
+        </label>
+        <Button type="submit" variant="groobey" className="min-h-11 w-fit rounded-xl">Save changes</Button>
+      </form>
+    );
+  }
+
+  function renderStaffDetailDialogContent() {
+    if (!selectedStaff) return null;
+    const row = selectedStaff;
+    return (
+      <div className="space-y-5">
+        <motion className="grid gap-3 rounded-2xl border border-border bg-muted/25 p-4 sm:grid-cols-2">

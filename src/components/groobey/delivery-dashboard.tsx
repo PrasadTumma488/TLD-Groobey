@@ -14,6 +14,7 @@ import {
   CUSTOMER_ORDER_DELIVERY_SELECT_LEGACY,
   isMissingCustomerOrderShopIdError,
 } from "@/lib/groobey-customer-order-columns";
+import { isMissingCustomerOrderDeliveryFieldsError } from "@/lib/groobey-delivery-order-fields";
 import { GROOBEY_APP_NAME } from "@/lib/groobey-brand";
 import {
   customerOrderItemsForBillEmail,
@@ -107,6 +108,17 @@ export function DeliveryDashboard() {
       if (!productsRes.error) setProducts(productsRes.data ?? []);
       if (!salesRes.error) setSales(salesRes.data ?? []);
       if (!saleItemsRes.error) setSaleItems(saleItemsRes.data ?? []);
+      if (
+        ordersRes.error &&
+        isMissingCustomerOrderDeliveryFieldsError(ordersRes.error.message)
+      ) {
+        ordersRes = await supabase
+          .from("customer_orders")
+          .select(CUSTOMER_ORDER_DELIVERY_SELECT_LEGACY)
+          .in("status", ["confirmed", "packed", "out_for_delivery"])
+          .order("created_at", { ascending: true })
+          .limit(100);
+      }
       if (!ordersRes.error) {
         setCustomerOrders(
           (ordersRes.data ?? []) as (Database["public"]["Tables"]["customer_orders"]["Row"] & {

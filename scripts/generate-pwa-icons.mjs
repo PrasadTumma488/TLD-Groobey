@@ -7,10 +7,10 @@ import toIco from "to-ico";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const publicDir = path.join(root, "public");
-const logo = path.join(publicDir, "groobey-logo.png");
+const logo = path.join(publicDir, "tld-groobey-web-logo.png");
 
 if (!fs.existsSync(logo)) {
-  console.error("[pwa:icons] Missing public/groobey-logo.png");
+  console.error("[pwa:icons] Missing public/tld-groobey-web-logo.png");
   process.exit(1);
 }
 

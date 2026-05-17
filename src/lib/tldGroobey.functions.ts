@@ -7,6 +7,7 @@ import { z } from "zod";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import type { Database } from "@/integrations/supabase/types";
 import { parseRoleFromAuthClaims } from "@/lib/groobey-auth-role";
+import { isGroobeyPlatformAdminEmail } from "@/lib/groobey-platform-admin";
 import {
   getPlatformAdminEmailsResolved,
   getPlatformAdminUserIdsResolved,
@@ -31,6 +32,7 @@ import {
   billEmailDeliveryPublicSnapshot,
   getResendApiKeyFromEnv,
   getResendFromEmail,
+  isValidResendFromHeader,
   getResendRedirectTo,
   isResendTestingOrDomainLimitError,
   normalizeBillRecipientEmail,
@@ -162,17 +164,9 @@ function buildPlatformAdminDeniedMessage(user: User) {
   return `Only platform admins can use this. Set PLATFORM_ADMIN_EMAILS or PLATFORM_ADMIN_USER_IDS in server .env, restart Vite, or run the SQL in Supabase (not only in the repo file). ${uidLine}`;
 }
 
-/** Comma- or newline-separated emails that receive `main_admin` in `user_roles` once (requires service role). */
+/** Only hardcoded Groobey platform admin emails may bootstrap or use admin APIs. */
 function isPlatformAdminEmailAllowlisted(email: string | undefined): boolean {
-  const raw = getPlatformAdminEmailsResolved();
-  if (!email?.trim() || !raw) return false;
-  const allow = new Set(
-    raw
-      .split(/[,;\n\r]+/)
-      .map((s) => s.trim().toLowerCase())
-      .filter(Boolean),
-  );
-  return allow.has(email.trim().toLowerCase());
+  return isGroobeyPlatformAdminEmail(email);
 }
 
 /** Comma- or newline-separated Auth user UUIDs → same bootstrap as PLATFORM_ADMIN_EMAILS (requires service role). */
@@ -509,6 +503,12 @@ async function assertAdminOrMain(token?: string) {
     throw new Error(buildPlatformAdminDeniedMessage(session.user));
   }
 
+  if (!isGroobeyPlatformAdminEmail(primaryEmailFromUser(session.user))) {
+    throw new Error(
+      "This account is not authorized for platform admin access. Use an approved administrator email.",
+    );
+  }
+
   const dbHasPlatformRole = sessionHasPlatformAdminRole(session.dbRoles);
   if (
     hasServiceRoleKey() &&
@@ -547,30 +547,19 @@ export const createStaffAccount = createServerFn({ method: "POST" })
     const normalizedPhone = normalizePhone(data.phone);
     const requesterBearer = resolveRequesterBearerFromRequest(data);
 
+    if (data.role === "main_admin" || data.role === "admin") {
+      throw new Error(
+        "Platform admin accounts cannot be created here. Sign in with an authorized administrator email.",
+      );
+    }
+
     if (hasServiceRoleKey()) {
-      if (staffRoles.has(data.role) && !requesterBearer) {
+      if (!requesterBearer) {
         throw new Error("Your session was not sent to the server. Refresh the page and try again.");
       }
-
-      const platformBootstrapExists = await hasPlatformBootstrapAccount();
-      const requesterIsPlatformAdmin = await isPlatformAdminSession(requesterBearer);
-
-      if (
-        !platformBootstrapExists &&
-        !requesterIsPlatformAdmin &&
-        data.role !== "main_admin" &&
-        data.role !== "admin"
-      ) {
-        throw new Error(
-          "Create the platform admin account first, or sign in again so your session is recognized.",
-        );
-      }
-
-      if (platformBootstrapExists || requesterIsPlatformAdmin) {
-        await assertAdminOrMain(requesterBearer);
-        if (!staffRoles.has(data.role)) {
-          throw new Error("Owner can create only shop owner, staff, and order taker logins.");
-        }
+      await assertAdminOrMain(requesterBearer);
+      if (!staffRoles.has(data.role)) {
+        throw new Error("Platform admin can create only shop owner, delivery boy, and order taker logins.");
       }
 
       const emailTrimmed = data.email?.trim() || "";
@@ -1141,6 +1130,13 @@ async function sendResendEmail(
     throw new Error("Missing RESEND_API_KEY in .env. Add it and restart dev server.");
   }
   const fromEmail = getResendFromEmail();
+  if (!isValidResendFromHeader(fromEmail)) {
+    throw new Error(
+      `Invalid RESEND_FROM_EMAIL format (got "${fromEmail}"). ` +
+        "Use exactly: Groobey <app@groobey.in> — with @ and angle brackets < >. " +
+        "In Vercel → Environment Variables, fix RESEND_FROM_EMAIL and redeploy.",
+    );
+  }
   const redirectTo = getResendRedirectTo();
   const requestedTo = params.to.trim();
   const toList = [requestedTo];
@@ -1645,6 +1641,9 @@ export const sendPasswordResetEmail = createServerFn({ method: "POST" })
       );
     }
     const email = data.email.trim().toLowerCase();
+    if (!isGroobeyPlatformAdminEmail(email)) {
+      return { ok: true as const };
+    }
     const redirectTo = data.redirectTo?.trim();
     const fallbackSite =
       trimResendEnv(process.env.SUPABASE_SITE_URL) ||

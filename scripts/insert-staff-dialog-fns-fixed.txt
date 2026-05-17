@@ -1,0 +1,112 @@
+  function renderStaffEditForm() {
+    if (!selectedStaff) return null;
+    const row = selectedStaff;
+    if (row.role === "merchant") {
+      return (
+        <form className="grid gap-3" onSubmit={handleUpdateStaff} key={row.userId}>
+          <Field name="displayName" label="Shop Owner name" required defaultValue={row.displayName} />
+          <Field name="email" label="Login email" defaultValue={row.email ?? ""} />
+          <Field name="phone" label="Login mobile number" defaultValue={row.phone ?? ""} />
+          <Field name="shopName" label="Shop name" required defaultValue={shopByOwnerId.get(row.userId)?.name ?? ""} />
+          <Field name="shopAddress" label="Location" required defaultValue={shopByOwnerId.get(row.userId)?.address ?? ""} />
+          <Field name="tradeMarginPercent" label="Groobey margin % (whole shop bill)" type="number" required defaultValue={String(shopByOwnerId.get(row.userId)?.trade_margin_percent ?? 0)} />
+          <Button type="submit" variant="groobey" className="min-h-11 w-fit rounded-xl">Save changes</Button>
+        </form>
+      );
+    }
+    if (row.role === "employee") {
+      return (
+        <form className="grid gap-3" onSubmit={handleUpdateStaff} key={row.userId}>
+          <Field name="displayName" label="Delivery boy name" required defaultValue={row.displayName} />
+          <Field name="email" label="Login email" defaultValue={row.email ?? ""} />
+          <Field name="phone" label="Login mobile number" defaultValue={row.phone ?? ""} />
+          <Button type="submit" variant="groobey" className="min-h-11 w-fit rounded-xl">Save changes</Button>
+        </form>
+      );
+    }
+    return (
+      <form className="grid gap-3" onSubmit={handleUpdateStaff} key={row.userId}>
+        <Field name="displayName" label="Order taker name" required defaultValue={row.displayName} />
+        <Field name="email" label="Login email" defaultValue={row.email ?? ""} />
+        <Field name="phone" label="Login mobile number" defaultValue={row.phone ?? ""} />
+        <label className="grid gap-1.5 text-sm font-semibold text-foreground">
+          Groobey margin % (whole order bill)
+          <input name="tradeMarginPercent" type="number" min={0} max={100} step="0.01" required value={editingOrderTakerMargin} onChange={(e) => setEditingOrderTakerMargin(e.target.value)} className="h-11 max-w-[10rem] rounded-xl border border-input bg-card px-3 text-sm font-semibold outline-none ring-ring focus:ring-2" />
+        </label>
+        <Button type="submit" variant="groobey" className="min-h-11 w-fit rounded-xl">Save changes</Button>
+      </form>
+    );
+  }
+
+  function renderStaffDetailDialogContent() {
+    if (!selectedStaff) return null;
+    const row = selectedStaff;
+    return (
+      <div className="space-y-5">
+        <div className="grid gap-3 rounded-2xl border border-border bg-muted/25 p-4 sm:grid-cols-2">
+          <div><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Name</p><p className="mt-0.5 font-black">{row.displayName || "—"}</p></div>
+          <div><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Role</p><p className="mt-0.5 font-semibold">{roleLabel(row.role)}</p></div>
+          <div><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Groobey ID</p><p className="mt-0.5 font-mono text-sm font-semibold">{row.groobeyId ?? "—"}</p></div>
+          <div><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Status</p><p className="mt-0.5 font-semibold">{row.isActive ? "Active" : "Inactive"}</p></div>
+          <div className="sm:col-span-2"><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Email</p><p className="mt-0.5 break-all font-semibold">{row.email ?? "—"}</p></div>
+          <div className="sm:col-span-2"><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Phone</p><p className="mt-0.5 font-semibold">{row.phone ?? "—"}</p></div>
+          {row.role === "merchant" ? (
+            <>
+              <div><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Shop</p><p className="mt-0.5 font-semibold">{shopNameByOwnerId.get(row.userId) ?? "—"}</p></div>
+              <div><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Location</p><p className="mt-0.5 font-semibold">{shopLocationByOwnerId.get(row.userId) ?? "—"}</p></div>
+            </>
+          ) : null}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant={row.isActive ? "outline" : "groobey"} className="min-h-10 rounded-xl" onClick={() => void toggleStaff(row.userId, !row.isActive)}>
+            {row.isActive ? "Deactivate login" : "Activate login"}
+          </Button>
+          <Button type="button" variant="outline" className="min-h-10 rounded-xl text-destructive hover:bg-destructive/10" onClick={() => void handleDeleteStaff(row)}>
+            <Trash2 className="size-4" /> Delete login
+          </Button>
+        </div>
+        <div className="border-t border-border pt-4">
+          <p className="mb-3 text-sm font-black text-foreground">Edit details</p>
+          {renderStaffEditForm()}
+        </div>
+      </div>
+    );
+  }
+
+  function renderAttendanceDetailDialogContent() {
+    if (!selectedAttendance) return null;
+    const row = selectedAttendance;
+    const details = parseAttendanceNotes(row.notes);
+    return (
+      <div className="space-y-5">
+        <div className="grid gap-3 rounded-2xl border border-border bg-muted/25 p-4 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Worker</p>
+            <p className="mt-0.5 font-black">{staffNameByUserId.get(row.worker_id) ?? "Staff"}</p>
+            <p className="mt-0.5 font-mono text-xs text-muted-foreground">{groobeyIdForUser(row.worker_id, groobeyByUserId)}</p>
+          </div>
+          <div><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Work date</p><p className="mt-0.5 font-semibold">{row.work_date}</p></div>
+          <div><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Verification</p><span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${verificationBadgeClass(row.verification_status)}`}>{verificationLabel(row.verification_status)}</span></div>
+          <div className="sm:col-span-2"><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Destination</p><p className="mt-0.5 font-semibold">{details.destination}</p></div>
+          <div className="sm:col-span-2"><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Items</p><p className="mt-0.5 break-words font-semibold">{details.items}</p></div>
+          <div className="sm:col-span-2"><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Time</p><p className="mt-0.5 font-semibold">{details.time}</p></div>
+        </div>
+        <label className="grid max-w-xs gap-1.5 text-sm font-semibold">
+          Day status
+          <select className="groobey-select groobey-select--sm w-full" value={row.status} onChange={(e) => void updateAttendanceStatus(row.id, e.target.value as Database["public"]["Enums"]["attendance_status"])}>
+            <option value="present">Present</option>
+            <option value="absent">Absent</option>
+            <option value="half_day">Half day</option>
+          </select>
+        </label>
+        {row.verification_status === "pending" ? (
+          <div className="flex flex-wrap gap-2">
+            <Button variant="calm" className="min-h-10 rounded-xl" onClick={() => void updateAttendanceVerification(row.id, "verified")}>Approve attendance</Button>
+            <Button variant="outline" className="min-h-10 rounded-xl" onClick={() => void updateAttendanceVerification(row.id, "rejected")}>Reject attendance</Button>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+

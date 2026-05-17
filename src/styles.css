@@ -224,6 +224,166 @@
     flex-shrink: 0;
   }
 
+  /* Platform admin nav — solid track so tabs do not blend into the page gradient */
+  .owner-admin-tabs {
+    background-color: oklch(0.995 0.01 105.2) !important;
+    border: 2px solid color-mix(in oklab, var(--border) 92%, var(--primary) 22%);
+    box-shadow:
+      0 12px 36px -18px color-mix(in oklab, var(--primary) 40%, transparent),
+      0 2px 6px -1px color-mix(in oklab, var(--foreground) 10%, transparent);
+    backdrop-filter: none;
+  }
+
+  .owner-admin-tabs [role="tab"] {
+    color: color-mix(in oklab, var(--foreground) 70%, var(--muted-foreground));
+    background-color: color-mix(in oklab, var(--muted) 55%, var(--card) 45%) !important;
+    border: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+    box-shadow: none;
+  }
+
+  .owner-admin-tabs [role="tab"]:hover {
+    cursor: pointer;
+    color: var(--foreground);
+    background-color: color-mix(in oklab, var(--card) 92%, var(--primary) 8%) !important;
+    border-color: color-mix(in oklab, var(--primary) 30%, var(--border));
+  }
+
+  .owner-admin-tabs [role="tab"][data-state="active"],
+  .owner-admin-tabs [role="tab"].owner-admin-tab-picked {
+    color: var(--foreground);
+    background-color: oklch(1 0 0) !important;
+    border-color: color-mix(in oklab, var(--primary) 45%, var(--border));
+    box-shadow:
+      0 2px 8px -2px color-mix(in oklab, var(--foreground) 14%, transparent),
+      inset 0 1px 0 oklch(1 0 0) !important;
+  }
+
+  /* Platform admin people / attendance — card + list share one comfortable width */
+  .owner-admin-directory-shell {
+    width: 100%;
+    max-width: min(100%, 34rem);
+    margin-inline: auto;
+  }
+
+  .owner-admin-directory-shell--wide {
+    max-width: min(100%, 42rem);
+  }
+
+  @media (min-width: 640px) {
+    .owner-admin-directory-shell {
+      max-width: 36rem;
+    }
+
+    .owner-admin-directory-shell--wide {
+      max-width: 46rem;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .owner-admin-directory-shell {
+      max-width: 38rem;
+    }
+
+    .owner-admin-directory-shell--wide {
+      max-width: 50rem;
+    }
+  }
+
+  .owner-admin-directory {
+    width: 100%;
+  }
+
+  .owner-admin-attendance-toolbar {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+
+  @media (min-width: 640px) {
+    .owner-admin-attendance-toolbar {
+      flex-direction: row;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+  }
+
+  .owner-admin-people-card {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: 0.75rem;
+    border-radius: 1rem;
+    border: 1px solid var(--border);
+    background-color: color-mix(in oklab, var(--card) 88%, transparent);
+    padding: 0.75rem 1rem;
+    text-align: left;
+    transition:
+      border-color 0.2s,
+      background-color 0.2s,
+      box-shadow 0.2s,
+      transform 0.15s;
+  }
+
+  .owner-admin-people-card:hover {
+    border-color: color-mix(in oklab, var(--primary) 35%, var(--border));
+    background-color: var(--card);
+    box-shadow: var(--shadow-soft);
+  }
+
+  .owner-admin-people-card:active {
+    transform: scale(0.99);
+  }
+
+  .owner-admin-directory-table-wrap {
+    overflow: hidden;
+    border-radius: 1rem;
+    border: 1px solid var(--border);
+    background-color: color-mix(in oklab, var(--card) 70%, transparent);
+    box-shadow: var(--shadow-soft);
+  }
+
+  .owner-admin-directory-table-wrap table {
+    width: 100%;
+    font-size: 0.875rem;
+  }
+
+  .owner-admin-directory-table-wrap tbody tr {
+    cursor: pointer;
+    transition: background-color 0.15s;
+  }
+
+  .owner-admin-directory-table-wrap tbody tr:hover {
+    background-color: color-mix(in oklab, var(--muted) 45%, transparent);
+  }
+
+  .owner-admin-attendance-card {
+    display: flex;
+    width: 100%;
+    align-items: flex-start;
+    gap: 0.5rem;
+    border-radius: 1rem;
+    border: 1px solid var(--border);
+    background-color: color-mix(in oklab, var(--card) 88%, transparent);
+    padding: 0.875rem 1rem;
+    text-align: left;
+    transition:
+      border-color 0.2s,
+      background-color 0.2s,
+      box-shadow 0.2s,
+      transform 0.15s;
+  }
+
+  .owner-admin-attendance-card:hover {
+    border-color: color-mix(in oklab, var(--primary) 35%, var(--border));
+    background-color: var(--card);
+    box-shadow: var(--shadow-soft);
+  }
+
+  .owner-admin-attendance-card:active {
+    transform: scale(0.99);
+  }
+
   /* Native <select> — same visual language as Radix SelectTrigger (groobey dashboards + login). */
   .groobey-select {
     appearance: none;

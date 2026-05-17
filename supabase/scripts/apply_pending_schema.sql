@@ -125,3 +125,21 @@ WHERE si.product_id = p.id
 
 -- === From 20260523120000_bill_id_yymmdd_daily.sql ===
 -- Prefer: supabase db push (applies full migration). Or paste that file here in SQL Editor.
+
+-- === From 20260524120000_customer_orders_delivery_fields.sql ===
+ALTER TABLE public.customer_orders
+  ADD COLUMN IF NOT EXISTS grocery_subtotal numeric NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS delivery_charge numeric NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS delivery_destination text,
+  ADD COLUMN IF NOT EXISTS work_from_shop_id uuid REFERENCES public.shops(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS items_delivered_text text,
+  ADD COLUMN IF NOT EXISTS delivery_time_slot text,
+  ADD COLUMN IF NOT EXISTS assigned_delivery_user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL;
+
+UPDATE public.customer_orders
+SET grocery_subtotal = COALESCE(total_amount, 0)
+WHERE grocery_subtotal = 0 AND COALESCE(total_amount, 0) > 0;
+
+CREATE INDEX IF NOT EXISTS idx_customer_orders_assigned_delivery
+  ON public.customer_orders(assigned_delivery_user_id)
+  WHERE assigned_delivery_user_id IS NOT NULL;
