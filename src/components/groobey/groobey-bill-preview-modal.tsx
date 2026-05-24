@@ -1,21 +1,27 @@
-import { Loader2, Mail, Printer, X } from "lucide-react";
+import { Printer } from "lucide-react";
+import { useServerFn } from "@tanstack/react-start";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+  GroobeyBillEmailSendField,
+  SETTLEMENT_BILL_EMAIL_HINT,
+} from "@/components/groobey/groobey-bill-email-send-field";
+import {
+  GroobeySheetDialogBody,
+  GroobeySheetDialogContent,
+  GroobeySheetDialogFooter,
+  GroobeySheetDialogHeader,
+} from "@/components/groobey/groobey-sheet-dialog";
+import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
+import { supabase } from "@/integrations/supabase/client";
 import {
   hideGroobeyBillPreview,
   subscribeGroobeyBillPreview,
   type BillPreviewState,
 } from "@/lib/groobey-bill-preview-bridge";
+import { resolveShopOwnerEmails } from "@/lib/tldGroobey.functions";
 import { cn } from "@/lib/utils";
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function printBillDocument(html: string): void {
   const iframe = document.createElement("iframe");
@@ -52,21 +58,23 @@ function printBillDocument(html: string): void {
 function measureIframeHeight(iframe: HTMLIFrameElement): number {
   try {
     const doc = iframe.contentDocument;
-    if (!doc?.body) return 360;
+    if (!doc?.body) return 420;
     const h = Math.max(
       doc.body.scrollHeight,
       doc.documentElement?.scrollHeight ?? 0,
     );
-    return Math.min(Math.max(h + 8, 280), 720);
+    return Math.min(Math.max(h + 12, 320), 780);
   } catch {
-    return 360;
+    return 420;
   }
 }
 
 export function GroobeyBillPreviewModal() {
+  const resolveShopEmailsFn = useServerFn(resolveShopOwnerEmails);
   const [preview, setPreview] = useState<BillPreviewState>(null);
-  const [iframeHeight, setIframeHeight] = useState(360);
-  const [email, setEmail] = useState("");
+  const [iframeHeight, setIframeHeight] = useState(420);
+  const [customerEmail, setCustomerEmail] = useState("");
+  const [settlementEmail, setSettlementEmail] = useState("");
   const [sending, setSending] = useState(false);
   const [feedback, setFeedback] = useState<{ notice?: string; error?: string }>({});
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -75,15 +83,58 @@ export function GroobeyBillPreviewModal() {
 
   useEffect(() => {
     if (!preview) {
-      setEmail("");
+      setCustomerEmail("");
+      setSettlementEmail("");
       setFeedback({});
       setSending(false);
-      setIframeHeight(360);
+      setIframeHeight(420);
       return;
     }
-    setEmail(preview.email?.defaultEmail?.trim() ?? "");
+    if (preview.kind === "customer") {
+      setCustomerEmail(preview.email?.defaultEmail?.trim() ?? "");
+      setSettlementEmail("");
+    } else {
+      setCustomerEmail("");
+      setSettlementEmail(preview.settlementEmail?.defaultEmail?.trim() ?? "");
+    }
     setFeedback({});
   }, [preview]);
+
+  useEffect(() => {
+    if (preview?.kind !== "merchant" || !preview.settlementEmail) return;
+    const preset = preview.settlementEmail.defaultEmail?.trim() ?? "";
+    if (preset) return;
+    const shopId = preview.settlementEmail.shopId?.trim();
+    if (!shopId) return;
+    let cancelled = false;
+    void (async () => {
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token?.trim();
+      if (!token || cancelled) return;
+      try {
+        const result = await resolveShopEmailsFn({
+          data: { requesterToken: token, shopIds: [shopId] },
+        });
+        const resolved = (result as { emails?: Record<string, string> }).emails?.[shopId]?.trim();
+        if (resolved && !cancelled) setSettlementEmail(resolved);
+      } catch {
+        /* leave empty for manual entry */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [preview?.kind, preview?.settlementEmail?.shopId, preview?.settlementEmail?.defaultEmail, resolveShopEmailsFn]);
+
+  useEffect(() => {
+    if (!preview) return;
+    const id =
+      preview.kind === "customer" ?
+        "bill-preview-customer-email"
+      : "bill-preview-settlement-email";
+    const t = window.setTimeout(() => document.getElementById(id)?.focus(), 120);
+    return () => window.clearTimeout(t);
+  }, [preview?.kind, preview?.html]);
 
   const close = useCallback(() => {
     hideGroobeyBillPreview();
@@ -98,24 +149,18 @@ export function GroobeyBillPreviewModal() {
   const title =
     preview?.kind === "merchant" ? "Settlement bill" : "Bill preview";
 
-  const showEmail =
+  const showCustomerEmail =
     preview?.kind === "customer" && preview.email != null;
+  const showSettlementEmail =
+    preview?.kind === "merchant" && preview.settlementEmail != null;
+  const showEmailBar = showCustomerEmail || showSettlementEmail;
 
-  async function handleSendEmail() {
+  async function handleSendCustomerEmail() {
     if (!preview?.email) return;
-    const trimmed = email.trim();
-    if (!trimmed) {
-      setFeedback({ error: "Enter the customer's email address." });
-      return;
-    }
-    if (!EMAIL_RE.test(trimmed)) {
-      setFeedback({ error: "Enter a valid customer email address." });
-      return;
-    }
     setSending(true);
     setFeedback({});
     try {
-      const result = await preview.email.send(trimmed);
+      const result = await preview.email.send(customerEmail.trim());
       setFeedback(result);
     } catch (e) {
       setFeedback({
@@ -126,104 +171,105 @@ export function GroobeyBillPreviewModal() {
     }
   }
 
+  async function handleSendSettlementEmail() {
+    if (!preview?.settlementEmail) return;
+    setSending(true);
+    setFeedback({});
+    try {
+      const result = await preview.settlementEmail.send(settlementEmail.trim());
+      setFeedback(result);
+    } catch (e) {
+      setFeedback({
+        error: e instanceof Error ? e.message : "Unable to send settlement bill email.",
+      });
+    } finally {
+      setSending(false);
+    }
+  }
+
   return (
     <Dialog open={preview != null} onOpenChange={(open) => !open && close()}>
-      <DialogContent
+      <GroobeySheetDialogContent
         className={cn(
-          "flex max-h-[min(92vh,840px)] max-w-none flex-col gap-0 overflow-hidden border-border p-0 sm:rounded-xl [&>button:last-child]:hidden",
-          preview?.kind === "merchant" ?
-            "w-[min(calc(100vw-1rem),54rem)]"
-          : "w-[min(calc(100vw-1rem),38rem)]",
+          "groobey-sheet-dialog--bill-preview",
+          preview?.kind === "merchant" && "groobey-sheet-dialog--wide",
         )}
-        onOpenAutoFocus={(e) => e.preventDefault()}
       >
-        <div className="flex shrink-0 items-center gap-1.5 border-b border-border bg-card px-2.5 py-1.5">
-          <DialogTitle className="min-w-0 flex-1 truncate text-xs font-bold">{title}</DialogTitle>
-          <Button
-            type="button"
-            size="sm"
-            variant="groobey"
-            className="h-7 shrink-0 rounded-md px-2 text-[11px]"
-            onClick={() => preview && printBillDocument(preview.html)}
-          >
-            <Printer className="size-3" />
-            Print
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="h-7 shrink-0 rounded-md px-2 text-[11px]"
-            onClick={close}
-          >
-            <X className="size-3" />
-          </Button>
-        </div>
-
         {preview ?
           <>
-            <div className="min-h-0 flex-1 overflow-y-auto bg-muted/30 px-2 py-2">
+            <GroobeySheetDialogHeader
+              title={title}
+              onClose={close}
+              actions={
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="groobey"
+                  className="h-10 shrink-0 rounded-xl px-3 text-xs font-bold sm:text-sm"
+                  onClick={() => printBillDocument(preview.html)}
+                >
+                  <Printer className="size-4" aria-hidden />
+                  <span className="sr-only sm:not-sr-only sm:inline">Print</span>
+                </Button>
+              }
+            />
+
+            <GroobeySheetDialogBody className="groobey-bill-preview-body bg-muted/30 py-3 sm:py-4">
               <iframe
                 ref={iframeRef}
                 title="Bill preview"
                 srcDoc={preview.html}
                 onLoad={resizePreviewFrame}
-                className="mx-auto block w-full max-w-full rounded-md border border-border bg-white shadow-sm"
+                className="groobey-bill-preview-iframe mx-auto block w-full rounded-xl border border-border bg-white shadow-sm"
                 style={{ height: iframeHeight }}
                 sandbox="allow-same-origin"
               />
-            </div>
+            </GroobeySheetDialogBody>
 
-            {showEmail ?
-              <div className="shrink-0 space-y-1.5 border-t border-border bg-card px-2.5 py-2">
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  Email bill
-                </p>
-                <div className="flex gap-1.5">
-                  <Input
-                    type="email"
-                    inputMode="email"
-                    autoComplete="email"
-                    placeholder="Customer email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="h-8 min-w-0 flex-1 text-xs"
-                    disabled={sending}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        void handleSendEmail();
-                      }
-                    }}
-                  />
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="groobey"
-                    className="h-8 shrink-0 rounded-md px-2 text-[11px]"
-                    disabled={sending}
-                    onClick={() => void handleSendEmail()}
-                  >
-                    {sending ?
-                      <Loader2 className="size-3.5 animate-spin" />
-                    : <>
-                        <Mail className="size-3" />
-                        Send
-                      </>
-                    }
-                  </Button>
-                </div>
-                {feedback.notice ?
-                  <p className="text-[11px] font-medium text-emerald-700">{feedback.notice}</p>
-                : null}
-                {feedback.error ?
-                  <p className="text-[11px] font-medium text-destructive">{feedback.error}</p>
-                : null}
+            {showCustomerEmail ?
+              <div className="groobey-bill-preview-email-bar shrink-0 border-t border-border bg-card px-4 py-3 sm:px-5">
+                <GroobeyBillEmailSendField
+                  layout="bar"
+                  label="Customer email"
+                  inputId="bill-preview-customer-email"
+                  email={customerEmail}
+                  onEmailChange={setCustomerEmail}
+                  onSend={() => void handleSendCustomerEmail()}
+                  sending={sending}
+                  sendLabel="Send"
+                  sendAriaLabel="Send bill to customer email"
+                  feedback={feedback}
+                />
               </div>
             : null}
+
+            {showSettlementEmail ?
+              <div className="groobey-bill-preview-email-bar groobey-bill-preview-email-bar--settlement shrink-0 border-t border-border bg-amber-50/80 px-4 py-3 sm:px-5">
+                <GroobeyBillEmailSendField
+                  layout="bar"
+                  variant="settlement"
+                  label="Shop owner email"
+                  hint={SETTLEMENT_BILL_EMAIL_HINT}
+                  inputId="bill-preview-settlement-email"
+                  email={settlementEmail}
+                  onEmailChange={setSettlementEmail}
+                  onSend={() => void handleSendSettlementEmail()}
+                  sending={sending}
+                  sendLabel="Send"
+                  sendAriaLabel="Send settlement bill to shop owner email"
+                  feedback={feedback}
+                  className="border-0 bg-transparent p-0"
+                />
+              </div>
+            : null}
+
+            <GroobeySheetDialogFooter
+              onClose={close}
+              closeLabel={showEmailBar ? "Close" : "Close bill"}
+            />
           </>
         : null}
-      </DialogContent>
+      </GroobeySheetDialogContent>
     </Dialog>
   );
 }

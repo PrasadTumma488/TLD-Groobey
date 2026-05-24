@@ -94,6 +94,9 @@ export async function buildGroobeyBillPdfBuffer(params: GroobeyBillPdfParams): P
 
   let page = doc.addPage([PAGE_W, PAGE_H]);
   let y = PAGE_H - MARGIN;
+  const contentW = PAGE_W - MARGIN * 2;
+  const centerX = PAGE_W / 2;
+  const SILVER = rgb(192 / 255, 192 / 255, 192 / 255);
 
   const logoBytes = getGroobeyBillLogoPngBytes();
   if (logoBytes?.length) {
@@ -108,49 +111,67 @@ export async function buildGroobeyBillPdfBuffer(params: GroobeyBillPdfParams): P
       const platePad = GROOBEY_LOGO_DISPLAY.billPlatePaddingPx;
       const plateW = logoW + platePad * 2;
       const plateH = logoH + platePad * 2;
-      const plateX = (PAGE_W - plateW) / 2;
-      const plateY = y - plateH;
-      const centerX = PAGE_W / 2;
-
-      page.drawRectangle({
-        x: plateX,
-        y: plateY,
-        width: plateW,
-        height: plateH,
-        color: rgb(1, 1, 1),
-        borderColor: rgb(146 / 255, 200 / 255, 46 / 255),
-        borderWidth: 1.5,
-      });
-      page.drawImage(img, {
-        x: plateX + platePad,
-        y: plateY + platePad,
-        width: logoW,
-        height: logoH,
-      });
-
-      const brandLine = pdfText(GROOBEY_APP_NAME.toUpperCase());
-      const brandW = fontBold.widthOfTextAtSize(brandLine, 12);
-      page.drawText(brandLine, {
-        x: centerX - brandW / 2,
-        y: plateY - 18,
-        size: 12,
-        font: fontBold,
-        color: BLACK,
-      });
+      const brandSize = 11;
+      const tagSize = 10;
       const tagline =
         params.billKind === "merchant" ?
           "Grocery trade · Internal settlement"
         : "Grocery · Your bill";
       const taglinePdf = pdfText(tagline);
-      const tagW = font.widthOfTextAtSize(taglinePdf, 10);
+      const brandLine = pdfText("TLD GROOBEY");
+      const headerPad = 16;
+      const headerInnerH = plateH + 10 + brandSize + 6 + tagSize;
+      const headerH = headerInnerH + headerPad * 2;
+      const headerTop = y;
+      const headerBottom = headerTop - headerH;
+
+      page.drawRectangle({
+        x: MARGIN,
+        y: headerBottom,
+        width: contentW,
+        height: headerH,
+        color: BLACK,
+        borderColor: LIME,
+        borderWidth: 2,
+      });
+
+      let innerY = headerTop - headerPad - plateH;
+      const plateX = centerX - plateW / 2;
+      page.drawRectangle({
+        x: plateX,
+        y: innerY,
+        width: plateW,
+        height: plateH,
+        color: rgb(1, 1, 1),
+        borderColor: LIME,
+        borderWidth: 1,
+      });
+      page.drawImage(img, {
+        x: plateX + platePad,
+        y: innerY + platePad,
+        width: logoW,
+        height: logoH,
+      });
+
+      innerY -= 12;
+      const brandW = fontBold.widthOfTextAtSize(brandLine, brandSize);
+      page.drawText(brandLine, {
+        x: centerX - brandW / 2,
+        y: innerY - brandSize,
+        size: brandSize,
+        font: fontBold,
+        color: LIME,
+      });
+      innerY -= brandSize + 6;
+      const tagW = font.widthOfTextAtSize(taglinePdf, tagSize);
       page.drawText(taglinePdf, {
         x: centerX - tagW / 2,
-        y: plateY - 32,
-        size: 10,
+        y: innerY - tagSize,
+        size: tagSize,
         font,
-        color: GRAY,
+        color: SILVER,
       });
-      y = plateY - 48;
+      y = headerBottom - 20;
     } catch {
       y -= 8;
     }
@@ -169,6 +190,7 @@ export async function buildGroobeyBillPdfBuffer(params: GroobeyBillPdfParams): P
   });
   y -= 36;
 
+  const metaMaxW = PAGE_W - MARGIN * 2;
   for (const row of params.meta.filter((m) => m.value.trim())) {
     page.drawText(pdfText(`${row.label}:`), {
       x: MARGIN,
@@ -177,16 +199,17 @@ export async function buildGroobeyBillPdfBuffer(params: GroobeyBillPdfParams): P
       font: fontBold,
       color: BLACK,
     });
-    y = drawWrapped(page, pdfText(row.value), MARGIN + 88, y, font, 10, PAGE_W - MARGIN * 2 - 88) - 4;
+    y -= 12;
+    y = drawWrapped(page, pdfText(row.value), MARGIN, y, font, 10, metaMaxW) - 4;
     if (row.subValue?.trim()) {
       y = drawWrapped(
         page,
         pdfText(row.subValue.trim()),
-        MARGIN + 88,
+        MARGIN,
         y - 2,
         font,
         9,
-        PAGE_W - MARGIN * 2 - 88,
+        metaMaxW,
         GRAY,
       ) - 2;
     }

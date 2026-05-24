@@ -46,7 +46,7 @@ export function schemaSetupHint(errorMessage: string): string | null {
     errorMessage.includes("delivery_charge") ||
     errorMessage.includes("assigned_delivery_user_id")
   ) {
-    return `${errorMessage} — Apply database updates: open Supabase → SQL Editor → run the file supabase/scripts/apply_pending_schema.sql (or run supabase db push).`;
+    return `${errorMessage} - Apply database updates: open Supabase → SQL Editor → run the file supabase/scripts/apply_pending_schema.sql (or run supabase db push).`;
   }
   return null;
 }

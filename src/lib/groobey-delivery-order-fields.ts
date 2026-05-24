@@ -29,6 +29,59 @@ export function parseDeliveryDestination(raw: FormDataEntryValue | null): Delive
   return "shop";
 }
 
+/** Indian mobile: at least 10 digits (ignores spaces, +91, dashes). */
+export function isValidCustomerMobile(phone: string): boolean {
+  const digits = phone.replace(/\D/g, "");
+  return digits.length >= 10;
+}
+
+const ROUTING_ONLY_ADDRESS = /^(self\s*pickup|shop\s*delivery)$/i;
+
+/** Street/customer address for bills - excludes legacy routing-only values stored in delivery_address. */
+export function customerAddressForBill(
+  deliveryAddress?: string | null,
+  destination?: string | null,
+): string | undefined {
+  const addr = deliveryAddress?.trim() ?? "";
+  if (!addr) return undefined;
+  if (ROUTING_ONLY_ADDRESS.test(addr)) return undefined;
+  if (/^shop:\s*/i.test(addr) && !/\d/.test(addr) && addr.length < 120) {
+    return undefined;
+  }
+  if (destination === "self" && /^self\s*pickup$/i.test(addr)) return undefined;
+  return addr;
+}
+
+/** Customer location for print/email bills (never routing labels like Self pickup). */
+export function resolveCustomerStreetAddressForBill(input: {
+  delivery_address?: string | null;
+  delivery_destination?: string | null;
+  notes?: string | null;
+  customerStreetAddress?: string | null;
+}): string {
+  const explicit = input.customerStreetAddress?.trim();
+  if (explicit && !ROUTING_ONLY_ADDRESS.test(explicit)) return explicit;
+
+  const fromDelivery = customerAddressForBill(
+    input.delivery_address,
+    input.delivery_destination,
+  );
+  if (fromDelivery) return fromDelivery;
+
+  const notes = input.notes?.trim() ?? "";
+  if (notes) {
+    const lineMatch = notes.match(
+      /^(?:customer\s*address|delivery\s*location|location|address)\s*:\s*(.+)$/im,
+    );
+    if (lineMatch?.[1]?.trim()) {
+      const v = lineMatch[1].trim();
+      if (!ROUTING_ONLY_ADDRESS.test(v) && !/^shop:\s*/i.test(v)) return v;
+    }
+  }
+
+  return "";
+}
+
 export function buildOrderDeliveryAddress(params: {
   destination: DeliveryDestinationKind;
   shopName?: string | null;

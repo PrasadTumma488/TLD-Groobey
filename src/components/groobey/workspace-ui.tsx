@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import type { Database } from "@/integrations/supabase/types";
+import { cn } from "@/lib/utils";
 
 type Product = Database["public"]["Tables"]["products"]["Row"];
 
@@ -114,11 +115,11 @@ export function Panel({
       />
     : null;
   return (
-    <section className="groobey-card rounded-2xl border border-border p-5">
-      <div className="mb-4 flex items-center justify-between gap-3">
+    <section className="groobey-card min-w-0 rounded-2xl border border-border p-4 sm:p-5">
+      <div className="mb-4 flex min-w-0 items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <Icon className="size-5 shrink-0 text-primary" />
-          <h2 className="text-xl font-black">{title}</h2>
+          <h2 className="text-lg font-black leading-tight sm:text-xl">{title}</h2>
         </div>
         {action}
       </div>
@@ -129,22 +130,97 @@ export function Panel({
   );
 }
 
+/** Centers the whole panel (title + card) in the page - same width as staff directory. */
+export function GroobeyWorkspaceShell({
+  children,
+  wide = false,
+  className,
+}: {
+  children: React.ReactNode;
+  wide?: boolean;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "groobey-centered-workspace",
+        wide && "groobey-centered-workspace--wide",
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+/** Bordered inner card - matches directory table / people list styling. */
+export function GroobeyWorkspaceFormCard({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "groobey-workspace-form-card overflow-hidden rounded-2xl border border-border bg-card/70 p-4 shadow-[var(--shadow-soft)] sm:p-5",
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
 export function Stat({
   icon: Icon,
   label,
   value,
+  hint,
+  onClick,
+  pressed = false,
 }: {
   icon: React.ComponentType<{ className?: string }>;
   label: string;
   value: string;
+  /** Optional one-line hint under the label (e.g. margin explanation). */
+  hint?: string;
+  /** When set, the tile is a button (keyboard + screen-reader friendly). */
+  onClick?: () => void;
+  /** Highlights the tile when its filter/view is active. */
+  pressed?: boolean;
 }) {
-  return (
-    <div className="groobey-card groobey-stat-tile rounded-2xl border border-border p-4 transition duration-200">
-      <Icon className="mb-3 size-5 text-primary" />
-      <p className="text-2xl font-black tabular-nums">{value}</p>
-      <p className="text-sm font-semibold text-muted-foreground">{label}</p>
-    </div>
+  const className = cn(
+    "groobey-card groobey-stat-tile min-w-0 rounded-2xl border border-border p-3 text-left transition duration-200 sm:p-4",
+    onClick &&
+      "cursor-pointer select-none hover:border-primary/45 hover:shadow-md active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+    pressed && "border-primary/45 bg-primary/10 shadow-sm ring-1 ring-primary/25",
   );
+  const body = (
+    <>
+      <Icon className="mb-2 size-5 text-primary sm:mb-3" aria-hidden />
+      <p className="text-xl font-black tabular-nums sm:text-2xl">{value}</p>
+      <p className="text-xs font-semibold leading-snug text-muted-foreground sm:text-sm">{label}</p>
+      {hint ?
+        <p className="mt-1 text-[11px] font-semibold leading-snug text-muted-foreground">{hint}</p>
+      : null}
+    </>
+  );
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        className={className}
+        onClick={onClick}
+        aria-pressed={pressed}
+        aria-label={`${label}: ${value}. Show matching orders.`}
+      >
+        {body}
+      </button>
+    );
+  }
+  return <div className={className}>{body}</div>;
 }
 
 export function InlineFeedback({
@@ -158,7 +234,7 @@ export function InlineFeedback({
 }) {
   if (!error && !notice) return null;
   return (
-    <div className={`space-y-2 ${className}`.trim()}>
+    <div className={`space-y-2 ${className}`.trim()} aria-live="polite">
       {error ?
         <div
           role="alert"

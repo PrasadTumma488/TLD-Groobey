@@ -9,8 +9,10 @@ import {
   GroobeyLoadingScreen,
 } from "@/components/groobey/groobey-brand-logo";
 import { Button } from "@/components/ui/button";
+import { GroobeySelect } from "@/components/groobey/groobey-select-field";
 import { Field, Message, PasswordField } from "@/components/groobey/workspace-ui";
 import { hydratePublicSupabaseEnvFromApi, supabase } from "@/integrations/supabase/client";
+import { groobeySignOut } from "@/lib/groobey-auth-logout";
 import type { Database } from "@/integrations/supabase/types";
 import { parseRoleFromAuthClaims } from "@/lib/groobey-auth-role";
 import { resolvePrimaryDashboard } from "@/lib/groobey-dashboard-path";
@@ -376,7 +378,7 @@ function Index() {
   if (!session) {
     return (
       <main
-        className="groobey-shell h-screen overflow-hidden px-4 py-3 text-foreground sm:px-6 lg:px-10"
+        className="groobey-shell groobey-page groobey-page-inset-top w-full min-w-0 overflow-x-hidden overflow-y-auto groobey-scrollbar px-4 py-4 text-foreground sm:px-6 sm:py-6 lg:px-10"
         style={{ "--pointer-x": pointer.x, "--pointer-y": pointer.y } as CSSProperties}
         onPointerMove={(event) => {
           setPointer({
@@ -385,8 +387,8 @@ function Index() {
           });
         }}
       >
-        <section className="mx-auto grid h-full max-w-7xl items-center gap-6 lg:grid-cols-[1.05fr_0.95fr]">
-          <div className="space-y-5">
+        <section className="mx-auto grid w-full max-w-7xl gap-6 lg:grid-cols-[1.05fr_0.95fr] lg:items-center lg:py-4">
+          <div className="order-2 hidden space-y-5 lg:order-1 lg:block">
             <GroobeyBrandLogo size="xl" withPlate className="max-w-[min(100%,20rem)]" />
             <div className="space-y-4">
               <h1 className="max-w-3xl text-3xl font-black leading-tight tracking-normal text-foreground sm:text-4xl lg:text-5xl">
@@ -411,24 +413,27 @@ function Index() {
               </div>
             </div>
           </div>
-          <div className="groobey-card rounded-2xl border border-border p-4 sm:p-6">
+          <div className="order-1 groobey-card rounded-2xl border border-border p-4 sm:p-6 lg:order-2">
             <GroobeyAuthBrand title="Enter TLD Groobey" subtitle="Secure login for your role" />
+            <p className="-mt-2 mb-4 text-center text-xs font-semibold leading-relaxed text-muted-foreground lg:hidden">
+              Grocery pricing, shops, sales, and staff attendance for general trade.
+            </p>
             <div className="space-y-5">
               <form className="space-y-3" onSubmit={handleLogin}>
                 <label className="grid gap-1.5 text-sm font-semibold text-foreground">
                   <span>Login as</span>
-                  <select
+                  <GroobeySelect
                     value={loginPortal}
-                    onChange={(event) => setLoginPortal(event.target.value as LoginPortal)}
-                    className="groobey-select h-11 w-full"
-                  >
-                    {platformAdminSignIn ?
-                      <option value="main_admin">Platform Admin</option>
-                    : null}
-                    <option value="merchant">Shop Owner</option>
-                    <option value="order_taker">Order Taker</option>
-                    <option value="employee">Delivery boy</option>
-                  </select>
+                    onValueChange={(v) => setLoginPortal(v as LoginPortal)}
+                    options={[
+                      ...(platformAdminSignIn ?
+                        [{ value: "main_admin" as const, label: "Platform Admin" }]
+                      : []),
+                      { value: "merchant", label: "Shop Owner" },
+                      { value: "order_taker", label: "Order Taker" },
+                      { value: "employee", label: "Delivery boy" },
+                    ]}
+                  />
                 </label>
                 {!platformAdminSignIn ?
                   <button
@@ -520,14 +525,14 @@ function Index() {
   if (session && isRecoveryFlow) {
     return (
       <main
-        className="groobey-shell min-h-screen overflow-hidden px-4 py-5 text-foreground sm:px-6 lg:px-10"
+        className="groobey-shell groobey-page groobey-page-inset-top overflow-x-hidden overflow-y-auto groobey-scrollbar px-4 py-5 text-foreground sm:px-6 lg:px-10"
         style={{ "--pointer-x": pointer.x, "--pointer-y": pointer.y } as CSSProperties}
       >
-        <section className="mx-auto grid min-h-[calc(100vh-2.5rem)] max-w-2xl items-center">
+        <section className="mx-auto grid min-h-[calc(100dvh-2.5rem)] max-w-2xl items-center py-4">
           <div className="groobey-card rounded-2xl border border-border p-6 sm:p-8">
             <GroobeyAuthBrand
               title="Set new password"
-              subtitle="Your recovery link is valid — choose a new password to finish reset."
+              subtitle="Your recovery link is valid - choose a new password to finish reset."
             />
             <form className="grid gap-3" onSubmit={handleUpdatePassword}>
               <PasswordField
@@ -566,7 +571,7 @@ function Index() {
 
   if (session && !isRecoveryFlow && nextDashboard === null) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background px-4 text-center">
+      <div className="groobey-page flex min-h-dvh flex-col items-center justify-center gap-4 bg-background px-4 py-8 text-center">
         <p className="text-base font-bold text-foreground">Unable to open dashboard</p>
         <p className="max-w-lg text-sm font-semibold text-muted-foreground">
           {error ||
@@ -587,12 +592,7 @@ function Index() {
           <Button
             variant="groobey"
             className="h-10 rounded-xl"
-            onClick={() => {
-              void supabase.auth.signOut();
-              setSession(null);
-              setError("");
-              setNotice("");
-            }}
+            onClick={() => void groobeySignOut()}
           >
             Sign out
           </Button>

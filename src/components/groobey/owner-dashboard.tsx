@@ -9,6 +9,7 @@ import {
   Loader2,
   Pencil,
   PackagePlus,
+  Percent,
   Plus,
   ReceiptText,
   ShoppingBasket,
@@ -19,30 +20,44 @@ import {
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
+import { GroobeySelect } from "@/components/groobey/groobey-select-field";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  GroobeySheetDialogBody,
+  GroobeySheetDialogContent,
+  GroobeySheetDialogFooter,
+  GroobeySheetDialogHeader,
+} from "@/components/groobey/groobey-sheet-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { GROOBEY_APP_NAME } from "@/lib/groobey-brand";
+import { GroceryOrderItemsList } from "@/components/groobey/grocery-order-items-list";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
-import { PRESET_GROCERY_NAMES } from "@/lib/groobey-preset-grocery-names";
 import {
   DEFAULT_GROCERY_PACK,
   GROCERY_LIST_CATEGORY,
-  GROCERY_PACK_SIZES,
   isKnownPackSize,
+  mergePackSizeOptions,
 } from "@/lib/groobey-pack-sizes";
+import { filterProductsByQuery } from "@/lib/groobey-product-catalog";
 import { isTransientDatabaseError, retryTransient } from "@/lib/groobey-retry";
+import { setGroobeyNotificationNavigate } from "@/lib/groobey-notification-nav";
+import { groobeySignOut } from "@/lib/groobey-auth-logout";
+import { useGroobeyWorkspaceNotifications } from "@/lib/groobey-workspace-notifications";
 import { backfillMySaleBillIds, salesMissingBillId } from "@/lib/groobey-bill-backfill";
+import { BULLET, EM_DASH, formatInr, MIDDLE_DOT } from "@/lib/groobey-currency";
 import { saleDisplayId, saleDisplayTime } from "@/lib/groobey-sale-display-id";
 import { salesForPeriodAnalytics, salesForPipeline } from "@/lib/groobey-sales";
 import {
+  isOrderPipelineActive,
+  orderNeedsDeliveryAssignment,
+  ordersCompletedOnDay,
+  sortActivePipelineOrders,
+} from "@/lib/groobey-order-pipeline";
+import {
   buildVerifiedSaleBillHtml,
+  customerOrderBillEmailOrderBill,
   formatStaffBillLabel,
   openBillPrintGuarded,
   printCustomerOrderBill,
@@ -52,7 +67,16 @@ import {
   sumRetail,
   tradeBillLinesFromItems,
 } from "@/lib/groobey-dual-bill";
+import type {
+  BillPreviewEmailResult,
+  BillPreviewShowOptions,
+} from "@/lib/groobey-bill-preview-bridge";
+import {
+  buildShopOwnerEmailByShopId,
+  shopOwnerEmailForOrder,
+} from "@/lib/groobey-shop-owner-email";
 import { backfillCustomerOrdersClient, ordersMissingBillId } from "@/lib/groobey-bill-backfill";
+import { formatCalendarMonthLabel } from "@/lib/groobey-order-month";
 import {
   CUSTOMER_ORDER_SELECT,
   CUSTOMER_ORDER_SELECT_LEGACY,
@@ -64,12 +88,14 @@ import {
   supabaseErrorMessage,
 } from "@/lib/groobey-delivery-order-fields";
 import { GroobeyDashboardHeader } from "./groobey-brand-logo";
+import { GroobeyNotificationBell } from "./groobey-notification-bell";
 import { BillKindButtons } from "./groobey-bill-buttons";
 import {
   createStaffAccount,
   deleteStaffAccount,
   ensureMyGroobeyCode,
   listStaffAccounts,
+  sendCustomerBillEmail,
   setStaffAccountActive,
   syncGroobeyCodes,
   updateMyProfile,
@@ -79,7 +105,10 @@ import {
 import { AccountForm } from "./groobey-forms";
 import { GroobeyExcelCatalogUpload } from "./groobey-excel-catalog-upload";
 import { TradeMarginPanel, type MarginSaveResult } from "./groobey-trade-margin-panel";
-import { parseCatalogExcelBuffer } from "@/lib/groobey-excel-catalog";
+import {
+  downloadGroceryCatalogExport,
+  parseCatalogExcelBuffer,
+} from "@/lib/groobey-excel-catalog";
 import {
   buildGroobeyIdByUserId,
   formatPersonWithGroobeyId,
@@ -136,6 +165,59 @@ const orderStatusLabel: Record<OrderStatus, string> = {
   cancelled: "Cancelled",
 };
 
+const DELIVERY_BOY_UNASSIGNED = "__unassigned__";
+
+const orderStatusClass: Record<OrderStatus, string> = {
+  pending: "bg-amber-100 text-amber-800",
+  confirmed: "bg-sky-100 text-sky-800",
+  packed: "bg-indigo-100 text-indigo-800",
+  out_for_delivery: "bg-violet-100 text-violet-800",
+  delivered: "bg-emerald-100 text-emerald-800",
+  cancelled: "bg-rose-100 text-rose-800",
+};
+
+/** Order taker bills - make shop + bill ID easy to scan (mobile + desktop). */
+const orderBillShopHighlightClass =
+  "owner-admin-order-bill-highlight-shop inline-flex max-w-full truncate rounded-lg border border-sky-300/80 bg-sky-50 px-2 py-0.5 text-xs font-black text-sky-950 shadow-sm";
+const orderBillIdHighlightClass =
+  "owner-admin-order-bill-highlight-id inline-flex max-w-full truncate rounded-lg border border-emerald-400/70 bg-emerald-50 px-2 py-0.5 font-mono text-[11px] font-black text-emerald-950 shadow-sm";
+
+function OrderStatusPill({ status }: { status: OrderStatus }) {
+  return (
+    <span
+      className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-bold leading-none ${orderStatusClass[status] ?? "bg-muted text-muted-foreground"}`}
+    >
+      {orderStatusLabel[status] ?? status}
+    </span>
+  );
+}
+
+function OrderBillLabeledHighlight({
+  label,
+  value,
+  pillClassName,
+  className,
+}: {
+  label: string;
+  value: string;
+  pillClassName: string;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "owner-admin-order-bill-labeled flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5",
+        className,
+      )}
+    >
+      <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+        {label}
+      </span>
+      <span className={pillClassName}>{value}</span>
+    </div>
+  );
+}
+
 type StaffRow = {
   userId: string;
   role: AppRole;
@@ -155,13 +237,6 @@ function sortProductsByNameUnit(list: Product[]): Product[] {
   });
 }
 
-/** Rotates one sample per button click (same names reuse different clicks). */
-const SAMPLE_GROCERY_TEMPLATES = [
-  { name: "Rice", unit: "1 kg" as const, price: 52 },
-  { name: "Wheat flour", unit: "1 kg" as const, price: 42 },
-  { name: "Refined sugar", unit: "1 kg" as const, price: 45 },
-];
-
 export function OwnerDashboard() {
   const createAccount = useServerFn(createStaffAccount);
   const updateStaff = useServerFn(updateStaffAccount);
@@ -171,6 +246,7 @@ export function OwnerDashboard() {
   const syncCodes = useServerFn(syncGroobeyCodes);
   const ensureOwnCode = useServerFn(ensureMyGroobeyCode);
   const saveMyProfile = useServerFn(updateMyProfile);
+  const sendBillEmail = useServerFn(sendCustomerBillEmail);
 
   const [session, setSession] =
     useState<Awaited<ReturnType<typeof supabase.auth.getSession>>["data"]["session"]>(null);
@@ -178,10 +254,14 @@ export function OwnerDashboard() {
   const [shops, setShops] = useState<Shop[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
   const [customerOrders, setCustomerOrders] = useState<CustomerOrder[]>([]);
+  const [settlementCustomerOrders, setSettlementCustomerOrders] = useState<CustomerOrder[]>([]);
   const [saleItems, setSaleItems] = useState<SaleItem[]>([]);
   const [attendance, setAttendance] = useState<Attendance[]>([]);
   const [adminProfile, setAdminProfile] = useState<Profile | null>(null);
   const [staffRows, setStaffRows] = useState<StaffRow[]>([]);
+  const [shopOwnerProfileEmailByUserId, setShopOwnerProfileEmailByUserId] = useState<
+    Map<string, string>
+  >(() => new Map());
   const [attendanceFilter, setAttendanceFilter] = useState<
     "all" | "pending" | "verified" | "rejected"
   >("all");
@@ -210,13 +290,13 @@ export function OwnerDashboard() {
   const [addName, setAddName] = useState("");
   const [addUnit, setAddUnit] = useState(DEFAULT_GROCERY_PACK);
   const [addPrice, setAddPrice] = useState("");
+  const [addDefaultQty, setAddDefaultQty] = useState("1");
   const [savingGlobalMargin, setSavingGlobalMargin] = useState(false);
-  const [addGroceryPickerOpen, setAddGroceryPickerOpen] = useState(false);
   const [importingExcel, setImportingExcel] = useState(false);
-  const addGroceryPickerRef = useRef<HTMLDivElement>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const sampleSeedIndex = useRef(0);
+  const [editPackUnit, setEditPackUnit] = useState(DEFAULT_GROCERY_PACK);
   const [editingStaff, setEditingStaff] = useState<StaffRow | null>(null);
+  const [staffDetailEditing, setStaffDetailEditing] = useState(false);
   const [selectedStaff, setSelectedStaff] = useState<StaffRow | null>(null);
   const [selectedAttendance, setSelectedAttendance] = useState<Attendance | null>(null);
   const [editingOrderTakerMargin, setEditingOrderTakerMargin] = useState("0");
@@ -227,6 +307,7 @@ export function OwnerDashboard() {
   const customerOrderShopIdReady = useRef(true);
   const customerOrderDeliveryFieldsReady = useRef(true);
   const [assigningDeliveryOrderId, setAssigningDeliveryOrderId] = useState<string | null>(null);
+  const [signingOut, setSigningOut] = useState(false);
   const hasSyncedGroobeyCodes = useRef(false);
   const hasEnsuredOwnGroobeyCode = useRef(false);
   const workspaceLoadInFlight = useRef(false);
@@ -248,7 +329,9 @@ export function OwnerDashboard() {
             Promise.all([
               supabase
                 .from("products")
-                .select("id,name,unit,price,category,is_active,created_at,merchant_unit_price")
+                .select(
+                  "id,name,unit,price,category,is_active,created_at,merchant_unit_price,default_quantity",
+                )
                 .order("name"),
               supabase
                 .from("shops")
@@ -279,11 +362,27 @@ export function OwnerDashboard() {
           (responses) => responses.map((r) => r.error?.message).find(Boolean),
         );
 
-        let saleItemsRes = await supabase
-          .from("sale_items")
-          .select(SALE_ITEMS_SELECT_WITH_UNIT)
-          .order("created_at", { ascending: false })
-          .limit(800);
+        const [saleItemsResFirst, customerOrdersResFirst, settlementOrdersResFirst] =
+          await Promise.all([
+          supabase
+            .from("sale_items")
+            .select(SALE_ITEMS_SELECT_WITH_UNIT)
+            .order("created_at", { ascending: false })
+            .limit(800),
+          supabase
+            .from("customer_orders")
+            .select(CUSTOMER_ORDER_SELECT)
+            .is("deleted_at", null)
+            .order("created_at", { ascending: false })
+            .limit(200),
+          supabase
+            .from("customer_orders")
+            .select(CUSTOMER_ORDER_SELECT)
+            .order("created_at", { ascending: false })
+            .limit(500),
+        ]);
+
+        let saleItemsRes = saleItemsResFirst;
         if (
           saleItemsRes.error?.message &&
           isMissingSaleItemsProductUnitError(saleItemsRes.error.message)
@@ -294,6 +393,7 @@ export function OwnerDashboard() {
             .order("created_at", { ascending: false })
             .limit(800);
         }
+
         const workspaceError = [productsRes, shopsRes, salesRes, saleItemsRes, attendanceRes, profileRes]
           .map((r) => r.error?.message)
           .find(Boolean);
@@ -312,7 +412,33 @@ export function OwnerDashboard() {
         }
         hasSyncedWorkspace.current = true;
         setProducts((productsRes.data ?? []) as Product[]);
-        setShops((shopsRes.data ?? []) as Shop[]);
+        const nextShops = (shopsRes.data ?? []) as Shop[];
+        setShops(nextShops);
+        const ownerIds = [
+          ...new Set(
+            nextShops.map((shop) => shop.created_by).filter((id): id is string => Boolean(id?.trim())),
+          ),
+        ];
+        if (ownerIds.length) {
+          const ownerProfilesRes = await supabase
+            .from("profiles")
+            .select("user_id,email")
+            .in("user_id", ownerIds);
+          if (!ownerProfilesRes.error) {
+            setShopOwnerProfileEmailByUserId(
+              new Map(
+                (ownerProfilesRes.data ?? [])
+                  .map((row) => {
+                    const email = row.email?.trim();
+                    return email ? ([row.user_id, email] as const) : null;
+                  })
+                  .filter((entry): entry is readonly [string, string] => entry != null),
+              ),
+            );
+          }
+        } else {
+          setShopOwnerProfileEmailByUserId(new Map());
+        }
         const nextSales = (salesRes.data ?? []) as Sale[];
         setSales(nextSales);
         const catalogForUnits = (productsRes.data ?? []) as Product[];
@@ -330,11 +456,7 @@ export function OwnerDashboard() {
           });
         }
 
-        let customerOrdersRes = await supabase
-          .from("customer_orders")
-          .select(CUSTOMER_ORDER_SELECT)
-          .order("created_at", { ascending: false })
-          .limit(200);
+        let customerOrdersRes = customerOrdersResFirst;
         const customerOrdersErrText = supabaseErrorMessage(customerOrdersRes.error);
         if (
           customerOrdersRes.error &&
@@ -377,6 +499,11 @@ export function OwnerDashboard() {
         }
         const nextCustomerOrders = (customerOrdersRes.data ?? []) as CustomerOrder[];
         setCustomerOrders(nextCustomerOrders);
+        if (!settlementOrdersResFirst.error) {
+          setSettlementCustomerOrders((settlementOrdersResFirst.data ?? []) as CustomerOrder[]);
+        } else {
+          setSettlementCustomerOrders(nextCustomerOrders);
+        }
         const missingOrderBills = ordersMissingBillId(nextCustomerOrders);
         if (missingOrderBills.length > 0 && !customerOrderBillBackfillAttempted.current) {
           customerOrderBillBackfillAttempted.current = true;
@@ -445,25 +572,64 @@ export function OwnerDashboard() {
   }, [loadWorkspace]);
   useEffect(() => {
     if (!session?.user) return;
-    const timer = window.setInterval(() => void loadWorkspace({ silent: true }), 30000);
+    const timer = window.setInterval(() => void loadWorkspace({ silent: true }), 60_000);
     return () => window.clearInterval(timer);
   }, [loadWorkspace, session?.user]);
+
+  const adminNotifications = useGroobeyWorkspaceNotifications({
+    userId: session?.user?.id,
+    mode: "admin",
+    onRefresh: () => void loadWorkspace({ silent: true }),
+  });
+
+  useEffect(() => {
+    setGroobeyNotificationNavigate((action) => {
+      if (action.dashboard !== "admin") return;
+      if (action.tab) setActiveTab(action.tab);
+      window.requestAnimationFrame(() => {
+        document.querySelector(".groobey-dashboard-body")?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      });
+    });
+    return () => setGroobeyNotificationNavigate(null);
+  }, []);
 
   useEffect(() => {
     void loadStaff();
   }, [loadStaff]);
 
   useEffect(() => {
-    if (editingStaff?.role !== "order_taker") return;
+    if (!editingProduct) return;
+    setEditPackUnit(
+      isKnownPackSize(editingProduct.unit) ? editingProduct.unit : DEFAULT_GROCERY_PACK,
+    );
+  }, [editingProduct?.id, editingProduct?.unit]);
+
+  useEffect(() => {
+    const orderTakerId =
+      staffDetailEditing ? editingStaff?.userId : selectedStaff?.userId;
+    const isOrderTaker =
+      staffDetailEditing
+        ? editingStaff?.role === "order_taker"
+        : selectedStaff?.role === "order_taker";
+    if (!orderTakerId || !isOrderTaker) return;
     void supabase
       .from("profiles")
       .select("trade_margin_percent")
-      .eq("user_id", editingStaff.userId)
+      .eq("user_id", orderTakerId)
       .maybeSingle()
       .then(({ data, error }) => {
         if (!error) setEditingOrderTakerMargin(String(data?.trade_margin_percent ?? 0));
       });
-  }, [editingStaff?.userId, editingStaff?.role]);
+  }, [
+    staffDetailEditing,
+    editingStaff?.userId,
+    editingStaff?.role,
+    selectedStaff?.userId,
+    selectedStaff?.role,
+  ]);
 
   useEffect(() => {
     if (!session?.user) return;
@@ -475,14 +641,47 @@ export function OwnerDashboard() {
     }
   }, [activeTab, loadStaff, session?.user]);
 
+  useEffect(() => {
+    if (!selectedStaff || staffDetailEditing) return;
+    const fresh = staffRows.find((r) => r.userId === selectedStaff.userId);
+    if (!fresh) return;
+    setSelectedStaff((prev) => {
+      if (!prev || prev.userId !== fresh.userId) return fresh;
+      if (
+        prev.displayName === fresh.displayName &&
+        prev.email === fresh.email &&
+        prev.phone === fresh.phone &&
+        prev.isActive === fresh.isActive &&
+        prev.groobeyId === fresh.groobeyId &&
+        prev.role === fresh.role
+      ) {
+        return prev;
+      }
+      return fresh;
+    });
+  }, [staffRows, selectedStaff?.userId, staffDetailEditing]);
+
   function openStaffDetail(row: StaffRow) {
     setSelectedStaff(row);
-    setEditingStaff(row);
+    setEditingStaff(null);
+    setStaffDetailEditing(false);
   }
 
   function closeStaffDetail() {
     setSelectedStaff(null);
     setEditingStaff(null);
+    setStaffDetailEditing(false);
+  }
+
+  function startStaffDetailEdit() {
+    if (!selectedStaff) return;
+    setEditingStaff(selectedStaff);
+    setStaffDetailEditing(true);
+  }
+
+  function cancelStaffDetailEdit() {
+    setEditingStaff(null);
+    setStaffDetailEditing(false);
   }
 
   function openAttendanceDetail(row: Attendance) {
@@ -542,10 +741,10 @@ export function OwnerDashboard() {
         return;
       }
       const live = sessionData.session;
-      // Prefer React state (auth listener / memory) then persisted session â€” they can diverge briefly.
+      // Prefer React state (auth listener / memory) then persisted session -- they can diverge briefly.
       let accessToken = (session?.access_token || live?.access_token || "").trim();
       const refreshToken = (session?.refresh_token || live?.refresh_token || "").trim();
-      // `refreshSession()` throws "Auth session missing!" if there is no refresh token â€” only call when we have one.
+      // `refreshSession()` throws "Auth session missing!" if there is no refresh token -- only call when we have one.
       if (!accessToken && refreshToken) {
         const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
         if (refreshError) {
@@ -607,7 +806,7 @@ export function OwnerDashboard() {
       formElement.reset();
       setStaffFormResetNonce((prev) => prev + 1);
       await loadStaff({ quietListError: true });
-      window.setTimeout(() => void loadStaff({ quietListError: true }), 2000);
+      window.setTimeout(() => void loadStaff({ quietListError: true }), 1000);
     } catch (accountError) {
       setNotice("");
       setError(accountError instanceof Error ? accountError.message : "Unable to create account.");
@@ -683,9 +882,10 @@ export function OwnerDashboard() {
         }
       }
       setNotice("Staff login updated.");
-      closeStaffDetail();
+      setStaffDetailEditing(false);
+      setEditingStaff(null);
       void loadWorkspace({ silent: true });
-      void loadStaff();
+      void loadStaff({ quietListError: true });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unable to update staff.");
     }
@@ -738,30 +938,21 @@ export function OwnerDashboard() {
     }
   }
 
-  async function seedProducts() {
-    if (!session?.user) return;
-    setError("");
-    const idx = sampleSeedIndex.current % SAMPLE_GROCERY_TEMPLATES.length;
-    sampleSeedIndex.current += 1;
-    const template = SAMPLE_GROCERY_TEMPLATES[idx];
-    const { data: row, error: seedError } = await supabase
-      .from("products")
-      .insert({
-        name: template.name,
-        category: GROCERY_LIST_CATEGORY,
-        unit: template.unit,
-        price: template.price,
-        merchant_unit_price: template.price,
-        default_quantity: 1,
-        created_by: session.user.id,
-      } as never)
-      .select()
-      .single();
-    if (seedError) setError(seedError.message);
-    else if (row) {
-      setProducts((prev) => sortProductsByNameUnit([...prev, row]));
-      setNotice(`Added one sample: ${template.name} (${template.unit}).`);
+  function exportCatalogExcel() {
+    if (!products.length) {
+      setError("Catalog is empty. Add items or upload Excel first.");
+      return;
     }
+    downloadGroceryCatalogExport(
+      products.map((p) => ({
+        name: p.name,
+        unit: p.unit,
+        price: Number(p.price || 0),
+        default_quantity: p.default_quantity,
+        category: p.category,
+      })),
+    );
+    setNotice(`Downloaded ${products.length} grocery line(s) as TLD GROOBY Excel.`);
   }
 
   async function importProductsFromExcel(file: File) {
@@ -789,7 +980,7 @@ export function OwnerDashboard() {
           price: row.price,
           merchant_unit_price: row.price,
           default_quantity: row.defaultQuantity,
-          category: GROCERY_LIST_CATEGORY,
+          category: row.category?.trim() || GROCERY_LIST_CATEGORY,
         };
         if (existing) {
           const { data: updatedRow, error: updErr } = await supabase
@@ -830,7 +1021,7 @@ export function OwnerDashboard() {
       const warn =
         parsed.errors.length ? ` ${parsed.errors.slice(0, 3).join(" ")}` : "";
       setNotice(
-        `Excel import: ${parsed.rows.length} row(s) â€” ${created} added, ${updated} updated.${warn}`,
+        `Excel import (${parsed.format === "tld_groobey" ? "TLD GROOBY" : "standard"}): ${parsed.rows.length} catalog line(s) ${EM_DASH} ${created} added, ${updated} updated.${warn}`,
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Excel import failed.");
@@ -849,6 +1040,7 @@ export function OwnerDashboard() {
     setError("");
     const unit = isKnownPackSize(addUnit) ? addUnit : DEFAULT_GROCERY_PACK;
     const retail = Number(addPrice || 0);
+    const defaultQty = Math.max(1, Math.round(Number(addDefaultQty || 1)));
     const { data: row, error: productError } = await supabase
       .from("products")
       .insert({
@@ -857,7 +1049,7 @@ export function OwnerDashboard() {
         unit,
         price: retail,
         merchant_unit_price: retail,
-        default_quantity: 1,
+        default_quantity: defaultQty,
         created_by: session?.user.id,
       } as never)
       .select()
@@ -868,20 +1060,10 @@ export function OwnerDashboard() {
       setAddName("");
       setAddUnit(DEFAULT_GROCERY_PACK);
       setAddPrice("");
-      setAddGroceryPickerOpen(false);
+      setAddDefaultQty("1");
       setNotice("Product added.");
     }
   }
-
-  useEffect(() => {
-    if (!addGroceryPickerOpen) return;
-    function handleMouseDown(e: MouseEvent) {
-      if (addGroceryPickerRef.current?.contains(e.target as Node)) return;
-      setAddGroceryPickerOpen(false);
-    }
-    document.addEventListener("mousedown", handleMouseDown);
-    return () => document.removeEventListener("mousedown", handleMouseDown);
-  }, [addGroceryPickerOpen]);
 
   async function updateProductFromForm(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -890,12 +1072,15 @@ export function OwnerDashboard() {
     const form = new FormData(event.currentTarget);
     const unitRaw = String(form.get("unit") || "").trim();
     const unit = isKnownPackSize(unitRaw) ? unitRaw : editingProduct.unit;
+    const defaultQty = Math.max(1, Math.round(Number(form.get("default_quantity") || 1)));
     const { data: updated, error: productError } = await supabase
       .from("products")
       .update({
         name: String(form.get("name") || "").trim(),
         unit,
         price: Number(form.get("price") || 0),
+        merchant_unit_price: Number(form.get("price") || 0),
+        default_quantity: defaultQty,
         category: GROCERY_LIST_CATEGORY,
       } as never)
       .eq("id", editingProduct.id)
@@ -970,32 +1155,6 @@ export function OwnerDashboard() {
     }
   }
 
-  async function bulkAdjustRates(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const pct = Number(form.get("percent") || 0);
-    if (!Number.isFinite(pct)) return;
-    const factor = 1 + pct / 100;
-    const targets = filteredProducts;
-    const nextById = new Map(
-      targets.map((p) => [p.id, Math.round(p.price * factor * 100) / 100] as const),
-    );
-    await Promise.all(
-      [...nextById.entries()].map(([id, next]) =>
-        supabase
-          .from("products")
-          .update({ price: next, merchant_unit_price: next } as never)
-          .eq("id", id),
-      ),
-    );
-    setProducts((prev) =>
-      sortProductsByNameUnit(
-        prev.map((p) => (nextById.has(p.id) ? { ...p, price: nextById.get(p.id)!, merchant_unit_price: nextById.get(p.id)! } : p)),
-      ),
-    );
-    setNotice(`Adjusted rates by ${pct}% for ${targets.length} items.`);
-  }
-
   async function updateSaleVerification(
     saleId: string,
     status: Database["public"]["Enums"]["verification_status"],
@@ -1043,6 +1202,235 @@ export function OwnerDashboard() {
     }
   }
 
+  const shopOwnerEmailByShopId = useMemo(() => {
+    const profileEmailByUserId = new Map(shopOwnerProfileEmailByUserId);
+    for (const row of staffRows) {
+      const email = row.email?.trim();
+      if (email && !profileEmailByUserId.has(row.userId)) {
+        profileEmailByUserId.set(row.userId, email);
+      }
+    }
+    return buildShopOwnerEmailByShopId(shops, profileEmailByUserId);
+  }, [shopOwnerProfileEmailByUserId, shops, staffRows]);
+
+  const adminBillActorLabel = useMemo(
+    () =>
+      formatStaffBillLabel({
+        displayName:
+          adminProfile?.display_name?.trim() ||
+          String(session?.user?.user_metadata?.display_name || "").trim() ||
+          "Platform Admin",
+        groobeyCode: adminProfile?.groobey_code ?? null,
+      }),
+    [adminProfile?.display_name, adminProfile?.groobey_code, session?.user?.user_metadata?.display_name],
+  );
+
+  function saleEmailItemRows(sale: Sale) {
+    return saleItems
+      .filter((item) => item.sale_id === sale.id)
+      .map((row) => ({
+        name: row.product_name,
+        quantity: Number(row.quantity || 0),
+        packUnit: row.product_unit ?? undefined,
+        unitPrice: Number(row.unit_price || 0),
+        merchantUnitPrice: Number(row.merchant_unit_price ?? row.unit_price ?? 0),
+      }));
+  }
+
+  async function sendAdminSaleCustomerBillEmail(
+    sale: Sale,
+    customerEmail: string,
+  ): Promise<BillPreviewEmailResult> {
+    if (!session?.access_token) return { error: "Not signed in." };
+    const trimmed = customerEmail.trim();
+    if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      return { error: "Enter a valid customer email address." };
+    }
+    const shop = shops.find((item) => item.id === sale.shop_id);
+    try {
+      const result = await sendBillEmail({
+        data: {
+          requesterToken: session.access_token,
+          customerEmail: trimmed,
+          subject:
+            sale.bill_number ?
+              `Bill ${sale.bill_number} - ${GROOBEY_APP_NAME}`
+            : `Bill - ${GROOBEY_APP_NAME}`,
+          shopName: shop?.name ?? GROOBEY_APP_NAME,
+          ownerName: adminBillActorLabel,
+          billDate: (sale.sold_at || sale.created_at || "").slice(0, 16),
+          billKind: "customer",
+          billNumber: sale.bill_number?.trim() || undefined,
+          items: saleEmailItemRows(sale),
+        },
+      });
+      return { notice: `Customer bill emailed to ${result.deliveredTo}.` };
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : "Unable to send bill email." };
+    }
+  }
+
+  async function sendAdminSaleTradeBillEmail(
+    sale: Sale,
+    shopOwnerEmail: string,
+  ): Promise<BillPreviewEmailResult> {
+    if (!session?.access_token) return { error: "Not signed in." };
+    const shop = shops.find((item) => item.id === sale.shop_id);
+    if (!shop?.id) {
+      return { error: "Link this sale to a shop before emailing the trade bill." };
+    }
+    const trimmed = shopOwnerEmail.trim();
+    if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      return { error: "Enter a valid shop owner email address." };
+    }
+    try {
+      const result = await sendBillEmail({
+        data: {
+          requesterToken: session.access_token,
+          customerEmail: trimmed,
+          shopId: shop.id,
+          subject:
+            sale.bill_number ?
+              `Settlement bill ${sale.bill_number} - ${shop.name}`
+            : `Settlement bill - ${shop.name}`,
+          shopName: shop.name,
+          ownerName: adminBillActorLabel,
+          billDate: (sale.sold_at || sale.created_at || "").slice(0, 16),
+          billKind: "merchant",
+          billNumber: sale.bill_number?.trim() || undefined,
+          items: saleEmailItemRows(sale),
+        },
+      });
+      return { notice: `Trade bill emailed to ${result.deliveredTo}.` };
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : "Unable to send trade bill email." };
+    }
+  }
+
+  function saleBillPreviewOptions(
+    sale: Sale,
+    kind: "customer" | "merchant",
+  ): BillPreviewShowOptions | undefined {
+    if (!session?.access_token) return undefined;
+    if (kind === "customer") {
+      return {
+        email: {
+          defaultEmail: "",
+          send: (customerEmail) => sendAdminSaleCustomerBillEmail(sale, customerEmail),
+        },
+      };
+    }
+    const shopId = sale.shop_id?.trim();
+    return {
+      settlementEmail: {
+        defaultEmail: shopId ? shopOwnerEmailByShopId.get(shopId) ?? "" : "",
+        shopId,
+        send: (shopOwnerEmail) => sendAdminSaleTradeBillEmail(sale, shopOwnerEmail),
+      },
+    };
+  }
+
+  function shopMarginPercentForOrder(order: CustomerOrder) {
+    if (order.shop_id) {
+      const shop = shops.find((item) => item.id === order.shop_id);
+      return clampMarginPercent(
+        Number(shop?.trade_margin_percent ?? order.trade_margin_percent_applied ?? 0),
+      );
+    }
+    return clampMarginPercent(Number(order.trade_margin_percent_applied ?? 0));
+  }
+
+  async function sendAdminOrderCustomerBillEmail(
+    order: CustomerOrder,
+    customerEmail: string,
+  ): Promise<BillPreviewEmailResult> {
+    if (!session?.access_token) return { error: "Not signed in." };
+    const trimmed = customerEmail.trim();
+    if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      return { error: "Enter a valid customer email address." };
+    }
+    const shopName = order.shop_id ? shops.find((item) => item.id === order.shop_id)?.name : undefined;
+    try {
+      const result = await sendBillEmail({
+        data: {
+          requesterToken: session.access_token,
+          customerEmail: trimmed,
+          subject: `Bill ${order.bill_number || ""} - ${GROOBEY_APP_NAME}`.trim(),
+          shopName: GROOBEY_APP_NAME,
+          ownerName: adminBillActorLabel,
+          billDate: (order.created_at || "").slice(0, 16),
+          billKind: "customer",
+          billNumber: order.bill_number?.trim() || undefined,
+          orderBill: customerOrderBillEmailOrderBill(order, shopName),
+        },
+      });
+      return { notice: `Customer bill emailed to ${result.deliveredTo}.` };
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : "Unable to send bill email." };
+    }
+  }
+
+  async function sendAdminOrderTradeBillEmail(
+    order: CustomerOrder,
+    shopOwnerEmail: string,
+  ): Promise<BillPreviewEmailResult> {
+    if (!session?.access_token) return { error: "Not signed in." };
+    if (!order.shop_id?.trim()) {
+      return { error: "Link this order to a shop before emailing the trade bill." };
+    }
+    const trimmed = shopOwnerEmail.trim();
+    if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      return { error: "Enter a valid shop owner email address." };
+    }
+    const shopName = shops.find((item) => item.id === order.shop_id)?.name ?? "Shop";
+    try {
+      const result = await sendBillEmail({
+        data: {
+          requesterToken: session.access_token,
+          customerEmail: trimmed,
+          shopId: order.shop_id,
+          subject: `Settlement bill ${order.bill_number || ""} - ${shopName}`.trim(),
+          shopName,
+          ownerName: adminBillActorLabel,
+          billDate: (order.created_at || "").slice(0, 16),
+          billKind: "merchant",
+          billNumber: order.bill_number?.trim() || undefined,
+          orderBill: customerOrderBillEmailOrderBill(order, shopName, {
+            forMerchant: true,
+            shopMarginPercent: shopMarginPercentForOrder(order),
+          }),
+        },
+      });
+      return { notice: `Trade bill emailed to ${result.deliveredTo}.` };
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : "Unable to send trade bill email." };
+    }
+  }
+
+  function orderBillPreviewOptions(
+    order: CustomerOrder,
+    kind: "customer" | "merchant",
+  ): BillPreviewShowOptions | undefined {
+    if (!session?.access_token) return undefined;
+    const defaultCustomerEmail =
+      order.customer_phone?.includes("@") ? order.customer_phone.trim() : "";
+    if (kind === "customer") {
+      return {
+        email: {
+          defaultEmail: defaultCustomerEmail,
+          send: (customerEmail) => sendAdminOrderCustomerBillEmail(order, customerEmail),
+        },
+      };
+    }
+    return {
+      settlementEmail: {
+        defaultEmail: shopOwnerEmailForOrder(order, shopOwnerEmailByShopId),
+        shopId: order.shop_id?.trim() || undefined,
+        send: (shopOwnerEmail) => sendAdminOrderTradeBillEmail(order, shopOwnerEmail),
+      },
+    };
+  }
+
   function exportSaleBill(saleId: string, kind: "customer" | "merchant") {
     const sale = sales.find((row) => row.id === saleId);
     if (!sale) return;
@@ -1060,7 +1448,7 @@ export function OwnerDashboard() {
           displayName,
           groobeyCode: staffRow?.groobeyId ?? null,
         })
-      : "â€”";
+      : EM_DASH;
     const marginPct = resolveTradeMarginPercent({
       saleApplied: sale.trade_margin_percent_applied,
       shopMargin: shop?.trade_margin_percent,
@@ -1076,7 +1464,7 @@ export function OwnerDashboard() {
       lines,
       appliedGroobeyMarginPercent: kind === "merchant" ? marginPct : undefined,
     });
-    openBillPrintGuarded(html, kind);
+    openBillPrintGuarded(html, kind, saleBillPreviewOptions(sale, kind));
   }
 
   async function assignOrderDeliveryBoy(orderId: string, deliveryUserId: string) {
@@ -1120,10 +1508,33 @@ export function OwnerDashboard() {
       order,
       shopName: shop?.name ?? null,
       orderTakerLabel,
+      shopMarginPercent: shopMarginPercentForOrder(order),
+      preview: orderBillPreviewOptions(order, kind),
     });
     if (opened && kind === "merchant") {
-      setNotice("Settlement bill opened â€” same Bill ID as the customer copy.");
+      setNotice(`Settlement bill opened ${EM_DASH} same Bill ID as the customer copy.`);
     }
+  }
+
+  async function archiveCustomerOrder(orderId: string) {
+    const order = customerOrders.find((row) => row.id === orderId);
+    if (!order) return;
+    const ok = window.confirm(
+      "Remove this order bill from the list?\n\n" +
+        `${BULLET} Monthly settlement export still includes it\n` +
+        `${BULLET} Bill ID is kept for records`,
+    );
+    if (!ok) return;
+    setError("");
+    const { error: rpcError } = await supabase.rpc("archive_customer_order", {
+      p_order_id: orderId,
+    });
+    if (rpcError) {
+      setError(rpcError.message);
+      return;
+    }
+    setNotice("Order bill removed from list. It still counts in monthly settlement.");
+    void loadWorkspace({ silent: true });
   }
 
   async function archiveSale(saleId: string) {
@@ -1131,9 +1542,9 @@ export function OwnerDashboard() {
     if (!sale || sale.status === "pending") return;
     const ok = window.confirm(
       "Remove this sale from the sales list?\n\n" +
-        "â€¢ Weekly and monthly totals stay the same\n" +
-        "â€¢ Bill numbers are kept for monthly settlement\n" +
-        "â€¢ You can still export this monthâ€™s settlement below",
+        `${BULLET} Weekly and monthly totals stay the same\n` +
+        `${BULLET} Bill numbers are kept for monthly settlement\n` +
+        `${BULLET} You can still export this month's settlement below`,
     );
     if (!ok) return;
     setError("");
@@ -1146,86 +1557,36 @@ export function OwnerDashboard() {
     void loadWorkspace({ silent: true });
   }
 
-  function exportMonthSalesSettlement() {
+  async function exportMonthSalesSettlement() {
     const month = new Date().toISOString().slice(0, 7);
+    const monthLabel = formatCalendarMonthLabel(month);
+    const shopNameById = new Map(shops.map((s) => [s.id, s.name]));
+    const shopMarginById = new Map(shops.map((s) => [s.id, s.trade_margin_percent]));
     const monthVerified = sales.filter(
       (s) =>
         s.status === "verified" &&
         (s.sold_at || s.created_at || "").slice(0, 7) === month,
     );
-    const header = [
-      "bill_number",
-      "sale_id",
-      "shop_id",
-      "status",
-      "sold_date",
-      "retail_total",
-      "trade_total",
-      "margin",
-      "removed_from_list",
-    ].join(",");
-    const body = monthVerified.map((sale) => {
-      const rows = saleItems.filter((row) => row.sale_id === sale.id);
-      const marginPct = resolveTradeMarginPercent({
-        saleApplied: sale.trade_margin_percent_applied,
-        shopMargin: shops.find((s) => s.id === sale.shop_id)?.trade_margin_percent,
-        items: rows,
+    const monthOrders = settlementCustomerOrders.filter(
+      (o) => (o.created_at || "").slice(0, 7) === month,
+    );
+    try {
+      const { exportSettlementMonthExcel } = await import("@/lib/groobey-excel-exports");
+      await exportSettlementMonthExcel({
+        monthKey: month,
+        monthLabel,
+        sales: monthVerified,
+        saleItems,
+        orders: monthOrders,
+        shopNameById,
+        shopMarginById,
       });
-      const lines = tradeBillLinesFromItems(rows, marginPct);
-      const retailT = sumRetail(lines);
-      const tradeT = sumMerchant(lines);
-      return [
-        sale.bill_number ?? "",
-        sale.id,
-        sale.shop_id ?? "",
-        sale.status,
-        (sale.sold_at || sale.created_at || "").slice(0, 10),
-        String(Math.round(retailT)),
-        String(Math.round(tradeT)),
-        String(Math.round(retailT - tradeT)),
-        sale.deleted_at ? "yes" : "no",
-      ].join(",");
-    });
-    const monthOrders = customerOrders.filter((o) => (o.created_at || "").slice(0, 7) === month);
-    const orderHeader = [
-      "source",
-      "bill_number",
-      "order_id",
-      "shop_id",
-      "status",
-      "created_date",
-      "retail_total",
-      "trade_total",
-      "margin",
-    ].join(",");
-    const orderBody = monthOrders.map((order) => {
-      const retail = Math.round(Number(order.total_amount || 0));
-      const trade = Math.round(Number(order.merchant_settlement_amount ?? retail));
-      return [
-        "order_taker",
-        order.bill_number ?? "",
-        order.id,
-        order.shop_id ?? "",
-        order.status,
-        (order.created_at || "").slice(0, 10),
-        String(retail),
-        String(trade),
-        String(retail - trade),
-      ].join(",");
-    });
-    const combined = [header, ...body, ...(orderBody.length ? [orderHeader, ...orderBody] : [])].join(
-      "\n",
-    );
-    const blob = new Blob([combined], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `groobey-sales-settlement-${month}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    setNotice(
-      `Downloaded ${monthVerified.length} verified sale(s) and ${monthOrders.length} order-taker bill(s) for ${month}.`,
-    );
+      setNotice(
+        `Downloaded ${monthLabel} settlement Excel - ${monthVerified.length} merchant sale(s) and ${monthOrders.length} order-taker bill(s), including removed-from-list rows. Times are 12-hour AM/PM.`,
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unable to export settlement Excel.");
+    }
   }
 
   async function updateAttendanceVerification(
@@ -1301,23 +1662,15 @@ export function OwnerDashboard() {
     setNotice("Attendance CSV downloaded.");
   }
 
-  const filteredProducts = useMemo(() => {
-    const q = productSearch.trim().toLowerCase();
-    return products.filter((p) => {
-      if (!q) return true;
-      const inName = p.name.toLowerCase().includes(q);
-      const inUnit = p.unit.toLowerCase().includes(q);
-      return inName || inUnit;
-    });
-  }, [products, productSearch]);
+  const packSizeSelectOptions = useMemo(
+    () => mergePackSizeOptions(products.map((p) => p.unit)),
+    [products],
+  );
 
-  const addPresetPickList = useMemo(() => {
-    const q = addName.trim().toLowerCase();
-    const list = !q
-      ? [...PRESET_GROCERY_NAMES]
-      : PRESET_GROCERY_NAMES.filter((n) => n.toLowerCase().includes(q));
-    return list.slice(0, 200);
-  }, [addName]);
+  const filteredProducts = useMemo(
+    () => filterProductsByQuery(products, productSearch),
+    [products, productSearch],
+  );
 
   const sortedFilteredProducts = useMemo(() => {
     return [...filteredProducts].sort((a, b) => {
@@ -1334,6 +1687,25 @@ export function OwnerDashboard() {
   const month = today.slice(0, 7);
   const pendingOrderTakerOrders = useMemo(
     () => customerOrders.filter((o) => o.status === "pending"),
+    [customerOrders],
+  );
+  const activeOrderTakerOrders = useMemo(
+    () =>
+      sortActivePipelineOrders(
+        customerOrders.filter((o) => isOrderPipelineActive(o.status)),
+      ),
+    [customerOrders],
+  );
+  const unassignedHandoffOrders = useMemo(
+    () => activeOrderTakerOrders.filter((o) => orderNeedsDeliveryAssignment(o)),
+    [activeOrderTakerOrders],
+  );
+  const completedOrderTakerOrdersToday = useMemo(
+    () => ordersCompletedOnDay(customerOrders, today),
+    [customerOrders, today],
+  );
+  const outForDeliveryOrderTakerOrders = useMemo(
+    () => customerOrders.filter((o) => o.status === "out_for_delivery"),
     [customerOrders],
   );
   const monthOrderTakerOrders = useMemo(
@@ -1353,6 +1725,26 @@ export function OwnerDashboard() {
   const merchantStaffRows = staffRows.filter((row) => row.role === "merchant");
   const deliveryStaffRows = staffRows.filter((row) => row.role === "employee");
   const orderTakerRows = staffRows.filter((row) => row.role === "order_taker");
+  const deliveryBoySelectOptions = useMemo(
+    () => [
+      { value: DELIVERY_BOY_UNASSIGNED, label: "Unassigned" },
+      ...deliveryStaffRows
+        .filter((r) => r.isActive)
+        .map((boy) => ({
+          value: boy.userId,
+          label: `${boy.displayName}${boy.groobeyId ? ` (${boy.groobeyId})` : ""}`,
+        })),
+    ],
+    [deliveryStaffRows],
+  );
+  const attendanceStatusOptions = useMemo(
+    () => [
+      { value: "present", label: "Present" },
+      { value: "absent", label: "Absent" },
+      { value: "half_day", label: "Half day" },
+    ],
+    [],
+  );
   const roleLabel = (role: AppRole) =>
     role === "merchant"
       ? "Shop Owner"
@@ -1449,7 +1841,7 @@ export function OwnerDashboard() {
   const isProfileView = activeTab === "profile";
 
   function directoryShellClass(wide = false) {
-    return cn("owner-admin-directory-shell", wide && "owner-admin-directory-shell--wide");
+    return cn("groobey-centered-workspace", wide && "groobey-centered-workspace--wide");
   }
 
   function renderStaffTable(rows: StaffRow[], emptyText: string, showLocation = false) {
@@ -1564,8 +1956,8 @@ export function OwnerDashboard() {
   }
 
   function renderStaffEditForm() {
-    if (!selectedStaff) return null;
-    const row = selectedStaff;
+    if (!staffDetailEditing || !editingStaff) return null;
+    const row = editingStaff;
     if (row.role === "merchant") {
       return (
         <form className="grid gap-3" onSubmit={handleUpdateStaff} key={row.userId}>
@@ -1606,20 +1998,31 @@ export function OwnerDashboard() {
   function renderStaffDetailDialogContent() {
     if (!selectedStaff) return null;
     const row = selectedStaff;
+    const shop = shopByOwnerId.get(row.userId);
     return (
       <div className="space-y-5">
-        <div className="grid gap-3 rounded-2xl border border-border bg-muted/25 p-4 sm:grid-cols-2">
-          <div><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Name</p><p className="mt-0.5 font-black">{row.displayName || "—"}</p></div>
+        <div
+          className="grid gap-3 rounded-2xl border border-border bg-muted/25 p-4 sm:grid-cols-2"
+          aria-label="Login details"
+        >
+          <div><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Name</p><p className="mt-0.5 font-black">{row.displayName || EM_DASH}</p></div>
           <div><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Role</p><p className="mt-0.5 font-semibold">{roleLabel(row.role)}</p></div>
-          <div><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Groobey ID</p><p className="mt-0.5 font-mono text-sm font-semibold">{row.groobeyId ?? "—"}</p></div>
+          <div><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Groobey ID</p><p className="mt-0.5 font-mono text-sm font-semibold">{row.groobeyId ?? EM_DASH}</p></div>
           <div><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Status</p><p className="mt-0.5 font-semibold">{row.isActive ? "Active" : "Inactive"}</p></div>
-          <div className="sm:col-span-2"><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Email</p><p className="mt-0.5 break-all font-semibold">{row.email ?? "—"}</p></div>
-          <div className="sm:col-span-2"><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Phone</p><p className="mt-0.5 font-semibold">{row.phone ?? "—"}</p></div>
+          <div className="sm:col-span-2"><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Email</p><p className="mt-0.5 break-all font-semibold">{row.email ?? EM_DASH}</p></div>
+          <div className="sm:col-span-2"><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Phone</p><p className="mt-0.5 font-semibold">{row.phone ?? EM_DASH}</p></div>
           {row.role === "merchant" ? (
             <>
-              <div><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Shop</p><p className="mt-0.5 font-semibold">{shopNameByOwnerId.get(row.userId) ?? "—"}</p></div>
-              <div><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Location</p><p className="mt-0.5 font-semibold">{shopLocationByOwnerId.get(row.userId) ?? "—"}</p></div>
+              <div><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Shop</p><p className="mt-0.5 font-semibold">{shopNameByOwnerId.get(row.userId) ?? EM_DASH}</p></div>
+              <div><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Location</p><p className="mt-0.5 font-semibold">{shopLocationByOwnerId.get(row.userId) ?? EM_DASH}</p></div>
+              <div className="sm:col-span-2"><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Groobey margin %</p><p className="mt-0.5 font-semibold tabular-nums">{shop?.trade_margin_percent ?? 0}%</p></div>
             </>
+          ) : null}
+          {row.role === "order_taker" ? (
+            <div className="sm:col-span-2">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Groobey margin %</p>
+              <p className="mt-0.5 font-semibold tabular-nums">{editingOrderTakerMargin}%</p>
+            </div>
           ) : null}
         </div>
         <div className="flex flex-wrap gap-2">
@@ -1631,8 +2034,37 @@ export function OwnerDashboard() {
           </Button>
         </div>
         <div className="border-t border-border pt-4">
-          <p className="mb-3 text-sm font-black text-foreground">Edit details</p>
-          {renderStaffEditForm()}
+          {!staffDetailEditing ? (
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm font-semibold text-muted-foreground">
+                Tap Edit to change name, login, or shop details.
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                className="min-h-10 gap-1.5 rounded-xl"
+                aria-expanded={staffDetailEditing}
+                aria-controls="staff-detail-edit-panel"
+                onClick={startStaffDetailEdit}
+              >
+                <Pencil className="size-4" aria-hidden />
+                Edit details
+              </Button>
+            </div>
+          ) : (
+            <div id="staff-detail-edit-panel" className="space-y-3" role="region" aria-label="Edit login details">
+              <p className="text-sm font-black text-foreground">Edit details</p>
+              {renderStaffEditForm()}
+              <Button
+                type="button"
+                variant="outline"
+                className="min-h-10 rounded-xl"
+                onClick={cancelStaffDetailEdit}
+              >
+                Cancel
+              </Button>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -1653,16 +2085,24 @@ export function OwnerDashboard() {
           <div><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Work date</p><p className="mt-0.5 font-semibold">{row.work_date}</p></div>
           <div><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Verification</p><span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${verificationBadgeClass(row.verification_status)}`}>{verificationLabel(row.verification_status)}</span></div>
           <div className="sm:col-span-2"><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Destination</p><p className="mt-0.5 font-semibold">{details.destination}</p></div>
-          <div className="sm:col-span-2"><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Items</p><p className="mt-0.5 break-words font-semibold">{details.items}</p></div>
+          <div className="sm:col-span-2">
+            <GroceryOrderItemsList text={details.items === "-" ? "" : details.items} />
+          </div>
           <div className="sm:col-span-2"><p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Time</p><p className="mt-0.5 font-semibold">{details.time}</p></div>
         </div>
-        <label className="grid max-w-xs gap-1.5 text-sm font-semibold">
+        <label className="grid gap-1.5 text-sm font-semibold">
           Day status
-          <select className="groobey-select groobey-select--sm w-full" value={row.status} onChange={(e) => void updateAttendanceStatus(row.id, e.target.value as Database["public"]["Enums"]["attendance_status"])}>
-            <option value="present">Present</option>
-            <option value="absent">Absent</option>
-            <option value="half_day">Half day</option>
-          </select>
+          <GroobeySelect
+            size="sm"
+            value={row.status}
+            onValueChange={(v) =>
+              void updateAttendanceStatus(
+                row.id,
+                v as Database["public"]["Enums"]["attendance_status"],
+              )
+            }
+            options={attendanceStatusOptions}
+          />
         </label>
         {row.verification_status === "pending" ? (
           <div className="flex flex-wrap gap-2">
@@ -1682,7 +2122,7 @@ export function OwnerDashboard() {
             <Download className="size-4" /> Export CSV
           </Button>
           <div
-            className="inline-flex w-full overflow-x-auto rounded-xl border border-border bg-card/70 p-1 sm:w-auto"
+            className="flex w-full flex-wrap gap-1 rounded-xl border border-border bg-card/70 p-1 sm:inline-flex sm:w-auto sm:flex-nowrap"
             role="tablist"
             aria-label="Attendance verification filter"
           >
@@ -1837,42 +2277,75 @@ export function OwnerDashboard() {
         }
         actions={
           <>
+            <GroobeyNotificationBell
+              items={adminNotifications.items}
+              unreadCount={adminNotifications.unreadCount}
+              onMarkAllRead={adminNotifications.markAllRead}
+              onMarkRead={adminNotifications.markRead}
+              onClearAll={adminNotifications.clearAll}
+            />
             <Button
               variant={activeTab === "profile" ? "outline" : "groobey"}
-              className="min-h-11 rounded-xl"
+              className="min-h-10 flex-1 rounded-xl px-2.5 text-xs sm:min-h-11 sm:flex-none sm:px-4 sm:text-sm"
               onClick={() => setActiveTab("overview")}
             >
               Dashboard
             </Button>
             <Button
               variant={activeTab === "profile" ? "groobey" : "outline"}
-              className="min-h-11 rounded-xl"
+              className="min-h-10 flex-1 rounded-xl px-2.5 text-xs sm:min-h-11 sm:flex-none sm:px-4 sm:text-sm"
               onClick={() => setActiveTab("profile")}
             >
               Profile
             </Button>
             <Button
               variant="outline"
-              className="min-h-11 rounded-xl"
-              onClick={() => supabase.auth.signOut()}
+              className="inline-flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-xl px-2.5 text-xs sm:min-h-11 sm:flex-none sm:px-4 sm:text-sm"
+              disabled={signingOut}
+              onClick={() => {
+                if (signingOut) return;
+                setSigningOut(true);
+                void groobeySignOut();
+              }}
             >
-              Logout
+              {signingOut ?
+                <>
+                  <Loader2 className="mr-1.5 size-4 shrink-0 animate-spin" aria-hidden />
+                  Logging out
+                </>
+              : "Logout"}
             </Button>
           </>
         }
       />
-      <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-10">
+      <div className="groobey-dashboard-body mx-auto flex min-w-0 max-w-7xl flex-col gap-5 px-4 py-4 sm:gap-6 sm:px-6 sm:py-6 lg:px-10">
 
       {!isProfileView ? (
-        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Stat icon={PackagePlus} label="Products" value={String(products.length)} />
+        <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <Stat
+            icon={PackagePlus}
+            label="Products"
+            value={String(products.length)}
+            onClick={() => setActiveTab("catalog")}
+          />
           <Stat
             icon={Store}
             label="Shops"
             value={String(shops.filter((s) => s.is_active).length)}
+            onClick={() => setActiveTab("shop-owners")}
           />
-          <Stat icon={ReceiptText} label="Sales (loaded)" value={String(sales.length)} />
-          <Stat icon={ClipboardList} label="Attendance rows" value={String(attendance.length)} />
+          <Stat
+            icon={ReceiptText}
+            label="Sales (loaded)"
+            value={String(sales.length)}
+            onClick={() => setActiveTab("sales")}
+          />
+          <Stat
+            icon={ClipboardList}
+            label="Attendance rows"
+            value={String(attendance.length)}
+            onClick={() => setActiveTab("attendance")}
+          />
         </section>
       ) : null}
 
@@ -1884,57 +2357,41 @@ export function OwnerDashboard() {
         showAlerts={false}
       />
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="min-w-0 w-full">
         {!isProfileView ? (
-          <TabsList className="owner-admin-tabs groobey-tab-scroll mb-4 flex h-auto w-full max-w-full gap-1.5 rounded-xl p-2 md:grid md:grid-cols-4 md:overflow-visible lg:inline-flex lg:flex-nowrap">
-          <TabsTrigger
-            value="overview"
-            className="groobey-tab-item min-h-11 min-w-[7.25rem] gap-1.5 rounded-lg px-3 text-xs shadow-none sm:min-w-0 sm:text-sm md:min-w-0 data-[state=active]:shadow-sm"
-          >
-            <LayoutDashboard className="size-4 shrink-0" /> Overview
-          </TabsTrigger>
-          <TabsTrigger
-            value="create-logins"
-            className="groobey-tab-item min-h-11 min-w-[8.5rem] gap-1.5 rounded-lg px-3 text-xs shadow-none sm:min-w-0 sm:text-sm md:min-w-0 data-[state=active]:shadow-sm"
-          >
-            <UsersRound className="size-4 shrink-0" /> Create Logins
-          </TabsTrigger>
-          <TabsTrigger
-            value="shop-owners"
-            className="groobey-tab-item min-h-11 min-w-[8.25rem] gap-1.5 rounded-lg px-3 text-xs shadow-none sm:min-w-0 sm:text-sm md:min-w-0 data-[state=active]:shadow-sm"
-          >
-            <UsersRound className="size-4 shrink-0" /> Shop Owners
-          </TabsTrigger>
-          <TabsTrigger
-            value="staff"
-            className="groobey-tab-item min-h-11 min-w-[6.5rem] gap-1.5 rounded-lg px-3 text-xs shadow-none sm:min-w-0 sm:text-sm md:min-w-0 data-[state=active]:shadow-sm"
-          >
-            <UsersRound className="size-4 shrink-0" /> Staff
-          </TabsTrigger>
-          <TabsTrigger
-            value="orders-team"
-            className="groobey-tab-item min-h-11 min-w-[8.5rem] gap-1.5 rounded-lg px-3 text-xs shadow-none sm:min-w-0 sm:text-sm md:min-w-0 data-[state=active]:shadow-sm"
-          >
-            <UsersRound className="size-4 shrink-0" /> Orders Team
-          </TabsTrigger>
-          <TabsTrigger
-            value="catalog"
-            className="groobey-tab-item min-h-11 min-w-[7rem] gap-1.5 rounded-lg px-3 text-xs shadow-none sm:min-w-0 sm:text-sm md:min-w-0 data-[state=active]:shadow-sm"
-          >
-            <IndianRupee className="size-4 shrink-0" /> Grocery
-          </TabsTrigger>
-          <TabsTrigger
-            value="sales"
-            className="groobey-tab-item min-h-11 min-w-[6.5rem] gap-1.5 rounded-lg px-3 text-xs shadow-none sm:min-w-0 sm:text-sm md:min-w-0 data-[state=active]:shadow-sm"
-          >
-            <ReceiptText className="size-4 shrink-0" /> Sales
-          </TabsTrigger>
-          <TabsTrigger
-            value="attendance"
-            className="groobey-tab-item min-h-11 min-w-[8.5rem] gap-1.5 rounded-lg px-3 text-xs shadow-none sm:min-w-0 sm:text-sm md:min-w-0 data-[state=active]:shadow-sm"
-          >
-            <ClipboardList className="size-4 shrink-0" /> Attendance
-          </TabsTrigger>
+          <TabsList className="owner-admin-tabs owner-admin-tab-grid !mb-5 !grid h-auto min-h-0 w-full rounded-2xl p-2">
+            <TabsTrigger value="overview" className="owner-admin-tab-trigger">
+              <LayoutDashboard className="size-4 shrink-0 opacity-90" aria-hidden />
+              <span>Overview</span>
+            </TabsTrigger>
+            <TabsTrigger value="create-logins" className="owner-admin-tab-trigger">
+              <UsersRound className="size-4 shrink-0 opacity-90" aria-hidden />
+              <span>Create logins</span>
+            </TabsTrigger>
+            <TabsTrigger value="shop-owners" className="owner-admin-tab-trigger">
+              <UsersRound className="size-4 shrink-0 opacity-90" aria-hidden />
+              <span>Shop owners</span>
+            </TabsTrigger>
+            <TabsTrigger value="staff" className="owner-admin-tab-trigger">
+              <UsersRound className="size-4 shrink-0 opacity-90" aria-hidden />
+              <span>Staff</span>
+            </TabsTrigger>
+            <TabsTrigger value="orders-team" className="owner-admin-tab-trigger">
+              <UsersRound className="size-4 shrink-0 opacity-90" aria-hidden />
+              <span>Orders team</span>
+            </TabsTrigger>
+            <TabsTrigger value="catalog" className="owner-admin-tab-trigger">
+              <IndianRupee className="size-4 shrink-0 opacity-90" aria-hidden />
+              <span>Grocery</span>
+            </TabsTrigger>
+            <TabsTrigger value="sales" className="owner-admin-tab-trigger">
+              <ReceiptText className="size-4 shrink-0 opacity-90" aria-hidden />
+              <span>Sales</span>
+            </TabsTrigger>
+            <TabsTrigger value="attendance" className="owner-admin-tab-trigger">
+              <ClipboardList className="size-4 shrink-0 opacity-90" aria-hidden />
+              <span>Attendance</span>
+            </TabsTrigger>
           </TabsList>
         ) : null}
 
@@ -2054,82 +2511,99 @@ export function OwnerDashboard() {
 
         <TabsContent value="overview" className="space-y-4">
           <InlineFeedback {...alertsFor("overview")} />
-          <div className="rounded-xl border border-border bg-card/70 p-3">
+          <section className="owner-admin-needs-attention p-4 sm:p-5">
             <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
               Needs attention
             </p>
-            <div className="mt-2 flex flex-wrap gap-2">
+            <p className="mt-1 text-sm font-semibold text-foreground/90">
+              Jump to work that needs a decision or follow-up.
+            </p>
+            <div className="owner-admin-needs-attention-actions mt-4">
               <Button
                 type="button"
                 variant="outline"
-                className="h-9 rounded-lg text-xs"
+                className="h-auto min-h-12 w-full justify-start gap-2 rounded-xl border-2 px-4 py-3 text-left text-sm font-semibold leading-snug shadow-sm hover:bg-card"
                 onClick={() => {
                   setAttendanceFilter("pending");
                   setActiveTab("attendance");
                 }}
               >
-                Pending attendance: {pendingAttendance.length}
+                <ClipboardList className="size-5 shrink-0 text-primary" aria-hidden />
+                <span>
+                  Pending attendance
+                  <span className="mt-0.5 block text-xs font-bold text-primary tabular-nums">
+                    {pendingAttendance.length}
+                  </span>
+                </span>
               </Button>
               <Button
                 type="button"
                 variant="outline"
-                className="h-9 rounded-lg text-xs"
+                className="h-auto min-h-12 w-full justify-start gap-2 rounded-xl border-2 px-4 py-3 text-left text-sm font-semibold leading-snug shadow-sm hover:bg-card"
                 onClick={() => setActiveTab("sales")}
               >
-                Pending sales: {pendingSales.length}
+                <ReceiptText className="size-5 shrink-0 text-primary" aria-hidden />
+                <span>
+                  Pending sales
+                  <span className="mt-0.5 block text-xs font-bold text-primary tabular-nums">
+                    {pendingSales.length}
+                  </span>
+                </span>
               </Button>
               <Button
                 type="button"
                 variant="outline"
-                className="h-9 rounded-lg text-xs"
+                className="h-auto min-h-12 w-full justify-start gap-2 rounded-xl border-2 px-4 py-3 text-left text-sm font-semibold leading-snug shadow-sm hover:bg-card"
                 onClick={() => setActiveTab("sales")}
               >
-                Order taker bills: {customerOrders.length}
+                <ShoppingBasket className="size-5 shrink-0 text-primary" aria-hidden />
+                <span>
+                  Order taker bills
+                  <span className="mt-0.5 block text-xs font-bold text-primary tabular-nums">
+                    {activeOrderTakerOrders.length}
+                  </span>
+                </span>
               </Button>
               <Button
                 type="button"
                 variant="outline"
-                className="h-9 rounded-lg text-xs"
+                className="h-auto min-h-12 w-full justify-start gap-2 rounded-xl border-2 px-4 py-3 text-left text-sm font-semibold leading-snug shadow-sm hover:bg-card"
                 onClick={() => setActiveTab("create-logins")}
               >
-                Add shop owner / staff / order taker
+                <UsersRound className="size-5 shrink-0 text-primary" aria-hidden />
+                <span>Add shop owner / staff / order taker</span>
               </Button>
             </div>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="groobey-card rounded-2xl border border-border p-4 transition duration-200">
-              <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                Pending sales
-              </p>
-              <p className="mt-1 text-3xl font-black tabular-nums text-primary">
-                {pendingSales.length}
-              </p>
-            </div>
-            <div className="groobey-card rounded-2xl border border-border p-4 transition duration-200">
-              <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                Pending attendance
-              </p>
-              <p className="mt-1 text-3xl font-black tabular-nums text-primary">
-                {pendingAttendance.length}
-              </p>
-            </div>
-            <div className="groobey-card rounded-2xl border border-border p-4 transition duration-200">
-              <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                Active shops
-              </p>
-              <p className="mt-1 text-3xl font-black tabular-nums text-primary">
-                {shops.filter((s) => s.is_active).length}
-              </p>
-            </div>
-            <div className="groobey-card rounded-2xl border border-primary/25 bg-primary/5 p-4 transition duration-200">
-              <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                Groobey margin (all shops)
-              </p>
-              <p className="mt-1 text-3xl font-black tabular-nums text-primary">{globalTradeMargin}%</p>
-              <p className="mt-1 text-xs font-semibold text-muted-foreground">
-                Set on Sales tab Â· off retail on trade / settlement bills
-              </p>
-            </div>
+          </section>
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <Stat
+              icon={ReceiptText}
+              label="Pending sales"
+              value={String(pendingSales.length)}
+              onClick={() => setActiveTab("sales")}
+            />
+            <Stat
+              icon={ClipboardList}
+              label="Pending attendance"
+              value={String(pendingAttendance.length)}
+              onClick={() => {
+                setAttendanceFilter("pending");
+                setActiveTab("attendance");
+              }}
+            />
+            <Stat
+              icon={Store}
+              label="Active shops"
+              value={String(shops.filter((s) => s.is_active).length)}
+              onClick={() => setActiveTab("shop-owners")}
+            />
+            <Stat
+              icon={Percent}
+              label="Groobey margin (all shops)"
+              value={`${globalTradeMargin}%`}
+              hint={`Set on Sales tab ${EM_DASH} off retail on trade / settlement bills.`}
+              onClick={() => setActiveTab("sales")}
+            />
           </div>
           <div className="grid gap-4 lg:grid-cols-2">
             <Panel title="Quick approvals - attendance" icon={Bike}>
@@ -2137,7 +2611,7 @@ export function OwnerDashboard() {
                 title="Pending attendance"
                 records={pendingAttendance.map((a) => ({
                   id: a.id,
-                  label: `${a.work_date} Â· ${a.status} Â· ${formatPersonWithGroobeyId({
+                  label: `${a.work_date} · ${a.status} · ${formatPersonWithGroobeyId({
                     userId: a.worker_id,
                     displayName: staffNameByUserId.get(a.worker_id),
                     groobeyByUserId,
@@ -2181,9 +2655,11 @@ export function OwnerDashboard() {
 
         <TabsContent value="create-logins" className="space-y-6">
           <InlineFeedback {...alertsFor("create-logins")} />
-          <Panel title="Create shop owner, staff, or order taker login" icon={UsersRound}>
-            <AccountForm onCreate={handleCreateStaff} resetNonce={staffFormResetNonce} />
-          </Panel>
+          <div className={directoryShellClass()}>
+            <Panel title="Create shop owner, staff, or order taker login" icon={UsersRound}>
+              <AccountForm onCreate={handleCreateStaff} resetNonce={staffFormResetNonce} />
+            </Panel>
+          </div>
         </TabsContent>
 
         <TabsContent value="shop-owners" className="space-y-6">
@@ -2230,112 +2706,41 @@ export function OwnerDashboard() {
         <TabsContent value="catalog" className="space-y-6">
           <InlineFeedback {...alertsFor("catalog")} />
           <div className="rounded-xl border border-border bg-muted/40 p-3 text-sm font-semibold text-muted-foreground">
-            One grocery list: each row is an item with pack size, retail rate, and optional default
-            qty. Upload Excel to bulk-fill the catalog, or add items one by one below.
+            Upload your <strong>TLD GROOBY</strong> Excel (S.No, CATEGORY, PRODUCT, any gram/kg price
+            columns, MRP), or add items one by one. You can add columns like 50G, 1.5KG, up to 10KG - each
+            filled price becomes a catalog line. Remove old rows in the list if you no longer need them.
           </div>
           <GroobeyExcelCatalogUpload
             importing={importingExcel}
+            catalogCount={products.length}
             onImport={importProductsFromExcel}
+            onExportCatalog={exportCatalogExcel}
           />
-          <div className="flex flex-wrap gap-3">
-            <Button
-              variant="groobey"
-              className="min-h-11 rounded-xl"
-              onClick={() => void seedProducts()}
-            >
-              <Plus className="size-4" /> Add one sample item
-            </Button>
-          </div>
-          <Panel title="Search catalog" icon={PackagePlus}>
-            <label className="grid gap-1 text-sm font-semibold">
-              Search
-              <input
-                value={productSearch}
-                onChange={(e) => setProductSearch(e.target.value)}
-                className="h-11 min-h-11 rounded-xl border border-input bg-card px-3 text-sm outline-none ring-ring focus:ring-2"
-                placeholder="Name or pack size"
-                autoComplete="off"
-              />
-            </label>
-            <p className="mt-2 text-xs text-muted-foreground">
-              {productSearch.trim()
-                ? `${filteredProducts.length} match${filteredProducts.length === 1 ? "" : "es"} (of ${products.length})`
-                : `${products.length} items`}
-            </p>
-          </Panel>
-          <Panel title="Bulk rate change (%)" icon={IndianRupee}>
-            <form className="flex flex-wrap items-end gap-3" onSubmit={bulkAdjustRates}>
-              <Field name="percent" label="Percent change (+/-)" type="number" required />
-              <Button type="submit" variant="calm" className="h-11 rounded-xl">
-                Apply to filtered list
-              </Button>
-            </form>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Applies to retail rates on filtered items ({filteredProducts.length} items). Trade on settlement
-              bills uses the Groobey margin % set on the Sales tab.
-            </p>
-          </Panel>
-          <Panel title="Add product" icon={PackagePlus}>
-            <form className="grid max-w-xl gap-3" onSubmit={addProduct}>
-              <div ref={addGroceryPickerRef} className="relative grid gap-1.5">
-                <span className="text-sm font-semibold text-foreground">Grocery item</span>
-                <p className="text-xs font-semibold text-muted-foreground">
-                  Predefined names - click or focus to open the list, or type to shorten it. Pick a
-                  name, then set pack size and rate. You can also type any name that is not in the
-                  list.
-                </p>
+          <div className="groobey-centered-workspace space-y-6">
+            <Panel title="Add product" icon={PackagePlus}>
+              <form className="grid w-full gap-3" onSubmit={addProduct}>
+              <label className="grid gap-1.5 text-sm font-semibold text-foreground">
+                Grocery item name
                 <input
                   type="text"
                   required
                   value={addName}
-                  onChange={(e) => {
-                    setAddName(e.target.value);
-                    setAddGroceryPickerOpen(true);
-                  }}
-                  onFocus={() => setAddGroceryPickerOpen(true)}
+                  onChange={(e) => setAddName(e.target.value)}
                   className="h-11 min-h-11 w-full rounded-xl border border-input bg-card px-3 text-sm font-semibold outline-none ring-ring focus:ring-2"
-                  placeholder="Choose from predefined list or type a custom name"
+                  placeholder="e.g. Rice, Toor dal, Sugar"
                   autoComplete="off"
                 />
-                {addGroceryPickerOpen && addPresetPickList.length > 0 ? (
-                  <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-64 overflow-y-auto rounded-xl border border-border bg-card py-1 shadow-lg groobey-scrollbar">
-                    {addPresetPickList.map((presetName) => (
-                      <button
-                        key={presetName}
-                        type="button"
-                        className="w-full px-3 py-2.5 text-left text-sm font-semibold hover:bg-muted/80 active:bg-muted"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => {
-                          setAddName(presetName);
-                          setAddGroceryPickerOpen(false);
-                        }}
-                      >
-                        {presetName}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-                {addGroceryPickerOpen && addPresetPickList.length === 0 && addName.trim() ? (
-                  <div className="absolute left-0 right-0 top-full z-50 mt-1 rounded-xl border border-border bg-card px-3 py-2 text-xs font-semibold text-muted-foreground shadow-lg">
-                    No predefined name matches - keep typing to use a custom name, or clear to see
-                    the full list.
-                  </div>
-                ) : null}
-              </div>
+              </label>
               <label className="grid gap-1.5 text-sm font-semibold text-foreground">
                 Pack size
-                <select
-                  required
+                <GroobeySelect
                   value={addUnit}
-                  onChange={(e) => setAddUnit(e.target.value)}
-                  className="groobey-select h-11 w-full"
-                >
-                  {GROCERY_PACK_SIZES.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
+                  onValueChange={setAddUnit}
+                  options={packSizeSelectOptions.map((opt) => ({
+                    value: opt.value,
+                    label: opt.label,
+                  }))}
+                />
               </label>
               <label className="grid gap-1.5 text-sm font-semibold text-foreground">
                 Retail rate
@@ -2349,12 +2754,24 @@ export function OwnerDashboard() {
                   className="h-11 min-h-11 rounded-xl border border-input bg-card px-3 text-sm font-semibold outline-none ring-ring focus:ring-2"
                 />
               </label>
-              <Button variant="groobey" className="min-h-11 rounded-xl w-fit" type="submit">
+              <label className="grid gap-1.5 text-sm font-semibold text-foreground">
+                Default qty
+                <input
+                  type="number"
+                  required
+                  min={1}
+                  step={1}
+                  value={addDefaultQty}
+                  onChange={(e) => setAddDefaultQty(e.target.value)}
+                  className="h-11 min-h-11 rounded-xl border border-input bg-card px-3 text-sm font-semibold outline-none ring-ring focus:ring-2"
+                />
+              </label>
+              <Button variant="groobey" className="min-h-11 w-full rounded-xl sm:w-fit" type="submit">
                 <Plus className="size-4" /> Add item
               </Button>
-            </form>
-          </Panel>
-          {editingProduct && (
+              </form>
+            </Panel>
+            {editingProduct && (
             <Panel
               title="Edit grocery item"
               icon={Pencil}
@@ -2370,7 +2787,7 @@ export function OwnerDashboard() {
               }
             >
               <form
-                className="grid max-w-xl gap-3"
+                className="grid w-full gap-3"
                 key={editingProduct.id}
                 onSubmit={updateProductFromForm}
               >
@@ -2382,22 +2799,15 @@ export function OwnerDashboard() {
                 />
                 <label className="grid gap-1.5 text-sm font-semibold text-foreground">
                   Pack size
-                  <select
-                    name="unit"
-                    required
-                    defaultValue={
-                      isKnownPackSize(editingProduct.unit)
-                        ? editingProduct.unit
-                        : DEFAULT_GROCERY_PACK
-                    }
-                    className="groobey-select h-11 w-full"
-                  >
-                    {GROCERY_PACK_SIZES.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
+                  <input type="hidden" name="unit" value={editPackUnit} />
+                  <GroobeySelect
+                    value={editPackUnit}
+                    onValueChange={setEditPackUnit}
+                    options={packSizeSelectOptions.map((opt) => ({
+                      value: opt.value,
+                      label: opt.label,
+                    }))}
+                  />
                 </label>
                 <Field
                   name="price"
@@ -2406,16 +2816,39 @@ export function OwnerDashboard() {
                   required
                   defaultValue={String(editingProduct.price)}
                 />
-                <Button variant="groobey" className="min-h-11 w-fit rounded-xl" type="submit">
+                <Field
+                  name="default_quantity"
+                  label="Default qty"
+                  type="number"
+                  required
+                  defaultValue={String(editingProduct.default_quantity ?? 1)}
+                />
+                <Button variant="groobey" className="min-h-11 w-full rounded-xl sm:w-fit" type="submit">
                   Save changes
                 </Button>
               </form>
             </Panel>
           )}
+          </div>
           <Panel title="Grocery catalog" icon={ShoppingBasket}>
+            <label className="mb-3 grid gap-1 text-sm font-semibold">
+              Search
+              <input
+                value={productSearch}
+                onChange={(e) => setProductSearch(e.target.value)}
+                className="h-11 min-h-11 rounded-xl border border-input bg-card px-3 text-sm outline-none ring-ring focus:ring-2"
+                placeholder="Search name, category, pack, or price"
+                autoComplete="off"
+              />
+            </label>
+            <p className="mb-3 text-xs text-muted-foreground">
+              {productSearch.trim()
+                ? `${filteredProducts.length} match${filteredProducts.length === 1 ? "" : "es"} (of ${products.length})`
+                : `${products.length} items`}
+            </p>
             <div
               className={`space-y-2 pr-1 groobey-scrollbar ${
-                sortedFilteredProducts.length > 8 ? "max-h-[60vh] overflow-y-auto" : ""
+                sortedFilteredProducts.length > 8 ? "max-h-[min(60dvh,28rem)] overflow-y-auto groobey-scrollbar" : ""
               }`}
             >
               {sortedFilteredProducts.map((item) => (
@@ -2446,115 +2879,327 @@ export function OwnerDashboard() {
           <InlineFeedback {...alertsFor("sales")} />
           <TradeMarginPanel
             title="Groobey margin (all active shops)"
-            description="One margin for every shop. New sales: trade = retail minus this % (e.g. 8% â†’ â‚¹100 retail â†’ â‚¹92 trade). Settlement bills use this %."
+            description={`One margin for every shop. New sales: trade = retail minus this % (e.g. 8% \u2192 ${formatInr(100)} retail \u2192 ${formatInr(92)} trade). Settlement bills use this %.`}
             marginPercent={globalTradeMargin}
             saving={savingGlobalMargin}
             onSave={saveGlobalTradeMargin}
           />
-          <Panel title="Order taker bills" icon={ClipboardList}>
+          <Panel title="Order taker bills - active pipeline" icon={ClipboardList}>
+            <div className="min-w-0 overflow-x-hidden">
             <p className="mb-3 text-xs font-semibold text-muted-foreground">
-              Bills created from the Orders dashboard sync here automatically ({monthOrderTakerOrders.length}{" "}
-              this month, {pendingOrderTakerOrders.length} pending). Assign a delivery boy before
-              handoff â€” they only see orders assigned to them. Same Bill ID for customer and settlement
-              copies.
+              Pending {EM_DASH} Confirmed {EM_DASH} Packed {EM_DASH} Out for delivery only. Assign a
+              delivery boy before handoff
+              {unassignedHandoffOrders.length ?
+                ` (${unassignedHandoffOrders.length} need assignment now)`
+              : ""}
+              . Same Bill ID for customer and settlement copies.
+              {completedOrderTakerOrdersToday.length ?
+                ` ${completedOrderTakerOrdersToday.length} completed today - see panel below.`
+              : ""}
             </p>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border text-muted-foreground">
-                    <th className="py-2 text-left">Customer</th>
-                    <th className="py-2 text-left">Order taker</th>
-                    <th className="py-2 text-left">Delivery boy</th>
-                    <th className="py-2 text-left">Shop</th>
-                    <th className="py-2 text-left">Status</th>
-                    <th className="py-2 text-left">Created</th>
-                    <th className="py-2 text-left">Totals</th>
-                    <th className="py-2 text-left">Bill #</th>
-                    <th className="py-2 text-left">Print</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {customerOrders.map((order) => {
-                    const retail = Math.round(Number(order.total_amount || 0));
-                    const deliveryCharge = Math.round(Number(order.delivery_charge ?? 0));
-                    const trade = Math.round(Number(order.merchant_settlement_amount ?? retail));
-                    const margin = retail - trade;
-                    const shop = order.shop_id ? shops.find((s) => s.id === order.shop_id) : undefined;
-                    const takerRow = staffRows.find((r) => r.userId === order.created_by);
-                    const takerName =
-                      staffNameByUserId.get(order.created_by) ||
-                      takerRow?.displayName?.trim() ||
-                      "Order taker";
-                    const assignedBoy = deliveryStaffRows.find(
-                      (r) => r.userId === order.assigned_delivery_user_id,
-                    );
-                    return (
-                      <tr key={order.id} className="border-b border-border/60">
-                        <td className="py-2 text-xs font-semibold">{order.customer_name}</td>
-                        <td className="py-2 text-xs">{takerName}</td>
-                        <td className="min-w-[10rem] py-2 text-xs">
-                          <select
-                            className="groobey-select h-9 w-full max-w-[12rem] text-xs"
-                            value={order.assigned_delivery_user_id ?? ""}
-                            disabled={
-                              assigningDeliveryOrderId === order.id ||
-                              !customerOrderDeliveryFieldsReady.current
-                            }
-                            onChange={(e) =>
-                              void assignOrderDeliveryBoy(order.id, e.target.value)
-                            }
-                          >
-                            <option value="">Unassigned</option>
-                            {deliveryStaffRows
-                              .filter((r) => r.isActive)
-                              .map((boy) => (
-                                <option key={boy.userId} value={boy.userId}>
-                                  {boy.displayName}
-                                  {boy.groobeyId ? ` (${boy.groobeyId})` : ""}
-                                </option>
-                              ))}
-                          </select>
-                          {assignedBoy ?
-                            <p className="mt-1 text-[10px] font-semibold text-muted-foreground">
-                              {assignedBoy.email ?? "â€”"}
+            {unassignedHandoffOrders.length ?
+              <p className="mb-3 rounded-xl border border-amber-300/80 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-950">
+                Assign delivery boy on highlighted rows before the order leaves your desk.
+              </p>
+            : null}
+
+            <div className="space-y-3 lg:hidden">
+              {activeOrderTakerOrders.map((order) => {
+                const retail = Math.round(Number(order.total_amount || 0));
+                const trade = Math.round(Number(order.merchant_settlement_amount ?? retail));
+                const margin = retail - trade;
+                const shop = order.shop_id ? shops.find((s) => s.id === order.shop_id) : undefined;
+                const takerRow = staffRows.find((r) => r.userId === order.created_by);
+                const takerName =
+                  staffNameByUserId.get(order.created_by) ||
+                  takerRow?.displayName?.trim() ||
+                  "Order taker";
+                const assignedBoy = deliveryStaffRows.find(
+                  (r) => r.userId === order.assigned_delivery_user_id,
+                );
+                const status = order.status as OrderStatus;
+                const needsAssign = orderNeedsDeliveryAssignment(order);
+                return (
+                  <div
+                    key={order.id}
+                    className={cn(
+                      "rounded-2xl border bg-card/80 p-3 shadow-sm",
+                      needsAssign ?
+                        "border-amber-400/90 ring-1 ring-amber-300/50"
+                      : "border-border",
+                    )}
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-2 gap-y-1">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-black leading-tight">{order.customer_name}</p>
+                        <OrderBillLabeledHighlight
+                          className="mt-1.5"
+                          label="Shop"
+                          value={shop?.name ?? EM_DASH}
+                          pillClassName={orderBillShopHighlightClass}
+                        />
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <OrderStatusPill status={status} />
+                          <span className="text-[11px] font-semibold text-muted-foreground">
+                            {takerName}
+                            {MIDDLE_DOT} {order.created_at?.slice(0, 16) ?? EM_DASH}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="shrink-0 text-right text-xs font-bold leading-snug">
+                        <div>{formatInr(retail)} retail</div>
+                        <div className="text-[11px] font-semibold text-muted-foreground">
+                          {formatInr(trade)} trade {MIDDLE_DOT} {formatInr(margin)} margin
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-3 grid gap-2">
+                      <label className="grid gap-1 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+                        Delivery boy
+                        <GroobeySelect
+                          size="sm"
+                          value={order.assigned_delivery_user_id || DELIVERY_BOY_UNASSIGNED}
+                          disabled={
+                            assigningDeliveryOrderId === order.id ||
+                            !customerOrderDeliveryFieldsReady.current
+                          }
+                          onValueChange={(v) =>
+                            void assignOrderDeliveryBoy(
+                              order.id,
+                              v === DELIVERY_BOY_UNASSIGNED ? "" : v,
+                            )
+                          }
+                          options={deliveryBoySelectOptions}
+                        />
+                      </label>
+                      {assignedBoy ?
+                        <p className="text-[11px] font-semibold text-muted-foreground">
+                          {assignedBoy.email ?? EM_DASH}
+                        </p>
+                      : null}
+                      <div className="space-y-2 border-t border-border/60 pt-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <OrderStatusPill status={status} />
+                          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            Bill & print
+                          </span>
+                        </div>
+                        <OrderBillLabeledHighlight
+                          label="Bill ID"
+                          value={order.bill_number || EM_DASH}
+                          pillClassName={orderBillIdHighlightClass}
+                        />
+                        <BillKindButtons
+                          compact
+                          layout="equal"
+                          className="w-full"
+                          onPrint={(kind) => exportCustomerOrderBill(order.id, kind)}
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-10 w-full rounded-xl text-xs text-destructive hover:bg-destructive/10"
+                          onClick={() => void archiveCustomerOrder(order.id)}
+                        >
+                          <Trash2 className="size-3.5" />
+                          Remove from list
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="mb-3 hidden flex-wrap items-center gap-2 lg:flex">
+              <span className="rounded-full border border-border bg-card/90 px-3 py-1 text-xs font-bold text-foreground">
+                {activeOrderTakerOrders.length} active bill
+                {activeOrderTakerOrders.length === 1 ? "" : "s"}
+              </span>
+              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-800">
+                {completedOrderTakerOrdersToday.length} completed today
+              </span>
+            </div>
+            <div className="owner-admin-bills-table-wrap owner-admin-bills-table-wrap--order-takers hidden lg:block">
+              <div className="owner-admin-bills-table-scroll groobey-scrollbar">
+                <table>
+                  <thead>
+                    <tr>
+                      <th className="text-left">Customer</th>
+                      <th className="text-left">Order</th>
+                      <th className="text-left">Totals</th>
+                      <th className="owner-admin-bills-col-delivery text-left">Delivery</th>
+                      <th className="owner-admin-bills-col-print text-left">Print</th>
+                      <th className="text-left">Remove</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {activeOrderTakerOrders.map((order) => {
+                      const retail = Math.round(Number(order.total_amount || 0));
+                      const trade = Math.round(Number(order.merchant_settlement_amount ?? retail));
+                      const margin = retail - trade;
+                      const shop = order.shop_id ? shops.find((s) => s.id === order.shop_id) : undefined;
+                      const takerRow = staffRows.find((r) => r.userId === order.created_by);
+                      const takerName =
+                        staffNameByUserId.get(order.created_by) ||
+                        takerRow?.displayName?.trim() ||
+                        "Order taker";
+                      const status = order.status as OrderStatus;
+                      const needsAssign = orderNeedsDeliveryAssignment(order);
+                      return (
+                        <tr
+                          key={order.id}
+                          className={needsAssign ? "bg-amber-50/80" : undefined}
+                        >
+                          <td className="max-w-[10rem]">
+                            <span className="block truncate font-bold">{order.customer_name}</span>
+                          </td>
+                          <td className="min-w-0 max-w-[14rem]">
+                            <p className="truncate text-sm font-semibold text-foreground">{takerName}</p>
+                            <OrderBillLabeledHighlight
+                              className="mt-1"
+                              label="Shop"
+                              value={shop?.name ?? EM_DASH}
+                              pillClassName={orderBillShopHighlightClass}
+                            />
+                            <p className="mt-1 truncate text-xs font-semibold text-muted-foreground">
+                              {order.created_at?.slice(0, 16) ?? EM_DASH}
                             </p>
-                          : null}
-                        </td>
-                        <td className="py-2 text-xs">{shop?.name ?? "â€”"}</td>
-                        <td className="py-2 text-xs">
-                          {orderStatusLabel[order.status] ?? order.status}
-                        </td>
-                        <td className="py-2 text-xs">{order.created_at?.slice(0, 16)}</td>
-                        <td className="py-2 text-xs font-semibold">
-                          <div>â‚¹{retail} retail</div>
-                          <div className="text-[11px] font-semibold text-muted-foreground">
-                            â‚¹{trade} trade Â· â‚¹{margin} margin
-                          </div>
-                        </td>
-                        <td className="py-2 font-mono text-xs">{order.bill_number || "â€”"}</td>
-                        <td className="py-2">
-                          <BillKindButtons
-                            compact
-                            onPrint={(kind) => exportCustomerOrderBill(order.id, kind)}
-                          />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              {customerOrders.length === 0 && (
+                            <p className="mt-1">
+                              <OrderStatusPill status={status} />
+                            </p>
+                            <OrderBillLabeledHighlight
+                              className="mt-1"
+                              label="Bill ID"
+                              value={order.bill_number || EM_DASH}
+                              pillClassName={orderBillIdHighlightClass}
+                            />
+                          </td>
+                          <td className="owner-admin-bills-cell-nowrap">
+                            <span className="text-sm font-bold tabular-nums">{formatInr(retail)}</span>
+                            <span className="block text-[11px] font-semibold tabular-nums text-muted-foreground">
+                              {formatInr(trade)} trade {MIDDLE_DOT} {formatInr(margin)} mrg
+                            </span>
+                          </td>
+                          <td className="owner-admin-bills-col-delivery">
+                            <GroobeySelect
+                              size="sm"
+                              fullWidth={false}
+                              className="w-[11rem]"
+                              value={order.assigned_delivery_user_id || DELIVERY_BOY_UNASSIGNED}
+                              disabled={
+                                assigningDeliveryOrderId === order.id ||
+                                !customerOrderDeliveryFieldsReady.current
+                              }
+                              onValueChange={(v) =>
+                                void assignOrderDeliveryBoy(
+                                  order.id,
+                                  v === DELIVERY_BOY_UNASSIGNED ? "" : v,
+                                )
+                              }
+                              options={deliveryBoySelectOptions}
+                            />
+                          </td>
+                          <td className="owner-admin-bills-col-print">
+                            <BillKindButtons
+                              compact
+                              layout="compact"
+                              onPrint={(kind) => exportCustomerOrderBill(order.id, kind)}
+                            />
+                          </td>
+                          <td>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-9 rounded-lg text-xs text-destructive hover:bg-destructive/10"
+                              onClick={() => void archiveCustomerOrder(order.id)}
+                            >
+                              <Trash2 className="size-3.5" />
+                              Remove
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {activeOrderTakerOrders.length === 0 ?
                 <EmptyState
                   icon={ClipboardList}
-                  title="No order taker bills yet"
-                  text="When order takers create bills on the Orders dashboard, they appear here."
+                  title="No active order bills"
+                  text="New bills from the Orders dashboard appear here until delivery is completed."
                 />
-              )}
+              : null}
             </div>
+            {activeOrderTakerOrders.length === 0 ?
+              <div className="lg:hidden">
+                <EmptyState
+                  icon={ClipboardList}
+                  title="No active order bills"
+                  text="New bills from the Orders dashboard appear here until delivery is completed."
+                />
+              </div>
+            : null}
+            </div>
+          </Panel>
+          <Panel title={`Completed today (${completedOrderTakerOrdersToday.length})`} icon={ClipboardList}>
+              <p className="mb-3 text-xs font-semibold text-muted-foreground">
+                End of day: skim this list and Remove any mistakes. Clears automatically tomorrow morning.
+                Monthly settlement export above keeps every bill for the month.
+              </p>
+              {completedOrderTakerOrdersToday.length === 0 ?
+                <p className="text-sm font-semibold text-muted-foreground">
+                  No completed bills yet today. Finished orders will appear here until tomorrow.
+                </p>
+              : <ul className="space-y-2">
+                {completedOrderTakerOrdersToday.map((order) => {
+                  const shop = order.shop_id ? shops.find((s) => s.id === order.shop_id) : undefined;
+                  const status = order.status as OrderStatus;
+                  return (
+                    <li
+                      key={order.id}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-card/70 p-3"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-semibold">{order.customer_name}</p>
+                        <p className="font-mono text-sm font-bold text-primary">
+                          {order.bill_number || EM_DASH}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {shop?.name ?? EM_DASH} {MIDDLE_DOT}{" "}
+                          <OrderStatusPill status={status} />
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <BillKindButtons
+                          compact
+                          layout="compact"
+                          onPrint={(kind) => exportCustomerOrderBill(order.id, kind)}
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-9 rounded-lg text-xs text-destructive hover:bg-destructive/10"
+                          onClick={() => void archiveCustomerOrder(order.id)}
+                        >
+                          <Trash2 className="size-3.5" />
+                          Remove
+                        </Button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+              }
           </Panel>
           <Panel title="Monthly settlement export" icon={Download}>
             <p className="text-sm font-semibold text-muted-foreground">
-              Verified merchant sales plus order-taker bills for {month} â€” for monthly Groobey settlement.
+              Full month totals for Groobey settlement {EM_DASH} includes verified merchant sales and all
+              order-taker bills (even if removed from today&apos;s list). Use this for accounting, not the
+              daily Completed today panel.
             </p>
             <Button
               type="button"
@@ -2563,144 +3208,210 @@ export function OwnerDashboard() {
               onClick={exportMonthSalesSettlement}
             >
               <Download className="size-4" />
-              Export {month} settlement CSV
+              Export {month} settlement Excel
             </Button>
           </Panel>
           <Panel title="Sales pipeline" icon={ReceiptText}>
             <p className="mb-3 text-xs font-semibold text-muted-foreground">
               Remove hides a sale from this list only. Overview today/month counts still include it.
             </p>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border text-muted-foreground">
-                    <th className="py-2 text-left">ID</th>
-                    <th className="py-2 text-left">Destination</th>
-                    <th className="py-2 text-left">Status</th>
-                    <th className="py-2 text-left">Created</th>
-                    <th className="py-2 text-left">Totals</th>
-                    <th className="py-2 text-left">Bill #</th>
-                    <th className="py-2 text-left">Print</th>
-                    <th className="py-2 text-left">Remove</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pipelineSales.map((sale) => {
-                    const rows = saleItems.filter((row) => row.sale_id === sale.id);
-                    const marginPct = resolveTradeMarginPercent({
-                      saleApplied: sale.trade_margin_percent_applied,
-                      shopMargin: shops.find((s) => s.id === sale.shop_id)?.trade_margin_percent,
-                      items: rows,
-                    });
-                    const lines = tradeBillLinesFromItems(rows, marginPct);
-                    const retailT = sumRetail(lines);
-                    const merchantT = sumMerchant(lines);
-                    const margin = Math.round(retailT - merchantT);
-                    return (
-                    <tr key={sale.id} className="border-b border-border/60">
-                      <td className="py-2 font-mono text-xs">
-                        Sale *{saleDisplayId(sale, sales)}
-                        <div className="text-[11px] font-semibold text-muted-foreground">
+
+            <div className="space-y-3 lg:hidden">
+              {pipelineSales.map((sale) => {
+                const rows = saleItems.filter((row) => row.sale_id === sale.id);
+                const marginPct = resolveTradeMarginPercent({
+                  saleApplied: sale.trade_margin_percent_applied,
+                  shopMargin: shops.find((s) => s.id === sale.shop_id)?.trade_margin_percent,
+                  items: rows,
+                });
+                const lines = tradeBillLinesFromItems(rows, marginPct);
+                const retailT = sumRetail(lines);
+                const merchantT = sumMerchant(lines);
+                const margin = Math.round(retailT - merchantT);
+                return (
+                  <div
+                    key={sale.id}
+                    className="rounded-2xl border border-border bg-card/80 p-3 shadow-sm"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-mono text-sm font-black">
+                          Sale *{saleDisplayId(sale, sales)}
+                        </p>
+                        <p className="mt-0.5 text-[11px] font-semibold text-muted-foreground">
                           {saleDisplayTime(sale)}
-                        </div>
-                      </td>
-                      <td className="py-2">{sale.destination_type}</td>
-                      <td className="py-2">{sale.status}</td>
-                      <td className="py-2 text-xs">{sale.created_at?.slice(0, 16)}</td>
-                      <td className="py-2 text-xs font-semibold">
-                        <div>â‚¹{Math.round(retailT)} retail</div>
-                        <div className="text-[11px] font-semibold text-muted-foreground">
-                          â‚¹{Math.round(merchantT)} trade Â· â‚¹{margin} margin
-                        </div>
-                      </td>
-                      <td className="py-2 font-mono text-xs">{sale.bill_number || "â€”"}</td>
-                      <td className="py-2">
-                        <BillKindButtons
-                          compact
-                          onPrint={(kind) => exportSaleBill(sale.id, kind)}
-                        />
-                      </td>
-                      <td className="py-2">
-                        {sale.status === "verified" || sale.status === "rejected" ?
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className="h-8 rounded-lg px-2 text-xs text-destructive hover:bg-destructive/10"
-                            onClick={() => void archiveSale(sale.id)}
-                          >
-                            <Trash2 className="size-3.5" />
-                            Remove
-                          </Button>
-                        : <span className="text-xs text-muted-foreground">â€”</span>}
-                      </td>
-                    </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              {pipelineSales.length === 0 && (
+                          {MIDDLE_DOT} {sale.destination_type}
+                          {MIDDLE_DOT} {sale.created_at?.slice(0, 16)}
+                        </p>
+                      </div>
+                      <span className="shrink-0 rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-bold capitalize">
+                        {sale.status}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-xs font-bold">
+                      {formatInr(Math.round(retailT))} retail {MIDDLE_DOT}{" "}
+                      {formatInr(Math.round(merchantT))} trade {MIDDLE_DOT} {formatInr(margin)} margin
+                    </p>
+                    <p className="mt-1 font-mono text-[11px] font-bold text-muted-foreground">
+                      Bill {sale.bill_number || EM_DASH}
+                    </p>
+                    <div className="mt-3 space-y-2 border-t border-border/60 pt-2">
+                      <BillKindButtons
+                        compact
+                        layout="equal"
+                        className="w-full"
+                        onPrint={(kind) => exportSaleBill(sale.id, kind)}
+                      />
+                      {sale.status === "verified" || sale.status === "rejected" ?
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-10 w-full rounded-xl text-xs text-destructive hover:bg-destructive/10"
+                          onClick={() => void archiveSale(sale.id)}
+                        >
+                          <Trash2 className="size-3.5" />
+                          Remove from list
+                        </Button>
+                      : null}
+                    </div>
+                  </div>
+                );
+              })}
+              {pipelineSales.length === 0 ?
                 <EmptyState
                   icon={ReceiptText}
                   title="No sales yet"
                   text="Merchants will submit sales here."
                 />
-              )}
+              : null}
+            </div>
+
+            <div className="owner-admin-bills-table-wrap hidden lg:block">
+              <div className="owner-admin-bills-table-scroll groobey-scrollbar">
+                <table>
+                  <thead>
+                    <tr>
+                      <th className="text-left">ID</th>
+                      <th className="text-left">Destination</th>
+                      <th className="text-left">Status</th>
+                      <th className="text-left">Created</th>
+                      <th className="text-left">Totals</th>
+                      <th className="text-left">Bill #</th>
+                      <th className="text-left">Print</th>
+                      <th className="text-left">Remove</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pipelineSales.map((sale) => {
+                      const rows = saleItems.filter((row) => row.sale_id === sale.id);
+                      const marginPct = resolveTradeMarginPercent({
+                        saleApplied: sale.trade_margin_percent_applied,
+                        shopMargin: shops.find((s) => s.id === sale.shop_id)?.trade_margin_percent,
+                        items: rows,
+                      });
+                      const lines = tradeBillLinesFromItems(rows, marginPct);
+                      const retailT = sumRetail(lines);
+                      const merchantT = sumMerchant(lines);
+                      const margin = Math.round(retailT - merchantT);
+                      return (
+                        <tr key={sale.id}>
+                          <td className="font-mono text-xs whitespace-nowrap">
+                            <span className="font-bold">Sale *{saleDisplayId(sale, sales)}</span>
+                            <div className="text-[11px] font-semibold text-muted-foreground">
+                              {saleDisplayTime(sale)}
+                            </div>
+                          </td>
+                          <td className="text-sm font-semibold capitalize">{sale.destination_type}</td>
+                          <td>
+                            <span className="inline-flex rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-bold capitalize">
+                              {sale.status}
+                            </span>
+                          </td>
+                          <td className="whitespace-nowrap text-sm font-semibold tabular-nums text-muted-foreground">
+                            {sale.created_at?.slice(0, 16)}
+                          </td>
+                          <td className="whitespace-nowrap">
+                            <div className="text-sm font-bold">{formatInr(Math.round(retailT))} retail</div>
+                            <div className="text-[11px] font-semibold text-muted-foreground">
+                              {formatInr(Math.round(merchantT))} trade {MIDDLE_DOT}{" "}
+                              {formatInr(margin)} margin
+                            </div>
+                          </td>
+                          <td className="font-mono text-xs font-bold whitespace-nowrap">
+                            {sale.bill_number || EM_DASH}
+                          </td>
+                          <td>
+                            <BillKindButtons
+                              compact
+                              layout="stack"
+                              onPrint={(kind) => exportSaleBill(sale.id, kind)}
+                            />
+                          </td>
+                          <td className="whitespace-nowrap">
+                            {sale.status === "verified" || sale.status === "rejected" ?
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="h-9 rounded-lg px-2.5 text-xs text-destructive hover:bg-destructive/10"
+                                onClick={() => void archiveSale(sale.id)}
+                              >
+                                <Trash2 className="size-3.5" />
+                                Remove
+                              </Button>
+                            : <span className="text-xs text-muted-foreground">{EM_DASH}</span>}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {pipelineSales.length === 0 ?
+                <EmptyState
+                  icon={ReceiptText}
+                  title="No sales yet"
+                  text="Merchants will submit sales here."
+                />
+              : null}
             </div>
           </Panel>
         </TabsContent>
 
         <Dialog open={selectedStaff != null} onOpenChange={(open) => !open && closeStaffDetail()}>
-          <DialogContent
-            className={cn(
-              "flex max-h-[min(92vh,880px)] w-[min(calc(100vw-1rem),32rem)] max-w-none flex-col gap-0 overflow-hidden border-border p-0 sm:rounded-2xl",
-            )}
-            onOpenAutoFocus={(e) => e.preventDefault()}
-          >
-            {selectedStaff ? (
+          <GroobeySheetDialogContent>
+            {selectedStaff ?
               <>
-                <DialogHeader className="shrink-0 space-y-1 border-b border-border bg-card px-4 py-4 pr-12 text-left sm:px-6">
-                  <DialogTitle className="text-lg font-black tracking-tight">
-                    {selectedStaff.displayName || "Staff login"}
-                  </DialogTitle>
-                  <DialogDescription className="text-sm font-semibold">
-                    {roleLabel(selectedStaff.role)}
-                    {selectedStaff.groobeyId ? ` · ${selectedStaff.groobeyId}` : ""}
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="min-h-0 flex-1 overflow-y-auto groobey-scrollbar px-4 py-4 sm:px-6 sm:py-5">
-                  {renderStaffDetailDialogContent()}
-                </div>
+                <GroobeySheetDialogHeader
+                  title={selectedStaff.displayName || "Staff login"}
+                  description={`${roleLabel(selectedStaff.role)}${selectedStaff.groobeyId ? ` ${MIDDLE_DOT} ${selectedStaff.groobeyId}` : ""}`}
+                  onClose={closeStaffDetail}
+                />
+                <GroobeySheetDialogBody>{renderStaffDetailDialogContent()}</GroobeySheetDialogBody>
+                <GroobeySheetDialogFooter onClose={closeStaffDetail} />
               </>
-            ) : null}
-          </DialogContent>
+            : null}
+          </GroobeySheetDialogContent>
         </Dialog>
 
         <Dialog
           open={selectedAttendance != null}
           onOpenChange={(open) => !open && closeAttendanceDetail()}
         >
-          <DialogContent
-            className={cn(
-              "flex max-h-[min(92vh,880px)] w-[min(calc(100vw-1rem),32rem)] max-w-none flex-col gap-0 overflow-hidden border-border p-0 sm:rounded-2xl",
-            )}
-            onOpenAutoFocus={(e) => e.preventDefault()}
-          >
-            {selectedAttendance ? (
+          <GroobeySheetDialogContent>
+            {selectedAttendance ?
               <>
-                <DialogHeader className="shrink-0 space-y-1 border-b border-border bg-card px-4 py-4 pr-12 text-left sm:px-6">
-                  <DialogTitle className="text-lg font-black tracking-tight">
-                    Attendance · {selectedAttendance.work_date}
-                  </DialogTitle>
-                  <DialogDescription className="text-sm font-semibold">
-                    {staffNameByUserId.get(selectedAttendance.worker_id) ?? "Delivery staff"}
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="min-h-0 flex-1 overflow-y-auto groobey-scrollbar px-4 py-4 sm:px-6 sm:py-5">
-                  {renderAttendanceDetailDialogContent()}
-                </div>
+                <GroobeySheetDialogHeader
+                  title={`Attendance ${MIDDLE_DOT} ${selectedAttendance.work_date}`}
+                  description={
+                    staffNameByUserId.get(selectedAttendance.worker_id) ?? "Delivery staff"
+                  }
+                  onClose={closeAttendanceDetail}
+                />
+                <GroobeySheetDialogBody>{renderAttendanceDetailDialogContent()}</GroobeySheetDialogBody>
+                <GroobeySheetDialogFooter onClose={closeAttendanceDetail} />
               </>
-            ) : null}
-          </DialogContent>
+            : null}
+          </GroobeySheetDialogContent>
         </Dialog>
 
       </Tabs>

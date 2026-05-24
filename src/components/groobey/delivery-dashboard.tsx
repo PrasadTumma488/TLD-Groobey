@@ -1,28 +1,48 @@
 import { useServerFn } from "@tanstack/react-start";
-import { Bike, ClipboardList, Package } from "lucide-react";
+import { Bike, CalendarDays, ClipboardList, Package } from "lucide-react";
 import { type FormEvent, useCallback, useMemo, useEffect, useRef, useState } from "react";
 
 import { CustomerOrderDeliveryQueue } from "@/components/groobey/customer-order-delivery-queue";
 import { GroobeyDashboardHeader } from "@/components/groobey/groobey-brand-logo";
+import { GroobeyNotificationBell } from "@/components/groobey/groobey-notification-bell";
+import { OrdersMonthScopeBanner } from "@/components/groobey/groobey-order-list-parts";
+import { StaffIdentityCard } from "@/components/groobey/staff-identity-card";
 import { Button } from "@/components/ui/button";
-import { EmployeeWorkspace } from "@/components/groobey/groobey-forms";
-import { Message, Panel, Stat } from "@/components/groobey/workspace-ui";
+import { DeliveryAttendanceReport } from "@/components/groobey/delivery-attendance-report";
+import { DeliveryBillLogForm } from "@/components/groobey/delivery-bill-log-form";
+import { GroobeyWorkspaceShell, Message, Panel, Stat } from "@/components/groobey/workspace-ui";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import {
   CUSTOMER_ORDER_DELIVERY_SELECT,
   CUSTOMER_ORDER_DELIVERY_SELECT_LEGACY,
+  CUSTOMER_ORDER_DELIVERY_SELECT_NO_EMBED,
+  isAmbiguousCustomerOrderShopEmbedError,
   isMissingCustomerOrderShopIdError,
 } from "@/lib/groobey-customer-order-columns";
 import { isMissingCustomerOrderDeliveryFieldsError } from "@/lib/groobey-delivery-order-fields";
+import { updateAssignedDeliveryOrderStatus } from "@/lib/groobey-delivery-order-status";
+import { ordersDeliveredOnDay } from "@/lib/groobey-order-pipeline";
+import { EM_DASH } from "@/lib/groobey-currency";
 import { GROOBEY_APP_NAME } from "@/lib/groobey-brand";
 import {
-  customerOrderItemsForBillEmail,
+  customerOrderBillEmailOrderBill,
   formatStaffBillLabel,
 } from "@/lib/groobey-dual-bill";
 import type { BillPreviewEmailResult, BillPreviewShowOptions } from "@/lib/groobey-bill-preview-bridge";
-import { saleDisplayId, saleDisplayTime } from "@/lib/groobey-sale-display-id";
-import { sendCustomerBillEmail, sendWorkConfirmationEmail } from "@/lib/tldGroobey.functions";
+import {
+  calendarMonthKey,
+  filterOrdersByCalendarMonth,
+  formatCalendarMonthLabel,
+} from "@/lib/groobey-order-month";
+import { buildDeliveryLogNotes, buildDeliveryReportForScope, splitOrderLineAmounts } from "@/lib/groobey-delivery-log";
+import { upsertDeliveryAttendanceLog } from "@/lib/groobey-excel-exports";
+import { setGroobeyNotificationNavigate } from "@/lib/groobey-notification-nav";
+import { useGroobeyWorkspaceNotifications } from "@/lib/groobey-workspace-notifications";
+import { groobeySignOut } from "@/lib/groobey-auth-logout";
+import { sendCustomerBillEmail } from "@/lib/tldGroobey.functions";
+
+type AttendanceFilter = "today" | "month";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 type Shop = Database["public"]["Tables"]["shops"]["Row"];
@@ -30,20 +50,19 @@ type ProductRow = Database["public"]["Tables"]["products"]["Row"];
 
 export function DeliveryDashboard() {
   const sendBillEmail = useServerFn(sendCustomerBillEmail);
-  const sendWorkMail = useServerFn(sendWorkConfirmationEmail);
   const [session, setSession] =
     useState<Awaited<ReturnType<typeof supabase.auth.getSession>>["data"]["session"]>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [shops, setShops] = useState<Shop[]>([]);
-  const [attendanceCount, setAttendanceCount] = useState(0);
   const [attendanceRows, setAttendanceRows] = useState<
     Database["public"]["Tables"]["attendance"]["Row"][]
   >([]);
-  const [sales, setSales] = useState<Database["public"]["Tables"]["sales"]["Row"][]>([]);
-  const [saleItems, setSaleItems] = useState<Database["public"]["Tables"]["sale_items"]["Row"][]>(
-    [],
-  );
-  const [sendingBill, setSendingBill] = useState(false);
+  const [deliveredOrders, setDeliveredOrders] = useState<
+    (Database["public"]["Tables"]["customer_orders"]["Row"] & {
+      shop?: { name: string | null } | null;
+    })[]
+  >([]);
+  const [attendanceFilter, setAttendanceFilter] = useState<AttendanceFilter>("month");
   const [loading, setLoading] = useState(true);
   const [submittingWork, setSubmittingWork] = useState(false);
   const [error, setError] = useState("");
@@ -57,6 +76,10 @@ export function DeliveryDashboard() {
   >([]);
   const hasLoaded = useRef(false);
   const loadInFlight = useRef(false);
+  const attendancePanelRef = useRef<HTMLDivElement>(null);
+  const queuePanelRef = useRef<HTMLDivElement>(null);
+  const month = calendarMonthKey();
+  const monthLabel = formatCalendarMonthLabel(month);
 
   const load = useCallback(async () => {
     if (!session?.user) {
@@ -67,26 +90,21 @@ export function DeliveryDashboard() {
     loadInFlight.current = true;
     if (!hasLoaded.current) setLoading(true);
     try {
-      const [prof, att, attRows, shopRows, productsRes, salesRes, saleItemsRes] = await Promise.all([
+      const [prof, attRows, shopRows, productsRes] = await Promise.all([
         supabase.from("profiles").select("*").eq("user_id", session.user.id).maybeSingle(),
-        supabase
-          .from("attendance")
-          .select("id", { count: "exact", head: true })
-          .eq("worker_id", session.user.id),
         supabase
           .from("attendance")
           .select("*")
           .eq("worker_id", session.user.id)
           .order("work_date", { ascending: false })
-          .limit(60),
+          .limit(120),
         supabase.from("shops").select("*").eq("is_active", true).order("name"),
         supabase.from("products").select("*").order("name"),
-        supabase.from("sales").select("*").order("created_at", { ascending: false }).limit(80),
-        supabase.from("sale_items").select("*").order("created_at", { ascending: false }).limit(800),
       ]);
       const ordersWithShop = await supabase
         .from("customer_orders")
         .select(CUSTOMER_ORDER_DELIVERY_SELECT)
+        .eq("assigned_delivery_user_id", session.user.id)
         .in("status", ["confirmed", "packed", "out_for_delivery"])
         .order("created_at", { ascending: true })
         .limit(100);
@@ -96,6 +114,16 @@ export function DeliveryDashboard() {
           ? await supabase
               .from("customer_orders")
               .select(CUSTOMER_ORDER_DELIVERY_SELECT_LEGACY)
+              .eq("assigned_delivery_user_id", session.user.id)
+              .in("status", ["confirmed", "packed", "out_for_delivery"])
+              .order("created_at", { ascending: true })
+              .limit(100)
+        : ordersWithShop.error &&
+            isAmbiguousCustomerOrderShopEmbedError(ordersWithShop.error.message)
+          ? await supabase
+              .from("customer_orders")
+              .select(CUSTOMER_ORDER_DELIVERY_SELECT_NO_EMBED)
+              .eq("assigned_delivery_user_id", session.user.id)
               .in("status", ["confirmed", "packed", "out_for_delivery"])
               .order("created_at", { ascending: true })
               .limit(100)
@@ -106,8 +134,6 @@ export function DeliveryDashboard() {
       else setShops(shopRows.data ?? []);
       if (!attRows.error) setAttendanceRows(attRows.data ?? []);
       if (!productsRes.error) setProducts(productsRes.data ?? []);
-      if (!salesRes.error) setSales(salesRes.data ?? []);
-      if (!saleItemsRes.error) setSaleItems(saleItemsRes.data ?? []);
       if (
         ordersRes.error &&
         isMissingCustomerOrderDeliveryFieldsError(ordersRes.error.message)
@@ -115,6 +141,7 @@ export function DeliveryDashboard() {
         ordersRes = await supabase
           .from("customer_orders")
           .select(CUSTOMER_ORDER_DELIVERY_SELECT_LEGACY)
+          .eq("assigned_delivery_user_id", session.user.id)
           .in("status", ["confirmed", "packed", "out_for_delivery"])
           .order("created_at", { ascending: true })
           .limit(100);
@@ -128,7 +155,21 @@ export function DeliveryDashboard() {
       } else if (ordersRes.error.message) {
         setError(ordersRes.error.message);
       }
-      setAttendanceCount(att.count ?? 0);
+
+      const deliveredRes = await supabase
+        .from("customer_orders")
+        .select(CUSTOMER_ORDER_DELIVERY_SELECT_NO_EMBED)
+        .eq("assigned_delivery_user_id", session.user.id)
+        .eq("status", "delivered")
+        .order("updated_at", { ascending: false })
+        .limit(200);
+      if (!deliveredRes.error) {
+        setDeliveredOrders(
+          (deliveredRes.data ?? []) as (Database["public"]["Tables"]["customer_orders"]["Row"] & {
+            shop?: { name: string | null } | null;
+          })[],
+        );
+      }
       hasLoaded.current = true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unable to load workspace.");
@@ -153,127 +194,98 @@ export function DeliveryDashboard() {
     return () => window.clearInterval(timer);
   }, [load, session?.user]);
 
+  type DeliveryOrder = (typeof customerOrders)[number];
+
+  const notifications = useGroobeyWorkspaceNotifications({
+    userId: session?.user?.id,
+    mode: "delivery",
+    onRefresh: () => void load(),
+  });
+
+  useEffect(() => {
+    setGroobeyNotificationNavigate((action) => {
+      if (action.focus === "queue" || action.orderId) {
+        queuePanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+      if (action.focus === "attendance") {
+        setAttendanceFilter("month");
+        attendancePanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    });
+    return () => setGroobeyNotificationNavigate(null);
+  }, []);
+
+  const recordDeliveryLog = useCallback(
+    async (
+      order: DeliveryOrder,
+      deliveredAt: string,
+      opts?: { skipStatusUpdate?: boolean },
+    ) => {
+      if (!session?.user) return { error: "Not signed in." };
+      const workDate = new Date().toISOString().slice(0, 10);
+      const { itemsAmount, deliveryCharge } = splitOrderLineAmounts(order);
+      const notes = buildDeliveryLogNotes({
+        billId: order.bill_number?.trim() || "-",
+        customerName: order.customer_name,
+        orderAmount: itemsAmount,
+        deliveryCharge,
+        deliveredAt,
+        date: workDate,
+      });
+      const { error: attendanceError } = await upsertDeliveryAttendanceLog(supabase, {
+        workerId: session.user.id,
+        workDate,
+        notes,
+        billId: order.bill_number?.trim() || order.id,
+      });
+      if (attendanceError) return { error: attendanceError };
+
+      if (!opts?.skipStatusUpdate && order.status !== "delivered") {
+        const { error: statusError } = await updateAssignedDeliveryOrderStatus(
+          supabase,
+          order.id,
+          "delivered",
+        );
+        if (statusError) return { error: statusError };
+      }
+      return { error: null as string | null };
+    },
+    [session?.user],
+  );
+
   async function submitWorkUpdate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!session?.user) return;
     const formElement = event.currentTarget;
     setSubmittingWork(true);
     setError("");
+    setNotice("");
     const form = new FormData(formElement);
-    const destination = String(form.get("destination") || "shop");
-    const shopId = String(form.get("shopId") || "");
-    const otherShop = String(form.get("otherShop") || "");
-    const itemsDelivered = String(form.get("itemsDelivered") || "").trim();
-    const deliveredAt = String(form.get("deliveredAt") || "");
-    const selectedShop = destination === "shop" ? shops.find((shop) => shop.id === shopId) : null;
-    if (!itemsDelivered) {
+    const orderId = String(form.get("orderId") || "").trim();
+    const deliveredAt = String(form.get("deliveredAt") || "").trim();
+    const order = customerOrders.find((o) => o.id === orderId);
+    if (!order) {
       setSubmittingWork(false);
-      setError("Add at least one delivered item from the grocery dropdown.");
+      setError("Choose a Bill ID from your assigned orders.");
       return;
     }
-    if (destination === "shop" && !selectedShop) {
+    if (!deliveredAt) {
       setSubmittingWork(false);
-      setError("Please choose a shop.");
-      return;
-    }
-    if (destination === "other" && !otherShop.trim()) {
-      setSubmittingWork(false);
-      setError("Please enter the other destination name.");
+      setError("Choose the delivered time.");
       return;
     }
 
-    const destinationLabel =
-      destination === "shop"
-        ? `Shop: ${selectedShop?.name ?? "-"}`
-        : destination === "self"
-          ? "Self"
-          : `Other: ${otherShop}`;
-    const notes = `Destination: ${destinationLabel}\nItems: ${itemsDelivered}\nTime: ${deliveredAt}`;
-    const { error: attendanceError } = await supabase.from("attendance").upsert({
-      worker_id: session.user.id,
-      work_date: new Date().toISOString().slice(0, 10),
-      status: "present",
-      check_in: new Date().toISOString(),
-      notes,
-    } as never);
+    const result = await recordDeliveryLog(order, deliveredAt);
     setSubmittingWork(false);
-    if (attendanceError) setError(attendanceError.message);
+    if (result.error) setError(result.error);
     else {
-      setNotice("Work update submitted successfully.");
+      setNotice(`Delivery logged for ${order.bill_number || "bill"} and marked delivered.`);
       formElement.reset();
       setWorkFormResetNonce((n) => n + 1);
-      try {
-        await sendWorkMail({
-          data: {
-            requesterToken: session.access_token || "",
-            subject: "Staff work update submitted - Groobey",
-            message: `Your work update for ${new Date().toISOString().slice(0, 10)} was submitted successfully.`,
-          },
-        });
-      } catch {
-        // Keep UX smooth even if email delivery fails.
-      }
+      setAttendanceFilter("month");
       void load();
     }
   }
-
-  async function handleSendBillToCustomer(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!session?.access_token) return;
-    const formElement = event.currentTarget;
-    const form = new FormData(formElement);
-    const customerEmail = String(form.get("customerEmail") || "").trim();
-    const saleId = String(form.get("saleId") || "");
-    const sale = sales.find((row) => row.id === saleId);
-    if (!sale) {
-      setError("Choose a sale first.");
-      return;
-    }
-    const shop = shops.find((row) => row.id === sale.shop_id);
-    const rows = saleItems
-      .filter((row) => row.sale_id === sale.id)
-      .map((row) => ({
-        name: row.product_name,
-        quantity: Number(row.quantity || 0),
-        packUnit: row.product_unit ?? undefined,
-        unitPrice: Number(row.unit_price || 0),
-        merchantUnitPrice: Number(row.merchant_unit_price ?? row.unit_price ?? 0),
-      }));
-    if (!rows.length) {
-      setError("Selected sale has no items.");
-      return;
-    }
-    setSendingBill(true);
-    setError("");
-    try {
-      const result = await sendBillEmail({
-        data: {
-          requesterToken: session.access_token,
-          customerEmail,
-          subject: `Bill — ${GROOBEY_APP_NAME}`,
-          shopName: GROOBEY_APP_NAME,
-          ownerName: shop?.contact_name || "Shop Owner",
-          billDate: (sale.sold_at || sale.created_at || "").slice(0, 16),
-          billKind: "customer" as const,
-          billNumber: sale.bill_number?.trim() || undefined,
-          items: rows,
-        },
-      });
-      setNotice(`Bill email sent to ${result.deliveredTo}.`);
-      formElement.reset();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Unable to send customer bill.");
-    } finally {
-      setSendingBill(false);
-    }
-  }
-
-  const recentSales = useMemo(
-    () => sales.filter((row) => row.status === "verified").slice(0, 30),
-    [sales],
-  );
-
-  type DeliveryOrder = (typeof customerOrders)[number];
 
   const deliveryBillLabel = useMemo(
     () =>
@@ -282,6 +294,11 @@ export function DeliveryDashboard() {
         groobeyCode: profile?.groobey_code ?? null,
       }),
     [profile],
+  );
+
+  const deliveryBoyName = useMemo(
+    () => profile?.display_name?.trim() || session?.user?.email?.split("@")[0] || "Delivery boy",
+    [profile?.display_name, session?.user?.email],
   );
 
   const orderBillPreviewOptions = useCallback(
@@ -301,19 +318,18 @@ export function DeliveryDashboard() {
               return { error: "Invalid email address." };
             }
             const shop = shops.find((s) => s.id === order.shop_id);
-            const retail = Number(order.total_amount || 0);
             try {
               const result = await sendBillEmail({
                 data: {
                   requesterToken: session.access_token,
                   customerEmail: trimmed,
-                  subject: `Bill ${order.bill_number || ""} — ${GROOBEY_APP_NAME}`.trim(),
+                  subject: `Bill ${order.bill_number || ""} - ${GROOBEY_APP_NAME}`.trim(),
                   shopName: GROOBEY_APP_NAME,
                   ownerName: deliveryBillLabel,
                   billDate: (order.created_at || "").slice(0, 16),
                   billKind: "customer",
                   billNumber: order.bill_number?.trim() || undefined,
-                  items: customerOrderItemsForBillEmail(order.order_items, retail),
+                  orderBill: customerOrderBillEmailOrderBill(order, shop?.name),
                 },
               });
               return { notice: `Customer bill emailed to ${result.deliveredTo}.` };
@@ -329,93 +345,162 @@ export function DeliveryDashboard() {
     [session?.access_token, shops, deliveryBillLabel, sendBillEmail],
   );
 
-  if (!session?.user) return null;
   const today = new Date().toISOString().slice(0, 10);
-  const month = today.slice(0, 7);
-  const todayRows = attendanceRows.filter((row) => (row.work_date || "").slice(0, 10) === today);
-  const monthRows = attendanceRows.filter((row) => (row.work_date || "").slice(0, 7) === month);
+  const todayDeliveredOrders = useMemo(
+    () => ordersDeliveredOnDay(deliveredOrders, today),
+    [deliveredOrders, today],
+  );
+  const monthDeliveredOrders = useMemo(
+    () => filterOrdersByCalendarMonth(deliveredOrders, month),
+    [deliveredOrders, month],
+  );
+
+  const todayReportRows = useMemo(
+    () =>
+      buildDeliveryReportForScope(attendanceRows, deliveredOrders, { date: today }),
+    [attendanceRows, deliveredOrders, today],
+  );
+
+  const monthReportRows = useMemo(
+    () =>
+      buildDeliveryReportForScope(attendanceRows, monthDeliveredOrders, { monthKey: month }),
+    [attendanceRows, month, monthDeliveredOrders],
+  );
+
+  function scrollToAttendance(filter: AttendanceFilter) {
+    setAttendanceFilter(filter);
+    requestAnimationFrame(() => {
+      attendancePanelRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
+  }
+
+  if (!session?.user) return null;
 
   return (
-    <main className="groobey-shell min-h-screen text-foreground">
+    <main className="groobey-shell groobey-page min-h-dvh min-w-0 overflow-x-hidden text-foreground">
       <GroobeyDashboardHeader
         title="Delivery boy dashboard"
-        subtitle="Daily work updates"
+        subtitle={`${monthLabel} · customer deliveries`}
         actions={
-          <Button variant="calm" className="rounded-xl" onClick={() => supabase.auth.signOut()}>
-            Logout
-          </Button>
+          <>
+            <GroobeyNotificationBell
+              items={notifications.items}
+              unreadCount={notifications.unreadCount}
+              onMarkAllRead={notifications.markAllRead}
+              onMarkRead={notifications.markRead}
+              onClearAll={notifications.clearAll}
+            />
+            <Button variant="calm" className="rounded-xl" onClick={() => void groobeySignOut()}>
+              Logout
+            </Button>
+          </>
         }
       />
-      <div className="mx-auto max-w-7xl space-y-5 px-4 py-6">
-        <section className="grid gap-3 sm:grid-cols-3">
-          <Stat icon={ClipboardList} label="Your attendance rows" value={String(attendanceCount)} />
-          <Stat icon={ClipboardList} label="Today updates" value={String(todayRows.length)} />
-          <Stat icon={ClipboardList} label="Month updates" value={String(monthRows.length)} />
-        </section>
+      <div className="groobey-dashboard-body mx-auto max-w-7xl space-y-5 px-4 py-4 sm:py-6">
+        <OrdersMonthScopeBanner
+          monthKey={month}
+          monthLabel={monthLabel}
+          orderCount={monthDeliveredOrders.length}
+        />
+        <div className="merchant-shop-overview-split">
+          <StaffIdentityCard
+            title="Your delivery details"
+            icon={Bike}
+            subtitle="Name and login are managed by Platform Admin - contact admin to update your details."
+            rows={[
+              { label: "Delivery boy name", value: deliveryBoyName },
+              {
+                label: "Email",
+                value: profile?.email?.trim() || session.user.email || "-",
+              },
+              { label: "Groobey ID", value: profile?.groobey_code?.trim() || "-" },
+              { label: "Mobile", value: profile?.phone?.trim() || "-" },
+              { label: "In queue now", value: String(customerOrders.length) },
+              { label: "Delivered today", value: String(todayDeliveredOrders.length) },
+              { label: "Delivered this month", value: String(monthDeliveredOrders.length) },
+            ]}
+          />
+          <section className="merchant-shop-stat-steps grid grid-cols-2 gap-3">
+            <Stat
+              icon={ClipboardList}
+              label="Today deliveries"
+              value={String(todayReportRows.length)}
+              pressed={attendanceFilter === "today"}
+              onClick={() => scrollToAttendance("today")}
+            />
+            <Stat
+              icon={CalendarDays}
+              label="Month deliveries"
+              value={String(monthReportRows.length)}
+              pressed={attendanceFilter === "month"}
+              onClick={() => scrollToAttendance("month")}
+            />
+          </section>
+        </div>
         <Message error={error} notice={notice} loading={loading} />
         <Panel title="Customer orders to deliver" icon={Package}>
+          <div ref={queuePanelRef} className="scroll-mt-24">
           <p className="mb-3 text-xs font-semibold text-muted-foreground">
-            Packed and out-for-delivery orders from order takers — mark delivered when done.
+            Assigned to you only - not delivered yet. Mark Delivered once; the bill leaves this queue
+            and appears under Today&apos;s delivered bills until tomorrow.
           </p>
           <CustomerOrderDeliveryQueue
             orders={customerOrders}
             shops={shops}
             onUpdated={() => void load()}
             billPreviewOptions={orderBillPreviewOptions}
+            onStatusChanged={(order, status) => {
+              if (status === "delivered") {
+                const time = new Date().toTimeString().slice(0, 5);
+                void recordDeliveryLog(order, time, { skipStatusUpdate: true }).then((r) => {
+                  if (r.error) setError(r.error);
+                  else void load();
+                });
+              }
+            }}
           />
+          </div>
         </Panel>
-        <Panel title="Your workspace" icon={Bike}>
-          <EmployeeWorkspace
-            profile={profile}
-            shops={shops}
-            products={products}
-            resetNonce={workFormResetNonce}
-            onSubmitWork={submitWorkUpdate}
-            submitting={submittingWork}
-          />
-        </Panel>
-        <Panel title="Email bill (your inbox)" icon={ClipboardList}>
-          <form className="grid gap-3 md:max-w-xl" onSubmit={handleSendBillToCustomer}>
-            <label className="grid gap-1.5 text-sm font-semibold text-foreground">
-              Sale
-              <select
-                name="saleId"
-                required
-                defaultValue=""
-                className="groobey-select h-11 w-full"
-              >
-                <option value="" disabled>
-                  {recentSales.length ? "Choose sale" : "No recent verified sales"}
-                </option>
-                {recentSales.map((sale) => (
-                  <option key={sale.id} value={sale.id}>
-                    {saleDisplayId(sale, sales)} · {saleDisplayTime(sale)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="grid gap-1.5 text-sm font-semibold text-foreground">
-              Customer email (bill is sent here)
-              <input
-                name="customerEmail"
-                type="email"
-                placeholder="customer@example.com — leave blank to use your profile email"
-                className="h-11 rounded-xl border border-input bg-card px-3 text-sm font-semibold outline-none ring-ring focus:ring-2"
-              />
-            </label>
-            <p className="text-xs text-muted-foreground">
-              Resend delivers to this address. Verify a domain at resend.com/domains and set
-              RESEND_FROM_EMAIL for production; free-tier testing may only allow one inbox until then.
+        <GroobeyWorkspaceShell>
+          <Panel title="Log delivery by Bill ID" icon={Bike}>
+            <DeliveryBillLogForm
+              orders={customerOrders}
+              resetNonce={workFormResetNonce}
+              submitting={submittingWork}
+              onSubmit={submitWorkUpdate}
+            />
+          </Panel>
+        </GroobeyWorkspaceShell>
+        {todayDeliveredOrders.length > 0 ?
+          <p className="rounded-xl border border-border bg-muted/30 px-3 py-2 text-xs font-semibold text-muted-foreground">
+            {todayDeliveredOrders.length} delivered today {EM_DASH} see the report below or Export
+            Excel for your records (12-hour times).
+          </p>
+        : null}
+        <Panel
+          title={
+            attendanceFilter === "today" ? "Today's deliveries" : `${monthLabel} delivery report`
+          }
+          icon={ClipboardList}
+        >
+          <div ref={attendancePanelRef} className="scroll-mt-28">
+            <p className="mb-3 text-xs font-semibold text-muted-foreground">
+              One row per Bill ID. Order amount is items only; Delivery is the fee; Total is both. Times
+              are 12-hour AM/PM. Export Excel weekly for your records {EM_DASH} full month totals stay here
+              until the calendar month changes.
             </p>
-            <Button
-              type="submit"
-              variant="groobey"
-              className="rounded-xl"
-              disabled={sendingBill || !recentSales.length}
-            >
-              {sendingBill ? "Sending..." : "Send bill to customer email"}
-            </Button>
-          </form>
+            <DeliveryAttendanceReport
+              monthKey={month}
+              monthLabel={monthLabel}
+              workerName={profile?.display_name?.trim() || "Delivery"}
+              attendanceRows={attendanceRows}
+              deliveredOrders={
+                attendanceFilter === "today" ? deliveredOrders : monthDeliveredOrders
+              }
+              scope={attendanceFilter}
+              todayIso={today}
+            />
+          </div>
         </Panel>
       </div>
     </main>

@@ -1,9 +1,11 @@
-﻿import {
+import {
   billIdMetaRowsForKind,
   buildGroobeyBillDocumentHtml,
   groobeyBillColumnsForKind,
   groobeyBillTitleForKind,
   type BillKind,
+  type GroobeyBillMetaRow,
+  type GroobeyBillTableColumn,
   type GroobeyBillTableRow,
 } from "@/lib/groobey-bill-template";
 import {
@@ -16,8 +18,13 @@ import {
   resolveSaleItemPackUnit,
   stripPackFromItemName,
 } from "@/lib/groobey-bill-qty";
+import { resolveCustomerStreetAddressForBill } from "@/lib/groobey-delivery-order-fields";
 import { EM_DASH, formatInr } from "@/lib/groobey-currency";
-import { clampMarginPercent, tradeUnitFromRetail } from "@/lib/groobey-trade-margin";
+import {
+  clampMarginPercent,
+  tradeAmountFromRetail,
+  tradeUnitFromRetail,
+} from "@/lib/groobey-trade-margin";
 import { GROOBEY_APP_NAME } from "@/lib/groobey-brand";
 
 export type { BillKind } from "@/lib/groobey-bill-template";
@@ -27,7 +34,7 @@ export type SaleBillLine = {
   productId: string | null;
   name: string;
   quantity: number;
-  /** Pack size snapshot (e.g. 1 kg) — shown on bill qty as K / GS. */
+  /** Pack size snapshot (e.g. 1 kg) - shown on bill qty as K / GS. */
   packUnit?: string;
   /** Customer-facing unit price (retail). */
   unitPriceRetail: number;
@@ -364,6 +371,7 @@ export type CustomerOrderBillSource = {
   customer_name: string;
   customer_phone?: string | null;
   delivery_address?: string | null;
+  delivery_destination?: string | null;
   order_items: string;
   total_amount: number | null;
   grocery_subtotal?: number | null;
@@ -376,7 +384,29 @@ export type CustomerOrderBillSource = {
   created_at?: string | null;
 };
 
-export function customerOrderBillTotals(order: CustomerOrderBillSource) {
+/** Groobey margin % for trade / settlement (shop margin when linked, else value stored on the order). */
+export function resolveCustomerOrderTradeMarginPercent(
+  order: CustomerOrderBillSource,
+  shopMarginPercent?: number | null,
+): number {
+  const stored = Number(order.trade_margin_percent_applied ?? NaN);
+  if (Number.isFinite(stored) && stored > 0) return clampMarginPercent(stored);
+  if (shopMarginPercent != null && Number.isFinite(Number(shopMarginPercent))) {
+    return clampMarginPercent(Number(shopMarginPercent));
+  }
+  return clampMarginPercent(Number.isFinite(stored) ? stored : 0);
+}
+
+export type CustomerOrderBillTotalsOptions = {
+  /** Recompute trade from grocery + margin (settlement / shop owner bills). */
+  forMerchant?: boolean;
+  shopMarginPercent?: number | null;
+};
+
+export function customerOrderBillTotals(
+  order: CustomerOrderBillSource,
+  options?: CustomerOrderBillTotalsOptions,
+) {
   const deliveryCharge = Math.max(0, Math.round(Number(order.delivery_charge ?? 0)));
   const grandRetail = Math.round(Number(order.total_amount || 0));
   const grocerySubtotal = Math.max(
@@ -387,12 +417,24 @@ export function customerOrderBillTotals(order: CustomerOrderBillSource) {
       : grandRetail - deliveryCharge,
     ),
   );
-  const grandTrade = Math.round(Number(order.merchant_settlement_amount ?? grandRetail));
+  const marginPct = resolveCustomerOrderTradeMarginPercent(order, options?.shopMarginPercent);
+  let grandTrade = Math.round(Number(order.merchant_settlement_amount ?? NaN));
+  const storedTradeInvalid = !Number.isFinite(grandTrade) || grandTrade <= 0;
+  const tradeMatchesRetail =
+    grandTrade >= grandRetail && marginPct > 0 && grocerySubtotal > 0;
+  if (
+    options?.forMerchant &&
+    (storedTradeInvalid || tradeMatchesRetail)
+  ) {
+    grandTrade = tradeAmountFromRetail(grocerySubtotal, marginPct) + deliveryCharge;
+  } else if (storedTradeInvalid) {
+    grandTrade = tradeAmountFromRetail(grocerySubtotal, marginPct) + deliveryCharge;
+  }
   const groceryTrade =
     deliveryCharge > 0 && grandRetail > deliveryCharge ?
       Math.max(0, grandTrade - deliveryCharge)
     : grandTrade;
-  return { grocerySubtotal, deliveryCharge, grandRetail, groceryTrade, grandTrade };
+  return { grocerySubtotal, deliveryCharge, grandRetail, groceryTrade, grandTrade, marginPct };
 }
 
 /** Open customer / settlement bill for a customer_orders row (order taker bills). */
@@ -401,11 +443,16 @@ export function printCustomerOrderBill(params: {
   order: CustomerOrderBillSource;
   shopName?: string | null;
   orderTakerLabel: string;
-  /** Customer bill only: email / preview modal options. */
+  /** Shop Groobey margin % - used for settlement (trade) bills when order is shop-linked. */
+  shopMarginPercent?: number | null;
   preview?: BillPreviewShowOptions;
 }): boolean {
-  const totals = customerOrderBillTotals(params.order);
-  const marginPct = clampMarginPercent(Number(params.order.trade_margin_percent_applied ?? 0));
+  const forMerchant = params.kind === "merchant";
+  const totals = customerOrderBillTotals(params.order, {
+    forMerchant,
+    shopMarginPercent: params.shopMarginPercent,
+  });
+  const marginPct = totals.marginPct;
   const html = buildCustomerOrderBillHtml({
     kind: params.kind,
     billNumber: params.order.bill_number,
@@ -415,6 +462,12 @@ export function printCustomerOrderBill(params: {
     customerName: params.order.customer_name,
     customerPhone: params.order.customer_phone,
     deliveryAddress: params.order.delivery_address,
+    deliveryDestination: params.order.delivery_destination,
+    customerStreetAddress: resolveCustomerStreetAddressForBill({
+      delivery_address: params.order.delivery_address,
+      delivery_destination: params.order.delivery_destination,
+      notes: params.order.notes,
+    }),
     deliveryTimeSlot: params.order.delivery_time_slot,
     orderItemsText: params.order.order_items,
     grocerySubtotal: totals.grocerySubtotal,
@@ -424,15 +477,10 @@ export function printCustomerOrderBill(params: {
     appliedGroobeyMarginPercent: marginPct,
     notes: params.order.notes,
   });
-  return openBillPrintGuarded(
-    html,
-    params.kind,
-    params.kind === "customer" ? params.preview : undefined,
-  );
+  return openBillPrintGuarded(html, params.kind, params.preview);
 }
 
-/** Free-text customer order bill — D-Mart style retail receipt. */
-export function buildCustomerOrderBillHtml(params: {
+export type CustomerOrderBillBuildParams = {
   kind: BillKind;
   billNumber: string | null;
   shopName?: string | null;
@@ -441,6 +489,8 @@ export function buildCustomerOrderBillHtml(params: {
   customerName: string;
   customerPhone?: string | null;
   deliveryAddress?: string | null;
+  deliveryDestination?: string | null;
+  customerStreetAddress?: string | null;
   deliveryTimeSlot?: string | null;
   orderItemsText: string;
   grocerySubtotal?: number;
@@ -449,7 +499,26 @@ export function buildCustomerOrderBillHtml(params: {
   totalMerchant: number;
   appliedGroobeyMarginPercent?: number | null;
   notes?: string | null;
-}): string {
+};
+
+export type CustomerOrderBillContent = {
+  kind: BillKind;
+  billTitle: string;
+  meta: GroobeyBillMetaRow[];
+  columns: GroobeyBillTableColumn[];
+  rows: GroobeyBillTableRow[];
+  totalInr: number;
+  marginNoteHtml: string;
+  footerTotalsHtml: string;
+  notesHtml: string;
+  /** PDF footer note for merchant settlement bills. */
+  marginNotePdf?: string;
+};
+
+/** Shared bill body for print preview, popup, and emailed PDF (customer orders). */
+export function buildCustomerOrderBillContent(
+  params: CustomerOrderBillBuildParams,
+): CustomerOrderBillContent {
   const {
     kind,
     billNumber,
@@ -487,6 +556,15 @@ export function buildCustomerOrderBillHtml(params: {
     : clampMarginPercent(Number(appliedGroobeyMarginPercent ?? 0));
   const total = kind === "customer" ? totalRetail : totalMerchant;
   const margin = Math.round(totalRetail - totalMerchant);
+  const billAddress =
+    kind === "customer" ?
+      resolveCustomerStreetAddressForBill({
+        delivery_address: deliveryAddress,
+        delivery_destination: params.deliveryDestination,
+        notes: params.notes,
+        customerStreetAddress: params.customerStreetAddress,
+      })
+    : deliveryAddress?.trim() ?? "";
 
   const meta =
     kind === "customer" ?
@@ -495,7 +573,7 @@ export function buildCustomerOrderBillHtml(params: {
         { label: "From", value: GROOBEY_APP_NAME },
         { label: "Customer", value: customerName },
         ...(customerPhone?.trim() ? [{ label: "Phone", value: customerPhone.trim() }] : []),
-        ...(deliveryAddress?.trim() ? [{ label: "Address", value: deliveryAddress.trim() }] : []),
+        ...(billAddress ? [{ label: "Customer address", value: billAddress }] : []),
         ...(deliveryTimeSlot?.trim() ? [{ label: "Delivery time", value: deliveryTimeSlot.trim() }] : []),
         ...(deliveryCharge > 0 ?
           [{ label: "Delivery charge", value: formatInr(deliveryCharge) }]
@@ -565,10 +643,9 @@ export function buildCustomerOrderBillHtml(params: {
       `<p class="groobey-bill-margin-note" style="background:#f8fafc;border-color:#e2e8f0;"><strong>Notes:</strong> ${notes.trim().replace(/&/g, "&amp;").replace(/</g, "&lt;")}</p>`
     : "";
 
-  return buildGroobeyBillDocumentHtml({
+  return {
     kind,
     billTitle: groobeyBillTitleForKind(kind, billNumber),
-    pageTitle: kind === "customer" ? "Bill" : "Settlement bill",
     meta,
     columns: groobeyBillColumnsForKind(kind),
     rows: tableRows,
@@ -576,7 +653,60 @@ export function buildCustomerOrderBillHtml(params: {
     marginNoteHtml,
     footerTotalsHtml,
     notesHtml,
+    marginNotePdf:
+      kind === "merchant" && margin > 0 ?
+        `Groobey margin (retail - trade): ${formatInr(margin)}`
+      : undefined,
+  };
+}
+
+/** Free-text customer order bill - D-Mart style retail receipt. */
+export function buildCustomerOrderBillHtml(params: CustomerOrderBillBuildParams): string {
+  const content = buildCustomerOrderBillContent(params);
+  return buildGroobeyBillDocumentHtml({
+    kind: content.kind,
+    billTitle: content.billTitle,
+    pageTitle: content.kind === "customer" ? "Bill" : "Settlement bill",
+    meta: content.meta,
+    columns: content.columns,
+    rows: content.rows,
+    totalInr: content.totalInr,
+    marginNoteHtml: content.marginNoteHtml,
+    footerTotalsHtml: content.footerTotalsHtml,
+    notesHtml: content.notesHtml,
   });
+}
+
+/** Server email payload so PDF matches print / preview for a stored customer order. */
+export function customerOrderBillEmailOrderBill(
+  order: CustomerOrderBillSource,
+  shopName?: string | null,
+  options?: { forMerchant?: boolean; shopMarginPercent?: number | null },
+) {
+  const totals = customerOrderBillTotals(order, {
+    forMerchant: options?.forMerchant,
+    shopMarginPercent: options?.shopMarginPercent,
+  });
+  return {
+    orderItemsText: order.order_items,
+    totalAmount: totals.grandRetail,
+    grocerySubtotal: totals.grocerySubtotal,
+    deliveryCharge: totals.deliveryCharge,
+    merchantSettlementAmount: totals.grandTrade,
+    tradeMarginPercent: totals.marginPct || undefined,
+    customerName: order.customer_name,
+    customerPhone: order.customer_phone ?? undefined,
+    deliveryAddress: order.delivery_address ?? undefined,
+    deliveryDestination: order.delivery_destination ?? undefined,
+    customerStreetAddress: resolveCustomerStreetAddressForBill({
+      delivery_address: order.delivery_address,
+      delivery_destination: order.delivery_destination,
+      notes: order.notes,
+    }),
+    deliveryTimeSlot: order.delivery_time_slot ?? undefined,
+    notes: order.notes ?? undefined,
+    shopName: shopName?.trim() || undefined,
+  };
 }
 
 /** Line items for customer-order bill email PDF (parsed pack + qty). */

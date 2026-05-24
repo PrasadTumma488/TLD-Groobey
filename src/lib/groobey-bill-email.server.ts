@@ -18,7 +18,7 @@ export type BillDeliveryEmailParams = {
   billKind?: "customer" | "merchant";
 };
 
-/** Short transactional body — bill detail is in the PDF attachment (better deliverability). */
+/** Short transactional body - bill detail is in the PDF attachment (better deliverability). */
 export function buildBillDeliveryEmail(params: BillDeliveryEmailParams): {
   html: string;
   text: string;
@@ -55,7 +55,7 @@ export function buildBillDeliveryEmail(params: BillDeliveryEmailParams): {
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>${escapeHtml(params.billTitle)} — ${escapeHtml(shop)}</title>
+  <title>${escapeHtml(params.billTitle)} - ${escapeHtml(shop)}</title>
 </head>
 <body style="margin:0;padding:0;background:#eef0f2;font-family:Segoe UI,system-ui,-apple-system,Arial,sans-serif;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef0f2;padding:32px 16px;">
@@ -123,7 +123,7 @@ export function buildBillDeliveryEmail(params: BillDeliveryEmailParams): {
 </html>`;
 
   const text =
-    `${GROOBEY_APP_NAME} — ${params.billTitle}${isCustomer ? "" : ` from ${shop}`}\n` +
+    `${GROOBEY_APP_NAME} - ${params.billTitle}${isCustomer ? "" : ` from ${shop}`}\n` +
     (billRef ? `Bill ID: ${billRef}\n` : "") +
     `\nYour bill is attached as a PDF (Groobey-Bill${billRef ? `-${billRef}` : ""}.pdf).\n` +
     `Open the attachment to view line items and the total.\n\n` +

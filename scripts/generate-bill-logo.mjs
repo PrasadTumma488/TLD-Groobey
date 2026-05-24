@@ -8,7 +8,7 @@ const publicDir = path.join(root, "public");
 const source = path.join(publicDir, "groobey-logo.png");
 const out = path.join(publicDir, "groobey-logo-bill.png");
 
-/** 4× bill display height (72px) — sharp when shown or printed at 72px / zoomed to ~150%. */
+/** 4× bill display height (72px) - sharp when shown or printed at 72px / zoomed to ~150%. */
 const BILL_LOGO_HEIGHT = 288;
 
 if (!fs.existsSync(source)) {

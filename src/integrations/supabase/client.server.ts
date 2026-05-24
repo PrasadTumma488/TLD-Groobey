@@ -1,4 +1,4 @@
-// Server-side Supabase client with service role key — bypasses RLS.
+// Server-side Supabase client with service role key - bypasses RLS.
 // Use only in trusted server code. Env is read at runtime (Reflect) so Vite does not bake keys into the bundle.
 import { createClient } from "@supabase/supabase-js";
 import {

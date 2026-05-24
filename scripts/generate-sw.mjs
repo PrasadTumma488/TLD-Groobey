@@ -19,7 +19,7 @@ const swBundled = path.join(distClient, "sw-bundled.js");
 
 if (!existsSync(distClient)) {
   console.error(
-    "[generate-sw] static output missing — run vite build first (.vercel/output/static or dist/client).",
+    "[generate-sw] static output missing - run vite build first (.vercel/output/static or dist/client).",
   );
   process.exit(1);
 }

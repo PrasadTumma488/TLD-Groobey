@@ -30,7 +30,7 @@ export function StaffIdentityCard({
         {rows.map((row) => (
           <div key={row.label} className="flex flex-wrap gap-2">
             <dt className="font-semibold text-muted-foreground">{row.label}</dt>
-            <dd className="break-all font-semibold text-foreground">{row.value || "—"}</dd>
+            <dd className="break-all font-semibold text-foreground">{row.value || "-"}</dd>
           </div>
         ))}
       </dl>

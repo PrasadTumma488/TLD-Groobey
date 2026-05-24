@@ -143,3 +143,6 @@ WHERE grocery_subtotal = 0 AND COALESCE(total_amount, 0) > 0;
 CREATE INDEX IF NOT EXISTS idx_customer_orders_assigned_delivery
   ON public.customer_orders(assigned_delivery_user_id)
   WHERE assigned_delivery_user_id IS NOT NULL;
+
+-- === From 20260525120000_delivery_staff_order_status_rls.sql + 20260528120000_delivery_mark_delivered_rls.sql ===
+-- Run supabase/migrations/20260528120000_delivery_mark_delivered_rls.sql in SQL Editor (SELECT delivered + mark_assigned_order_status RPC).

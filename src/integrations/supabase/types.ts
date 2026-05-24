@@ -61,6 +61,7 @@ export type Database = {
           created_by: string;
           customer_name: string;
           customer_phone: string | null;
+          deleted_at: string | null;
           delivery_address: string | null;
           delivery_charge: number;
           delivery_destination: string | null;
@@ -85,7 +86,8 @@ export type Database = {
           created_at?: string;
           created_by: string;
           customer_name: string;
-          customer_phone?: string | null;
+          customer_phone: string | null;
+          deleted_at?: string | null;
           delivery_address?: string | null;
           delivery_charge?: number;
           delivery_destination?: string | null;
@@ -111,6 +113,7 @@ export type Database = {
           created_by?: string;
           customer_name?: string;
           customer_phone?: string | null;
+          deleted_at?: string | null;
           delivery_address?: string | null;
           delivery_charge?: number;
           delivery_destination?: string | null;
@@ -133,6 +136,13 @@ export type Database = {
           {
             foreignKeyName: "customer_orders_shop_id_fkey";
             columns: ["shop_id"];
+            isOneToOne: false;
+            referencedRelation: "shops";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "customer_orders_work_from_shop_id_fkey";
+            columns: ["work_from_shop_id"];
             isOneToOne: false;
             referencedRelation: "shops";
             referencedColumns: ["id"];
@@ -398,9 +408,20 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      archive_customer_order: {
+        Args: { p_order_id: string };
+        Returns: undefined;
+      };
       archive_sale: {
         Args: { p_sale_id: string };
         Returns: undefined;
+      };
+      verify_shop_owner_sale: {
+        Args: {
+          p_sale_id: string;
+          p_status: Database["public"]["Enums"]["verification_status"];
+        };
+        Returns: Database["public"]["Tables"]["sales"]["Row"];
       };
       next_groobey_bill_number: {
         Args: Record<string, never>;
@@ -424,6 +445,10 @@ export type Database = {
       };
       set_my_trade_margin_percent: {
         Args: { pct: number };
+        Returns: undefined;
+      };
+      mark_assigned_order_status: {
+        Args: { p_order_id: string; p_status: Database["public"]["Enums"]["order_status"] };
         Returns: undefined;
       };
     };

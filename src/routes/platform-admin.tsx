@@ -65,7 +65,7 @@ function PlatformAdminRoute() {
   if (ui === "nav" && to) return <Navigate to={to} />;
 
   return (
-    <main className="groobey-shell min-h-screen bg-background text-foreground">
+    <main className="groobey-shell groobey-page min-h-dvh min-w-0 overflow-x-hidden bg-background text-foreground">
       <OwnerDashboard />
     </main>
   );

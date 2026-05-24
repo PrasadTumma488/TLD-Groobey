@@ -1,4 +1,4 @@
-/** Resend env helpers — server-only (process.env + project `.env` files). */
+/** Resend env helpers - server-only (process.env + project `.env` files). */
 
 import { readKeyFromEnvFiles } from "@/lib/platform-admin-bootstrap.server";
 
@@ -100,7 +100,7 @@ export function getResendRedirectTo(): string {
   return resolveResendEnv("RESEND_REDIRECT_TO");
 }
 
-/** Resend API key — runtime read only (never `VITE_RESEND_API_KEY`; do not expose keys to the client). */
+/** Resend API key - runtime read only (never `VITE_RESEND_API_KEY`; do not expose keys to the client). */
 export function getResendApiKeyFromEnv(): string {
   return resolveResendEnv("RESEND_API_KEY");
 }
@@ -113,7 +113,7 @@ export function resendDomainFailureHint(resendMessage: string): string {
   let hint = ` Server used From: ${masked}.`;
   if (fromDomain && msg.includes("groobey.in") && !fromDomain.includes("tldgroobey")) {
     hint +=
-      ` Your verified Resend domain is tldgroobey.in — use RESEND_FROM_EMAIL=Groobey <you@tldgroobey.in> in .env (not @groobey.in), then restart npm run dev.`;
+      ` Your verified Resend domain is tldgroobey.in - use RESEND_FROM_EMAIL=Groobey <you@tldgroobey.in> in .env (not @groobey.in), then restart npm run dev.`;
   } else if (fromDomain && msg.includes("domain is not verified")) {
     hint += ` Confirm ${fromDomain} shows Verified at https://resend.com/domains and matches RESEND_FROM_EMAIL in .env.`;
   }
@@ -141,19 +141,19 @@ export function resendSandboxSenderExplanation(): string {
   const localVsHost =
     " Local: put them in `.env` next to `package.json` and restart `npm run dev` (Vite loads `.env` at dev server start). " +
     "Hosted: set the same names in your provider's environment UI and redeploy. " +
-    "Optional non-secret fallback: `VITE_RESEND_FROM_EMAIL` (bare or `Name <email>`) if you already use Vite-prefixed env for the From address only — never put the API key in a `VITE_` variable.";
+    "Optional non-secret fallback: `VITE_RESEND_FROM_EMAIL` (bare or `Name <email>`) if you already use Vite-prefixed env for the From address only - never put the API key in a `VITE_` variable.";
 
   if (!isResendFromEnvExplicitlySet()) {
     return (
       "None of RESEND_FROM_EMAIL, RESEND_MAIL_FROM, EMAIL_FROM, or VITE_RESEND_FROM_EMAIL are visible to this server's process at runtime. " +
-      "Customer bills need a verified-domain From even on localhost — `RESEND_API_KEY` alone is not enough (Resend only allows arbitrary recipients once From is off @resend.dev)." +
+      "Customer bills need a verified-domain From even on localhost - `RESEND_API_KEY` alone is not enough (Resend only allows arbitrary recipients once From is off @resend.dev)." +
       localVsHost
     );
   }
   const addr = extractEmailFromFromHeader(getResendFromEmail()).trim() || "(empty)";
   return (
     `Those variables resolve to "${addr}", which is still treated as Resend sandbox (e.g. @resend.dev). ` +
-    "Use the From address Resend shows for a domain you verified at https://resend.com/domains — not onboarding@resend.dev." +
+    "Use the From address Resend shows for a domain you verified at https://resend.com/domains - not onboarding@resend.dev." +
     localVsHost
   );
 }
@@ -190,7 +190,7 @@ export function billEmailDevRedirectBannerHtml(intendedTo: string): string {
 
 export function billEmailDevRedirectBannerText(intendedTo: string): string {
   return (
-    `[Dev/test delivery — bill intended for ${intendedTo}. ` +
+    `[Dev/test delivery - bill intended for ${intendedTo}. ` +
     `Verify a domain at resend.com/domains and set RESEND_FROM_EMAIL for production.]\n\n`
   );
 }

@@ -69,7 +69,7 @@
 }
 
 :root {
-  /* TLD Groobey logo greens — used for primary UI, gradients, and glows */
+  /* TLD Groobey logo greens - used for primary UI, gradients, and glows */
   --groobey-lime: #9acd32;
   --groobey-lime-dark: #92c82e;
 
@@ -167,7 +167,16 @@
     border-color: var(--color-border);
   }
 
+  html {
+    height: 100%;
+    overflow-x: hidden;
+    -webkit-text-size-adjust: 100%;
+  }
+
   body {
+    min-height: 100%;
+    min-height: 100dvh;
+    overflow-x: hidden;
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-family: var(--font-sans);
@@ -178,6 +187,67 @@
 @layer utilities {
   .groobey-shell {
     background: var(--gradient-soft);
+  }
+
+  /* Full-page layouts - dvh + safe areas (mobile browser chrome, notches) */
+  .groobey-page {
+    min-height: 100vh;
+    min-height: 100dvh;
+    padding-bottom: max(1.25rem, env(safe-area-inset-bottom, 0px));
+  }
+
+  .groobey-page-inset-top {
+    padding-top: max(0.75rem, env(safe-area-inset-top, 0px));
+  }
+
+  .groobey-dashboard-body {
+    padding-bottom: max(1.5rem, env(safe-area-inset-bottom, 0px));
+  }
+
+  .groobey-header-safe {
+    padding-top: max(0.5rem, env(safe-area-inset-top, 0px));
+  }
+
+  /* Prevent page-wide horizontal scroll from wide tables; scroll inside the box only */
+  .groobey-h-scroll {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+
+  .groobey-h-scroll > table {
+    min-width: 36rem;
+  }
+
+  .groobey-mobile-stack {
+    display: grid;
+    gap: 0.75rem;
+  }
+
+  @media (max-width: 1023px) {
+    .owner-admin-tabs-mobile-grid {
+      display: grid !important;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.5rem;
+      overflow: visible !important;
+    }
+
+    .owner-admin-tabs-mobile-grid [role="tab"] {
+      width: 100%;
+      min-width: 0 !important;
+      min-height: 2.75rem;
+      justify-content: center;
+      white-space: normal;
+      text-align: center;
+      line-height: 1.2;
+      padding: 0.5rem 0.375rem;
+      font-size: 0.6875rem;
+    }
+
+    .owner-admin-tabs-mobile-grid [role="tab"] svg {
+      display: none;
+    }
   }
 
   .groobey-card {
@@ -204,7 +274,182 @@
 
   .groobey-scrollbar {
     scrollbar-width: thin;
-    scrollbar-color: var(--primary) transparent;
+    scrollbar-color: color-mix(in oklab, white 90%, var(--border)) transparent;
+  }
+
+  .groobey-scrollbar::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .groobey-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .groobey-scrollbar::-webkit-scrollbar-thumb {
+    background: color-mix(in oklab, white 92%, var(--muted-foreground) 8%);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+
+  .groobey-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in oklab, white 96%, var(--muted-foreground) 4%);
+  }
+
+  /* Floating popups - inset from screen edges; light overlay so page stays visible */
+  .groobey-sheet-overlay {
+    background: color-mix(in oklab, var(--background) 38%, transparent);
+    backdrop-filter: blur(1px);
+  }
+
+  .groobey-sheet-dialog {
+    position: fixed;
+    z-index: 61;
+    left: 50% !important;
+    top: 50% !important;
+    right: auto !important;
+    bottom: auto !important;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    overflow: hidden;
+    margin: 0;
+    padding: 0;
+    outline: none;
+    width: calc(100vw - 1.25rem - env(safe-area-inset-left) - env(safe-area-inset-right)) !important;
+    max-width: 32rem !important;
+    max-height: min(
+      86dvh,
+      calc(
+        100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 1.25rem
+      )
+    ) !important;
+    transform: translate(-50%, -50%) !important;
+    border: 2px solid color-mix(in oklab, var(--border) 90%, var(--primary) 14%);
+    border-radius: 1.25rem;
+    background-color: oklch(1 0 0);
+    box-shadow:
+      0 24px 48px -12px color-mix(in oklab, var(--foreground) 22%, transparent),
+      0 0 0 1px color-mix(in oklab, white 40%, transparent),
+      var(--shadow-soft);
+  }
+
+  .groobey-sheet-dialog[data-state="open"] {
+    animation: groobey-modal-in 0.22s ease-out;
+  }
+
+  .groobey-sheet-dialog[data-state="closed"] {
+    animation: groobey-modal-out 0.16s ease-in;
+  }
+
+  @keyframes groobey-modal-in {
+    from {
+      opacity: 0;
+      transform: translate(-50%, -48%) scale(0.97);
+    }
+    to {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1);
+    }
+  }
+
+  @keyframes groobey-modal-out {
+    from {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1);
+    }
+    to {
+      opacity: 0;
+      transform: translate(-50%, -48%) scale(0.97);
+    }
+  }
+
+  @media (min-width: 640px) {
+    .groobey-sheet-dialog {
+      width: min(calc(100vw - 2rem), 32rem) !important;
+    }
+
+    .groobey-sheet-dialog--wide {
+      width: min(calc(100vw - 2rem), 54rem) !important;
+      max-width: 54rem !important;
+    }
+
+    .groobey-sheet-dialog--bill {
+      width: min(calc(100vw - 2rem), 40rem) !important;
+      max-width: 40rem !important;
+    }
+
+    .groobey-sheet-dialog--bill-preview {
+      width: min(calc(100vw - 1rem), 44rem) !important;
+      max-width: 44rem !important;
+    }
+  }
+
+  .groobey-bill-preview-body {
+    display: flex;
+    min-height: 0;
+    flex: 1 1 auto;
+    flex-direction: column;
+    align-items: stretch;
+    overflow: auto;
+  }
+
+  .groobey-bill-preview-iframe {
+    width: 100% !important;
+    min-width: 100%;
+    max-width: 100%;
+  }
+
+  .groobey-bill-preview-email-bar {
+    flex-shrink: 0;
+  }
+
+  .groobey-bill-email-send-bar--settlement {
+    --bill-email-bar-bg: color-mix(in oklab, #fef3c7 60%, white);
+  }
+
+  .groobey-sheet-dialog-header {
+    flex-shrink: 0;
+    border-bottom: 2px solid color-mix(in oklab, var(--border) 88%, var(--primary) 14%);
+    background-color: oklch(1 0 0);
+    padding: 0.875rem 1rem 0.875rem;
+    border-radius: 1.25rem 1.25rem 0 0;
+  }
+
+  @media (min-width: 640px) {
+    .groobey-sheet-dialog-header {
+      padding: 0.75rem 1.5rem 1rem;
+    }
+  }
+
+  .groobey-sheet-dialog-handle {
+    display: none;
+  }
+
+  .groobey-sheet-dialog-body {
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    background-color: color-mix(in oklab, var(--background) 55%, white 45%);
+    padding: 1rem 1rem 0.75rem;
+  }
+
+  @media (min-width: 640px) {
+    .groobey-sheet-dialog-body {
+      padding: 1.25rem 1.5rem;
+    }
+  }
+
+  .groobey-sheet-dialog-footer {
+    flex-shrink: 0;
+    border-top: 2px solid color-mix(in oklab, var(--border) 88%, var(--primary) 14%);
+    background-color: oklch(1 0 0);
+    padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom, 0px));
+    border-radius: 0 0 1.25rem 1.25rem;
   }
 
   .groobey-tab-scroll {
@@ -224,7 +469,7 @@
     flex-shrink: 0;
   }
 
-  /* Platform admin nav — solid track so tabs do not blend into the page gradient */
+  /* Platform admin nav - solid track so tabs do not blend into the page gradient */
   .owner-admin-tabs {
     background-color: oklch(0.995 0.01 105.2) !important;
     border: 2px solid color-mix(in oklab, var(--border) 92%, var(--primary) 22%);
@@ -258,35 +503,112 @@
       inset 0 1px 0 oklch(1 0 0) !important;
   }
 
-  /* Platform admin people / attendance — card + list share one comfortable width */
-  .owner-admin-directory-shell {
+  /* Platform admin - section nav: 2×4 on phone, 4×2 from sm up */
+  .owner-admin-tab-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
     width: 100%;
-    max-width: min(100%, 34rem);
-    margin-inline: auto;
-  }
-
-  .owner-admin-directory-shell--wide {
-    max-width: min(100%, 42rem);
+    align-content: start;
   }
 
   @media (min-width: 640px) {
-    .owner-admin-directory-shell {
-      max-width: 36rem;
+    .owner-admin-tab-grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
     }
+  }
 
-    .owner-admin-directory-shell--wide {
-      max-width: 46rem;
+  .owner-admin-tab-grid [role="tab"],
+  .owner-admin-tab-trigger {
+    width: 100%;
+    min-width: 0 !important;
+    min-height: 3rem;
+    flex-shrink: 1 !important;
+    white-space: normal !important;
+    text-align: center;
+    line-height: 1.2;
+    justify-content: center;
+    align-items: center;
+    padding: 0.5rem 0.375rem !important;
+    font-size: 0.6875rem;
+    font-weight: 800;
+    gap: 0.25rem;
+    border-radius: 0.75rem;
+    box-shadow: none;
+  }
+
+  @media (min-width: 640px) {
+    .owner-admin-tab-grid [role="tab"],
+    .owner-admin-tab-trigger {
+      font-size: 0.75rem;
+      padding: 0.5rem 0.5rem !important;
+      min-height: 3.25rem;
+      flex-direction: row;
     }
   }
 
   @media (min-width: 1024px) {
-    .owner-admin-directory-shell {
-      max-width: 38rem;
+    .owner-admin-tab-grid [role="tab"],
+    .owner-admin-tab-trigger {
+      font-size: 0.8125rem;
+      min-height: 3.5rem;
     }
+  }
 
-    .owner-admin-directory-shell--wide {
-      max-width: 50rem;
+  .owner-admin-tab-trigger {
+    display: flex !important;
+    flex-direction: column;
+  }
+
+  @media (min-width: 640px) {
+    .owner-admin-tab-trigger {
+      flex-direction: row;
     }
+  }
+
+  .owner-admin-tab-grid [role="tab"] svg,
+  .owner-admin-tab-trigger svg {
+    flex-shrink: 0;
+  }
+
+  /* Needs attention - one row on wide desktop */
+  .owner-admin-needs-attention {
+    border-radius: 1rem;
+    border: 1px solid color-mix(in oklab, var(--border) 82%, var(--primary) 18%);
+    background: color-mix(in oklab, var(--card) 94%, var(--muted) 6%);
+    box-shadow: var(--shadow-soft);
+  }
+
+  .owner-admin-needs-attention-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+
+  @media (min-width: 640px) {
+    .owner-admin-needs-attention-actions {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (min-width: 1280px) {
+    .owner-admin-needs-attention-actions {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+
+  /* Centered workspace column - whole panel + form block in the middle of the page */
+  .groobey-centered-workspace,
+  .owner-admin-directory-shell {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: min(100%, 38rem);
+    margin-inline: auto;
+  }
+
+  .groobey-centered-workspace--wide,
+  .owner-admin-directory-shell--wide {
+    max-width: min(100%, 50rem);
   }
 
   .owner-admin-directory {
@@ -384,7 +706,190 @@
     transform: scale(0.99);
   }
 
-  /* Native <select> — same visual language as Radix SelectTrigger (groobey dashboards + login). */
+  /* Order taker bills + sales pipeline - desktop tables */
+  .owner-admin-bills-table-wrap {
+    overflow: hidden;
+    border-radius: 1rem;
+    border: 1px solid var(--border);
+    background-color: color-mix(in oklab, var(--card) 70%, transparent);
+    box-shadow: var(--shadow-soft);
+  }
+
+  .owner-admin-bills-table-scroll {
+    max-height: min(36rem, 68vh);
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+    background: color-mix(in oklab, var(--card) 85%, white);
+  }
+
+  /* Order taker bills - desktop table (compact delivery + print columns) */
+  .owner-admin-bills-table-wrap--order-takers .owner-admin-bills-table-scroll {
+    max-height: min(40rem, 72vh);
+  }
+
+  .owner-admin-bills-table-wrap--order-takers table {
+    min-width: 0;
+    width: 100%;
+    table-layout: auto;
+  }
+
+  .owner-admin-bills-table-wrap--order-takers th,
+  .owner-admin-bills-table-wrap--order-takers td {
+    vertical-align: middle;
+  }
+
+  .owner-admin-bills-table-wrap--order-takers .owner-admin-bills-col-delivery {
+    width: 12rem;
+    max-width: 12rem;
+  }
+
+  .owner-admin-bills-table-wrap--order-takers .owner-admin-bills-col-print {
+    width: 10.75rem;
+    max-width: 10.75rem;
+  }
+
+  .owner-admin-bills-table-wrap--order-takers .owner-admin-bills-cell-nowrap {
+    white-space: nowrap;
+  }
+
+  .owner-admin-bills-table-wrap--order-takers tbody td {
+    padding: 0.625rem 0.75rem;
+  }
+
+  .owner-admin-bills-table-wrap--order-takers thead th {
+    padding: 0.5rem 0.75rem;
+  }
+
+  .owner-admin-order-bill-highlight-shop {
+    box-shadow: 0 1px 2px color-mix(in oklab, var(--foreground) 6%, transparent);
+  }
+
+  .owner-admin-order-bill-highlight-id {
+    box-shadow: 0 1px 2px color-mix(in oklab, oklch(0.55 0.14 155) 22%, transparent);
+  }
+
+  /* Orders dashboard - monthly queue (desktop table + mobile cards) */
+  .owner-orders-table-wrap {
+    overflow: hidden;
+    border-radius: 1rem;
+    border: 1px solid var(--border);
+    background-color: color-mix(in oklab, var(--card) 70%, transparent);
+  }
+
+  .owner-orders-table-scroll {
+    max-height: min(36rem, 68vh);
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .owner-orders-table-wrap table {
+    width: 100%;
+    min-width: 0;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 0.8125rem;
+  }
+
+  .owner-orders-table-wrap thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background-color: color-mix(in oklab, var(--muted) 92%, var(--card));
+    padding: 0.5rem 0.75rem;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted-foreground);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+
+  .owner-orders-table-wrap tbody td {
+    padding: 0.625rem 0.75rem;
+    vertical-align: middle;
+    border-bottom: 1px solid color-mix(in oklab, var(--border) 55%, transparent);
+  }
+
+  .owner-orders-table-wrap tbody tr:last-child td {
+    border-bottom: none;
+  }
+
+  .owner-orders-row--new {
+    background-color: color-mix(in oklab, var(--primary) 8%, var(--card));
+  }
+
+  /* Radix GroobeySelect trigger - match native .groobey-select card field */
+  .groobey-select-trigger {
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    color: var(--foreground);
+    transition:
+      border-color 0.18s ease,
+      box-shadow 0.18s ease,
+      background-color 0.18s ease;
+  }
+
+  .groobey-select-trigger:hover {
+    border-color: color-mix(in oklab, var(--border) 70%, var(--foreground) 30%);
+    box-shadow: 0 2px 8px -4px color-mix(in oklab, var(--foreground) 12%, transparent);
+  }
+
+  .groobey-select-content {
+    background-color: oklch(1 0 0);
+  }
+
+  .owner-admin-bills-table-wrap table {
+    width: 100%;
+    min-width: 56rem;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 0.875rem;
+  }
+
+  .owner-admin-bills-table-wrap thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background-color: color-mix(in oklab, var(--muted) 92%, var(--card));
+    backdrop-filter: blur(6px);
+    padding: 0.625rem 1rem;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted-foreground);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+
+  .owner-admin-bills-table-wrap tbody td {
+    padding: 0.75rem 1rem;
+    vertical-align: top;
+    border-bottom: 1px solid color-mix(in oklab, var(--border) 55%, transparent);
+  }
+
+  .owner-admin-bills-table-wrap tbody tr:last-child td {
+    border-bottom: none;
+  }
+
+  .owner-admin-bills-table-wrap tbody tr {
+    transition: background-color 0.15s;
+  }
+
+  .owner-admin-bills-table-wrap tbody tr:nth-child(even) {
+    background-color: color-mix(in oklab, var(--card) 55%, white);
+  }
+
+  .owner-admin-bills-table-wrap tbody tr:hover {
+    background-color: color-mix(in oklab, var(--primary) 8%, var(--card));
+  }
+
+  .owner-admin-bills-table-wrap tbody tr:nth-child(even):hover {
+    background-color: color-mix(in oklab, var(--primary) 10%, var(--card));
+  }
+
+  /* Native <select> - white card field (catalog pack size, etc.) */
   .groobey-select {
     appearance: none;
     -webkit-appearance: none;
@@ -393,29 +898,15 @@
     font-weight: 600;
     letter-spacing: 0.01em;
     line-height: 1.35;
-    background-color: color-mix(in oklab, var(--card) 88%, var(--primary) 12%);
-    background-image:
-      linear-gradient(
-        45deg,
-        transparent 50%,
-        color-mix(in oklab, var(--primary) 55%, var(--foreground) 45%) 50%
-      ),
-      linear-gradient(
-        135deg,
-        color-mix(in oklab, var(--primary) 55%, var(--foreground) 45%) 50%,
-        transparent 50%
-      );
-    background-position:
-      calc(100% - 1.125rem) calc(50% - 2px),
-      calc(100% - 0.5rem) calc(50% - 2px);
-    background-size: 7px 7px, 7px 7px;
+    background-color: oklch(1 0 0);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-position: calc(100% - 0.75rem) center;
+    background-size: 1rem 1rem;
     background-repeat: no-repeat;
-    border: 2px solid color-mix(in oklab, var(--border) 85%, var(--primary) 15%);
+    border: 2px solid color-mix(in oklab, var(--border) 92%, var(--primary) 10%);
     border-radius: 1rem;
-    box-shadow:
-      inset 0 1px 0 color-mix(in oklab, white 55%, transparent),
-      0 1px 2px color-mix(in oklab, var(--foreground) 6%, transparent);
-    padding-right: 2.75rem;
+    box-shadow: 0 1px 2px color-mix(in oklab, var(--foreground) 5%, transparent);
+    padding-right: 2.5rem;
     padding-left: 1rem;
     transition:
       border-color 0.18s ease,
@@ -424,11 +915,9 @@
   }
 
   .groobey-select:hover {
-    background-color: color-mix(in oklab, var(--card) 82%, var(--primary) 18%);
-    border-color: color-mix(in oklab, var(--border) 55%, var(--primary) 45%);
-    box-shadow:
-      inset 0 1px 0 color-mix(in oklab, white 45%, transparent),
-      0 4px 18px -6px color-mix(in oklab, var(--primary) 35%, transparent);
+    background-color: oklch(0.995 0.01 105.2);
+    border-color: color-mix(in oklab, var(--border) 70%, var(--foreground) 30%);
+    box-shadow: 0 2px 8px -4px color-mix(in oklab, var(--foreground) 12%, transparent);
   }
 
   .groobey-select:focus {
@@ -436,10 +925,8 @@
   }
 
   .groobey-select:focus-visible {
-    border-color: color-mix(in oklab, var(--primary) 72%, var(--border));
-    box-shadow:
-      0 0 0 3px color-mix(in oklab, var(--primary) 26%, transparent),
-      inset 0 1px 0 color-mix(in oklab, white 40%, transparent);
+    border-color: color-mix(in oklab, var(--foreground) 35%, var(--border));
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--muted) 65%, white);
   }
 
   .groobey-select:disabled {
@@ -491,4 +978,107 @@
       transform: translate3d(0, -10px, 0) rotate(1deg);
     }
   }
+}
+
+/* Workspace forms - width from .owner-admin-directory-shell on desktop */
+.groobey-workspace-form {
+  width: 100%;
+  max-width: 36rem;
+}
+
+.groobey-centered-workspace .groobey-workspace-form,
+.owner-admin-directory-shell .groobey-workspace-form {
+  max-width: none;
+  width: 100%;
+}
+
+.groobey-workspace-form .groobey-select-trigger {
+  max-width: 100%;
+}
+
+.groobey-workspace-form-card .groobey-select-trigger {
+  max-width: 100%;
+}
+
+/* Shop Owner - left identity / right stat steps, centered margin, two-column sales */
+.merchant-shop-workspace {
+  width: 100%;
+}
+
+.merchant-shop-overview-split {
+  display: grid;
+  gap: 1rem;
+  width: 100%;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 768px) {
+  .merchant-shop-overview-split {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: stretch;
+    gap: 1.25rem;
+  }
+}
+
+.merchant-shop-stat-steps {
+  width: 100%;
+}
+
+.merchant-shop-margin-band {
+  width: 100%;
+  max-width: 40rem;
+  margin-inline: auto;
+}
+
+.merchant-shop-workspace-grid {
+  width: 100%;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 1024px) {
+  .merchant-shop-workspace-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+.groobey-cart-lines-scroll {
+  max-height: min(14rem, 36dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 0.25rem;
+  scrollbar-gutter: stable;
+}
+
+.groobey-cart-lines-scroll.groobey-scrollbar,
+.groobey-cart-lines-scroll {
+  scrollbar-width: thin;
+}
+
+.merchant-sale-form-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  padding-top: 0.25rem;
+  background: linear-gradient(
+    to bottom,
+    hsl(var(--background) / 0),
+    hsl(var(--background) / 0.92) 0.75rem,
+    hsl(var(--background))
+  );
+}
+
+.merchant-shop-sales-list {
+  max-height: min(70dvh, 42rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 0.25rem;
+}
+
+/* Delivery dashboard - keep grocery picker and time fields readable width on desktop */
+.delivery-work-field {
+  max-width: 36rem;
+}
+
+.delivery-work-field .groobey-select-trigger {
+  max-width: 100%;
 }

@@ -150,10 +150,16 @@ export function groobeyBillDocumentStyles(kind: BillKind): string {
       list-style: none;
     }
     .groobey-bill-meta li {
-      margin: 0 0 6px;
+      margin: 0 0 8px;
       font-size: 14px;
+      line-height: 1.45;
     }
     .groobey-bill-meta strong { font-weight: 700; }
+    .groobey-bill-meta-value {
+      display: block;
+      margin-top: 2px;
+      font-weight: 600;
+    }
     .groobey-bill-meta-sub {
       margin: 2px 0 0;
       padding-left: 0;
@@ -297,7 +303,7 @@ export function groobeyBillMetaHtml(rows: GroobeyBillMetaRow[]): string {
         r.subValue?.trim() ?
           `<div class="groobey-bill-meta-sub">${esc(r.subValue.trim())}</div>`
         : "";
-      return `<li><strong>${esc(r.label)}:</strong> ${esc(r.value)}${sub}</li>`;
+      return `<li><strong>${esc(r.label)}:</strong> <span class="groobey-bill-meta-value">${esc(r.value)}</span>${sub}</li>`;
     })
     .join("");
   return items ? `<ul class="groobey-bill-meta">${items}</ul>` : "";
@@ -338,7 +344,7 @@ const BILL_TIME_ZONE = "Asia/Kolkata";
 
 export function formatBillDateLabel(isoOrLabel: string): string {
   const raw = isoOrLabel.trim();
-  if (!raw) return "—";
+  if (!raw) return "-";
   const d = new Date(raw);
   if (Number.isNaN(d.getTime())) return raw;
   const pad = (n: number) => String(n).padStart(2, "0");

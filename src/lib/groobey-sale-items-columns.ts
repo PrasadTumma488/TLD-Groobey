@@ -1,4 +1,4 @@
-/** sale_items column lists — tolerate DB before `product_unit` migration is applied. */
+/** sale_items column lists - tolerate DB before `product_unit` migration is applied. */
 
 export const SALE_ITEMS_SELECT_LEGACY =
   "id,sale_id,product_id,product_name,quantity,unit_price,merchant_unit_price,created_at";

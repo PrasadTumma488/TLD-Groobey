@@ -8,6 +8,7 @@ import {
   Loader2,
   Mail,
   PhoneCall,
+  Package,
   Plus,
   Printer,
   Search,
@@ -16,16 +17,16 @@ import {
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { GroobeyDashboardHeader } from "@/components/groobey/groobey-brand-logo";
+import { GroobeyNotificationBell } from "@/components/groobey/groobey-notification-bell";
 import { OrderTakerWorkspace } from "@/components/groobey/order-taker-workspace";
 import { StaffIdentityCard } from "@/components/groobey/staff-identity-card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
-import { GroobeyBillEmailStatus } from "@/components/groobey/groobey-bill-email-status";
 import { BillKindButtons } from "@/components/groobey/groobey-bill-buttons";
 import {
-  customerOrderItemsForBillEmail,
+  customerOrderBillEmailOrderBill,
   formatStaffBillLabel,
   printCustomerOrderBill,
   type BillKind,
@@ -42,18 +43,38 @@ import {
   notesWithShopFallback,
 } from "@/lib/groobey-customer-order-columns";
 import {
-  buildOrderDeliveryAddress,
   isMissingCustomerOrderDeliveryFieldsError,
+  isValidCustomerMobile,
   parseCustomerOrderDeliveryFromForm,
 } from "@/lib/groobey-delivery-order-fields";
 import type {
   BillPreviewEmailResult,
   BillPreviewShowOptions,
 } from "@/lib/groobey-bill-preview-bridge";
+import {
+  shopOwnerEmailForOrder,
+} from "@/lib/groobey-shop-owner-email";
+import { groobeySignOut } from "@/lib/groobey-auth-logout";
+import { setGroobeyNotificationNavigate } from "@/lib/groobey-notification-nav";
 import { clampMarginPercent, schemaSetupHint, tradeAmountFromRetail } from "@/lib/groobey-trade-margin";
-import { sendCustomerBillEmail } from "@/lib/tldGroobey.functions";
+import { useGroobeyWorkspaceNotifications } from "@/lib/groobey-workspace-notifications";
+import { resolveShopOwnerEmails, sendCustomerBillEmail } from "@/lib/tldGroobey.functions";
 
+import {
+  OrderQueueCard,
+  OrderStatusActionButtons,
+  OrdersMonthScopeBanner,
+  orderBillIdHighlightClass,
+  orderBillShopHighlightClass,
+} from "@/components/groobey/groobey-order-list-parts";
+import { OrdersExcelExport } from "@/components/groobey/orders-excel-export";
 import { InlineFeedback, Message, Panel, Stat } from "./workspace-ui";
+import {
+  calendarMonthKey,
+  filterOrdersByCalendarMonth,
+  formatCalendarMonthLabel,
+  orderDisplayDate,
+} from "@/lib/groobey-order-month";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 type CustomerOrder = Database["public"]["Tables"]["customer_orders"]["Row"];
@@ -61,12 +82,12 @@ type Shop = Database["public"]["Tables"]["shops"]["Row"];
 type ProductRow = Database["public"]["Tables"]["products"]["Row"];
 type OrderStatus = Database["public"]["Enums"]["order_status"];
 
-/** Order takers hand off to delivery staff — cannot mark delivered. */
+/** Order takers confirm/cancel only - packed/delivered are delivery dashboard. */
 const orderTakerNextStatuses: Record<OrderStatus, OrderStatus[]> = {
   pending: ["confirmed", "cancelled"],
-  confirmed: ["packed", "cancelled"],
-  packed: ["out_for_delivery", "cancelled"],
-  out_for_delivery: ["cancelled"],
+  confirmed: ["cancelled"],
+  packed: [],
+  out_for_delivery: [],
   delivered: [],
   cancelled: [],
 };
@@ -90,51 +111,56 @@ const statusClass: Record<OrderStatus, string> = {
 };
 
 type StatusFilter = "all" | OrderStatus | "active";
+type OrdersListPeriod = "all" | "today" | "month";
 
-function isActiveStatus(status: OrderStatus): boolean {
-  return status !== "delivered" && status !== "cancelled";
-}
+import { isOrderPipelineActive } from "@/lib/groobey-order-pipeline";
 
 export function OrdersDashboard() {
   const sendBillEmail = useServerFn(sendCustomerBillEmail);
+  const resolveShopEmailsFn = useServerFn(resolveShopOwnerEmails);
   const [session, setSession] =
     useState<Awaited<ReturnType<typeof supabase.auth.getSession>>["data"]["session"]>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [orders, setOrders] = useState<CustomerOrder[]>([]);
   const [shops, setShops] = useState<Shop[]>([]);
   const [products, setProducts] = useState<ProductRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [formResetNonce, setFormResetNonce] = useState(0);
   const [shopIdColumnReady, setShopIdColumnReady] = useState(true);
   const shopIdColumnReadyRef = useRef(true);
   const deliveryFieldsReadyRef = useRef(true);
   const [saving, setSaving] = useState(false);
-  const [emailingOrderId, setEmailingOrderId] = useState<string | null>(null);
+  const [shopOwnerEmailByShopId, setShopOwnerEmailByShopId] = useState<Map<string, string>>(
+    () => new Map(),
+  );
   const [pageAlert, setPageAlert] = useState<{ error?: string; notice?: string }>({});
   const [orderFormAlert, setOrderFormAlert] = useState<{ error?: string; notice?: string }>({});
   const [billTabAlert, setBillTabAlert] = useState<{ error?: string; notice?: string }>({});
   const [queueAlert, setQueueAlert] = useState<{ error?: string; notice?: string }>({});
   const [orderSearch, setOrderSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("active");
+  const [ordersListPeriod, setOrdersListPeriod] = useState<OrdersListPeriod>("month");
+  const [dashboardTab, setDashboardTab] = useState("bill");
   const [lastCreatedOrderId, setLastCreatedOrderId] = useState<string | null>(null);
   const [focusBillOrderId, setFocusBillOrderId] = useState<string | null>(null);
   const hasLoaded = useRef(false);
   const loadInFlight = useRef(false);
   const backfillAttempted = useRef(false);
   const pendingBillMergeRef = useRef<{ orderId: string; billNumber: string } | null>(null);
+  const ordersSectionRef = useRef<HTMLElement>(null);
   const [backfillingBills, setBackfillingBills] = useState(false);
 
   const missingBillCount = useMemo(() => ordersMissingBillId(orders).length, [orders]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
     if (!session?.user) {
       setLoading(false);
       return;
     }
     if (loadInFlight.current) return;
     loadInFlight.current = true;
-    if (!hasLoaded.current) setLoading(true);
-    setPageAlert({});
+    if (hasLoaded.current) setLoading(true);
+    if (!opts?.silent) setPageAlert({});
     try {
       const productsReq = supabase.from("products").select("*").order("name");
 
@@ -144,12 +170,14 @@ export function OrdersDashboard() {
               .from("customer_orders")
               .select(CUSTOMER_ORDER_SELECT)
               .eq("created_by", session.user.id)
+              .is("deleted_at", null)
               .order("created_at", { ascending: false })
               .limit(200)
           : await supabase
               .from("customer_orders")
               .select(CUSTOMER_ORDER_SELECT_LEGACY)
               .eq("created_by", session.user.id)
+              .is("deleted_at", null)
               .order("created_at", { ascending: false })
               .limit(200);
         if (
@@ -191,7 +219,11 @@ export function OrdersDashboard() {
           .select("user_id,display_name,email,phone,groobey_code,trade_margin_percent")
           .eq("user_id", session.user.id)
           .maybeSingle(),
-        supabase.from("shops").select("id,name").eq("is_active", true).order("name"),
+        supabase
+          .from("shops")
+          .select("id,name,created_by,trade_margin_percent")
+          .eq("is_active", true)
+          .order("name"),
         fetchOrders(),
         productsReq,
       ]);
@@ -220,7 +252,30 @@ export function OrdersDashboard() {
       if (pendingMerge && loaded.some((o) => o.id === pendingMerge.orderId && o.bill_number?.trim())) {
         pendingBillMergeRef.current = null;
       }
-      setShops((shopsRes.data ?? []) as Shop[]);
+      const loadedShops = (shopsRes.data ?? []) as Shop[];
+      setShops(loadedShops);
+      const accessToken = session.access_token?.trim() ?? "";
+      if (accessToken && loadedShops.length) {
+        try {
+          const result = await resolveShopEmailsFn({
+            data: {
+              requesterToken: accessToken,
+              shopIds: loadedShops.map((shop) => shop.id),
+            },
+          });
+          setShopOwnerEmailByShopId(
+            new Map(
+              Object.entries((result as { emails?: Record<string, string> }).emails ?? {}).filter(
+                ([, email]) => Boolean(email?.trim()),
+              ) as [string, string][],
+            ),
+          );
+        } catch {
+          setShopOwnerEmailByShopId(new Map());
+        }
+      } else {
+        setShopOwnerEmailByShopId(new Map());
+      }
       hasLoaded.current = true;
       setLoading(false);
 
@@ -233,7 +288,7 @@ export function OrdersDashboard() {
       loadInFlight.current = false;
       if (!hasLoaded.current) setLoading(false);
     }
-  }, [session?.user]);
+  }, [resolveShopEmailsFn, session?.user]);
 
   useEffect(() => {
     const { data: listener } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
@@ -244,6 +299,47 @@ export function OrdersDashboard() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!session?.user?.id) return;
+    const channel = supabase
+      .channel(`order-taker-orders-${session.user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "customer_orders",
+          filter: `created_by=eq.${session.user.id}`,
+        },
+        () => void load({ silent: true }),
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [load, session?.user?.id]);
+
+  const orderNotifications = useGroobeyWorkspaceNotifications({
+    userId: session?.user?.id,
+    mode: "order_taker",
+    onRefresh: () => void load({ silent: true }),
+  });
+
+  useEffect(() => {
+    setGroobeyNotificationNavigate((action) => {
+      if (action.dashboard !== "orders") return;
+      if (action.tab) setDashboardTab(action.tab);
+      if (action.tab === "orders") {
+        setOrdersListPeriod("month");
+        requestAnimationFrame(() => {
+          ordersSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+      }
+      if (action.orderId) setFocusBillOrderId(action.orderId);
+    });
+    return () => setGroobeyNotificationNavigate(null);
+  }, []);
 
   const runBillBackfill = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -304,26 +400,37 @@ export function OrdersDashboard() {
 
   const adminMarginPercent = clampMarginPercent(Number(profile?.trade_margin_percent ?? 0));
   const today = new Date().toISOString().slice(0, 10);
-  const month = today.slice(0, 7);
+  const month = calendarMonthKey();
+  const monthLabel = useMemo(() => formatCalendarMonthLabel(month), [month]);
 
   const todayOrders = useMemo(
     () => orders.filter((o) => (o.created_at || "").slice(0, 10) === today),
     [orders, today],
   );
   const monthOrders = useMemo(
-    () => orders.filter((o) => (o.created_at || "").slice(0, 7) === month),
+    () => filterOrdersByCalendarMonth(orders, month),
     [orders, month],
   );
-  const pendingCount = orders.filter((o) => o.status === "pending").length;
-  const activeCount = orders.filter((o) => isActiveStatus(o.status)).length;
+  const activeMonthOrders = useMemo(
+    () => monthOrders.filter((o) => isOrderPipelineActive(o.status)),
+    [monthOrders],
+  );
+  const pendingCount = monthOrders.filter((o) => o.status === "pending").length;
+  const activeCount = activeMonthOrders.length;
   const deliveredCount = orders.filter((o) => o.status === "delivered").length;
   const todayRetail = todayOrders.reduce((s, o) => s + Number(o.total_amount || 0), 0);
   const monthRetail = monthOrders.reduce((s, o) => s + Number(o.total_amount || 0), 0);
 
+  const deliveredMonthCount = monthOrders.filter((o) => o.status === "delivered").length;
+
   const filteredOrders = useMemo(() => {
     const q = orderSearch.trim().toLowerCase();
-    return orders.filter((order) => {
-      if (statusFilter === "active" && !isActiveStatus(order.status)) return false;
+    const scope =
+      ordersListPeriod === "all" ? orders
+      : ordersListPeriod === "today" ? todayOrders
+      : monthOrders;
+    return scope.filter((order) => {
+      if (statusFilter === "active" && !isOrderPipelineActive(order.status)) return false;
       if (statusFilter !== "all" && statusFilter !== "active" && order.status !== statusFilter) {
         return false;
       }
@@ -345,7 +452,41 @@ export function OrdersDashboard() {
         .toLowerCase();
       return hay.includes(q);
     });
-  }, [orders, orderSearch, statusFilter]);
+  }, [orders, orderSearch, statusFilter, ordersListPeriod, todayOrders, monthOrders, orders]);
+
+  const ordersExportPeriodLabel = useMemo(() => {
+    if (ordersListPeriod === "today") return `Today (${today})`;
+    if (ordersListPeriod === "all") return "All time";
+    return monthLabel;
+  }, [ordersListPeriod, today, monthLabel]);
+
+  const openOrdersList = useCallback(
+    (opts: { status?: StatusFilter; period?: OrdersListPeriod }) => {
+      setDashboardTab("orders");
+      if (opts.status !== undefined) setStatusFilter(opts.status);
+      if (opts.period !== undefined) setOrdersListPeriod(opts.period);
+      else if (opts.status === "delivered" || opts.status === "cancelled") {
+        setOrdersListPeriod("all");
+      }
+      setPageAlert({
+        notice:
+          opts.status === "delivered" ?
+            "Showing all delivered orders (all time). Use this for past days - Bill tab stays active-only."
+          : opts.status === "cancelled" ?
+            "Showing all cancelled orders (all time)."
+          : opts.period === "today" ? "Showing orders created today."
+          : opts.period === "month" ? "Showing orders created this month."
+          : opts.status === "pending" ? "Showing pending orders this month."
+          : opts.status === "active" ? "Showing active pipeline orders this month."
+          : opts.period === "all" ? "Showing all orders (all time)."
+          : "Showing orders this month.",
+      });
+      requestAnimationFrame(() => {
+        ordersSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    },
+    [],
+  );
 
   const orderTakerBillLabel = useMemo(
     () =>
@@ -361,6 +502,63 @@ export function OrdersDashboard() {
     [shops],
   );
 
+  const shopMarginPercentForOrder = useCallback(
+    (order: CustomerOrder) => {
+      if (order.shop_id) {
+        const shop = shops.find((s) => s.id === order.shop_id);
+        return clampMarginPercent(
+          Number(shop?.trade_margin_percent ?? order.trade_margin_percent_applied ?? adminMarginPercent),
+        );
+      }
+      return clampMarginPercent(Number(order.trade_margin_percent_applied ?? adminMarginPercent));
+    },
+    [adminMarginPercent, shops],
+  );
+
+  async function sendOrderSettlementBillEmail(
+    order: CustomerOrder,
+    shopOwnerEmail: string,
+  ): Promise<BillPreviewEmailResult> {
+    if (!session?.access_token) return { error: "Not signed in." };
+    if (!order.shop_id?.trim()) {
+      return {
+        error: "Link this order to a shop before emailing the settlement bill to the shop owner.",
+      };
+    }
+    const trimmed = shopOwnerEmail.trim();
+    if (!trimmed) {
+      return { error: "Enter the shop owner's email before sending the settlement bill." };
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      return { error: "Invalid shop owner email address." };
+    }
+    try {
+      const shopName = shopNameById.get(order.shop_id) ?? "Shop";
+      const result = await sendBillEmail({
+        data: {
+          requesterToken: session.access_token,
+          customerEmail: trimmed,
+          shopId: order.shop_id,
+          subject: `Settlement bill ${order.bill_number || ""} - ${shopName}`.trim(),
+          shopName,
+          ownerName: orderTakerBillLabel,
+          billDate: (order.created_at || "").slice(0, 16),
+          billKind: "merchant",
+          billNumber: order.bill_number?.trim() || undefined,
+          orderBill: customerOrderBillEmailOrderBill(order, shopName, {
+            forMerchant: true,
+            shopMarginPercent: shopMarginPercentForOrder(order),
+          }),
+        },
+      });
+      return { notice: `Settlement bill emailed to shop owner (${result.deliveredTo}).` };
+    } catch (e) {
+      return {
+        error: e instanceof Error ? e.message : "Unable to send settlement bill email.",
+      };
+    }
+  }
+
   async function sendOrderBillEmail(
     order: CustomerOrder,
     customerEmail: string,
@@ -374,18 +572,18 @@ export function OrdersDashboard() {
       return { error: "Invalid email address." };
     }
     try {
-      const retail = Number(order.total_amount || 0);
+      const shopName = order.shop_id ? shopNameById.get(order.shop_id) : undefined;
       const result = await sendBillEmail({
         data: {
           requesterToken: session.access_token,
           customerEmail: trimmed,
-          subject: `Bill ${order.bill_number || ""} — ${GROOBEY_APP_NAME}`.trim(),
+          subject: `Bill ${order.bill_number || ""} - ${GROOBEY_APP_NAME}`.trim(),
           shopName: GROOBEY_APP_NAME,
           ownerName: orderTakerBillLabel,
           billDate: (order.created_at || "").slice(0, 16),
           billKind: "customer",
           billNumber: order.bill_number?.trim() || undefined,
-          items: customerOrderItemsForBillEmail(order.order_items, retail),
+          orderBill: customerOrderBillEmailOrderBill(order, shopName),
         },
       });
       return { notice: `Customer bill emailed to ${result.deliveredTo}.` };
@@ -396,14 +594,27 @@ export function OrdersDashboard() {
     }
   }
 
-  function orderBillPreviewOptions(order: CustomerOrder): BillPreviewShowOptions | undefined {
+  function orderBillPreviewOptions(
+    order: CustomerOrder,
+    kind: BillKind,
+  ): BillPreviewShowOptions | undefined {
     if (!session?.access_token) return undefined;
-    const defaultEmail =
+    const defaultCustomerEmail =
       order.customer_phone?.includes("@") ? order.customer_phone.trim() : "";
+    const defaultSettlementEmail = shopOwnerEmailForOrder(order, shopOwnerEmailByShopId);
+    if (kind === "customer") {
+      return {
+        email: {
+          defaultEmail: defaultCustomerEmail,
+          send: (customerEmail) => sendOrderBillEmail(order, customerEmail),
+        },
+      };
+    }
     return {
-      email: {
-        defaultEmail,
-        send: (customerEmail) => sendOrderBillEmail(order, customerEmail),
+      settlementEmail: {
+        defaultEmail: defaultSettlementEmail,
+        shopId: order.shop_id?.trim() || undefined,
+        send: (shopOwnerEmail) => sendOrderSettlementBillEmail(order, shopOwnerEmail),
       },
     };
   }
@@ -415,26 +626,13 @@ export function OrdersDashboard() {
       order,
       shopName: shopName ?? null,
       orderTakerLabel: orderTakerBillLabel,
-      preview: kind === "customer" ? orderBillPreviewOptions(order) : undefined,
+      shopMarginPercent: shopMarginPercentForOrder(order),
+      preview: orderBillPreviewOptions(order, kind),
     });
   }
 
   function printCustomerBill(order: CustomerOrder): boolean {
     return printOrderBill(order, "customer");
-  }
-
-  async function emailCustomerBill(order: CustomerOrder, customerEmailInput?: string) {
-    if (!session?.access_token) return;
-    if (customerEmailInput === undefined) {
-      printCustomerBill(order);
-      return;
-    }
-    setEmailingOrderId(order.id);
-    setBillTabAlert({});
-    const result = await sendOrderBillEmail(order, customerEmailInput);
-    if (result.error) setBillTabAlert({ error: result.error });
-    else if (result.notice) setBillTabAlert({ notice: result.notice });
-    setEmailingOrderId(null);
   }
 
   function copyBillNumber(billNumber: string | null, forBillTab = false) {
@@ -492,8 +690,8 @@ export function OrdersDashboard() {
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
     const customerName = String(form.get("customerName") || "").trim();
+    const customerAddress = String(form.get("customerAddress") || "").trim();
     const customerPhone = String(form.get("customerPhone") || "").trim();
-    const shopId = String(form.get("shopId") || "").trim();
     const orderItems = String(form.get("orderItems") || "").trim();
     const grocerySubtotal = Number(form.get("totalAmount") || 0);
     const requiredDate = String(form.get("requiredDate") || "").trim();
@@ -505,14 +703,24 @@ export function OrdersDashboard() {
       setOrderFormAlert({ error: "Customer name is required." });
       return;
     }
-    if (!delivery.deliveryTimeSlot) {
+    if (!customerPhone) {
       setSaving(false);
-      setOrderFormAlert({ error: "Choose delivery time (hour and 10-minute slot)." });
+      setOrderFormAlert({ error: "Customer mobile number is required." });
+      return;
+    }
+    if (!isValidCustomerMobile(customerPhone)) {
+      setSaving(false);
+      setOrderFormAlert({ error: "Enter a valid 10-digit mobile number." });
+      return;
+    }
+    if (!customerAddress) {
+      setSaving(false);
+      setOrderFormAlert({ error: "Customer location (address) is required." });
       return;
     }
     if (delivery.destination === "shop" && !delivery.workFromShopId) {
       setSaving(false);
-      setOrderFormAlert({ error: "Choose work from shop for this delivery." });
+      setOrderFormAlert({ error: "Choose the shop for this order (Order type → Shop)." });
       return;
     }
     if (delivery.destination === "other" && !delivery.otherDestination) {
@@ -522,24 +730,26 @@ export function OrdersDashboard() {
     }
     const resolvedShopId =
       delivery.workFromShopId ||
-      shopId ||
-      (shopIdColumnReady && shops.length === 1 ? shops[0]?.id : "") ||
+      (delivery.destination === "shop" && shopIdColumnReady && shops.length === 1 ?
+        shops[0]?.id
+      : "") ||
       "";
     const shopName = resolvedShopId ? shops.find((s) => s.id === resolvedShopId)?.name : undefined;
-    const deliveryAddress = buildOrderDeliveryAddress({
-      destination: delivery.destination,
-      shopName,
-      otherDestination: delivery.otherDestination,
-      customerAddress: delivery.customerAddress,
-    });
-    if (shopIdColumnReady && shops.length > 1 && !resolvedShopId) {
+    // Bills and customer email use this field - always the street/location the customer gave.
+    const deliveryAddress = customerAddress || null;
+    if (
+      shopIdColumnReady &&
+      delivery.destination === "shop" &&
+      shops.length > 1 &&
+      !resolvedShopId
+    ) {
       setSaving(false);
-      setOrderFormAlert({ error: "No shop configured — ask Platform Admin." });
+      setOrderFormAlert({ error: "Choose the shop for this order (Order type → Shop)." });
       return;
     }
-    if (!orderItems && !delivery.itemsDelivered) {
+    if (!orderItems) {
       setSaving(false);
-      setOrderFormAlert({ error: "Add grocery items or items delivered." });
+      setOrderFormAlert({ error: "Add grocery items to the cart." });
       return;
     }
 
@@ -559,7 +769,11 @@ export function OrdersDashboard() {
     const grocery = Number.isFinite(grocerySubtotal) ? Math.max(0, grocerySubtotal) : 0;
     const deliveryCharge = delivery.deliveryCharge;
     const retail = grocery + deliveryCharge;
-    const marginPct = adminMarginPercent;
+    const assignedShop =
+      resolvedShopId ? shops.find((s) => s.id === resolvedShopId) : undefined;
+    const marginPct = clampMarginPercent(
+      Number(assignedShop?.trade_margin_percent ?? adminMarginPercent),
+    );
     const trade = tradeAmountFromRetail(grocery, marginPct) + deliveryCharge;
     const orderNotes = shopIdColumnReady
       ? notes || null
@@ -672,7 +886,7 @@ export function OrdersDashboard() {
     setLastCreatedOrderId(newId);
     setFormResetNonce((n) => n + 1);
     setOrderFormAlert({
-      notice: `Order created — Bill ${billNo}, total ₹${Math.round(retail)}. Print or email from the bill panel.`,
+      notice: `Order created - Bill ${billNo}, total ₹${Math.round(retail)}. Print or email from the bill panel.`,
     });
     formElement.reset();
     if (newId) {
@@ -739,29 +953,80 @@ export function OrdersDashboard() {
   ];
 
   return (
-    <main className="groobey-shell min-h-screen text-foreground">
+    <main className="groobey-shell groobey-page min-h-dvh min-w-0 overflow-x-hidden text-foreground">
       <GroobeyDashboardHeader
         title="Orders dashboard"
         subtitle="Bill ID lookup · quick new orders"
         actions={
-          <Button variant="outline" className="rounded-xl" onClick={() => supabase.auth.signOut()}>
-            Logout
-          </Button>
+          <>
+            <GroobeyNotificationBell
+              items={orderNotifications.items}
+              unreadCount={orderNotifications.unreadCount}
+              onMarkAllRead={orderNotifications.markAllRead}
+              onMarkRead={orderNotifications.markRead}
+              onClearAll={orderNotifications.clearAll}
+            />
+            <Button variant="outline" className="rounded-xl" onClick={() => void groobeySignOut()}>
+              Logout
+            </Button>
+          </>
         }
       />
 
-      <section className="mx-auto max-w-7xl space-y-4 px-4 py-5 sm:px-6 lg:px-10">
-        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Stat icon={PhoneCall} label="Pending" value={String(pendingCount)} />
-          <Stat icon={ClipboardList} label="Active orders" value={String(activeCount)} />
-          <Stat icon={IndianRupee} label="Today (retail)" value={`₹${Math.round(todayRetail)}`} />
-          <Stat icon={CalendarDays} label="This month" value={`₹${Math.round(monthRetail)}`} />
+      <section ref={ordersSectionRef} className="groobey-dashboard-body mx-auto max-w-7xl scroll-mt-24 space-y-4 px-4 py-4 sm:px-6 sm:py-5 lg:px-10">
+        <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          <Stat
+            icon={PhoneCall}
+            label="Pending"
+            value={String(pendingCount)}
+            pressed={dashboardTab === "orders" && statusFilter === "pending" && ordersListPeriod === "month"}
+            onClick={() => openOrdersList({ status: "pending", period: "month" })}
+          />
+          <Stat
+            icon={ClipboardList}
+            label="Active orders"
+            value={String(activeCount)}
+            pressed={dashboardTab === "orders" && statusFilter === "active" && ordersListPeriod === "month"}
+            onClick={() => openOrdersList({ status: "active", period: "month" })}
+          />
+          <Stat
+            icon={IndianRupee}
+            label="Today"
+            hint={`${todayOrders.length} order${todayOrders.length === 1 ? "" : "s"} · ₹${Math.round(todayRetail)} retail`}
+            value={String(todayOrders.length)}
+            pressed={dashboardTab === "orders" && ordersListPeriod === "today"}
+            onClick={() => openOrdersList({ status: "all", period: "today" })}
+          />
+          <Stat
+            icon={CalendarDays}
+            label="This month"
+            hint={`${monthOrders.length} total · ${deliveredMonthCount} delivered`}
+            value={String(monthOrders.length)}
+            pressed={
+              dashboardTab === "orders" &&
+              statusFilter === "all" &&
+              ordersListPeriod === "month"
+            }
+            onClick={() => openOrdersList({ status: "all", period: "month" })}
+          />
+          <Stat
+            icon={Package}
+            label="Delivered"
+            hint={`${deliveredCount} all time · tap for history`}
+            value={String(deliveredCount)}
+            pressed={
+              dashboardTab === "orders" &&
+              statusFilter === "delivered" &&
+              ordersListPeriod === "all"
+            }
+            onClick={() => openOrdersList({ status: "delivered", period: "all" })}
+          />
         </section>
 
         <Message
           error=""
           notice=""
-          loading={loading && !hasLoaded.current}
+          loading={false}
           refreshing={loading && hasLoaded.current}
           showAlerts={false}
         />
@@ -770,67 +1035,61 @@ export function OrdersDashboard() {
         <StaffIdentityCard
           title="Your order taker details"
           icon={UserRound}
-          subtitle="Name and login are managed by Platform Admin. Groobey margin (if any) is set by admin — you only manage customer orders and bills here."
+          subtitle="Name and login are managed by Platform Admin. Groobey margin (if any) is set by admin - you only manage customer orders and bills here."
           rows={[
             { label: "Order taker name", value: orderTakerName },
-            { label: "Email", value: profile?.email?.trim() || session.user.email || "—" },
-            { label: "Groobey ID", value: profile?.groobey_code?.trim() || "—" },
-            { label: "Mobile", value: profile?.phone?.trim() || "—" },
+            { label: "Email", value: profile?.email?.trim() || session.user.email || "-" },
+            { label: "Groobey ID", value: profile?.groobey_code?.trim() || "-" },
+            { label: "Mobile", value: profile?.phone?.trim() || "-" },
             { label: "Delivered (all time)", value: String(deliveredCount) },
           ]}
         />
 
-        <Tabs defaultValue="bill" className="w-full">
+        <Tabs value={dashboardTab} onValueChange={setDashboardTab} className="w-full">
           <TabsList className="mb-4 grid h-auto w-full grid-cols-2 gap-1 p-1 sm:max-w-md">
             <TabsTrigger value="bill" className="min-h-10 gap-1.5 text-sm">
               <ClipboardList className="size-4 shrink-0" /> Bill &amp; new order
             </TabsTrigger>
             <TabsTrigger value="orders" className="min-h-10 gap-1.5 text-sm">
-              <Search className="size-4 shrink-0" /> All orders ({orders.length})
+              <Search className="size-4 shrink-0" /> Active ({activeMonthOrders.length})
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="bill" className="mt-0 space-y-3">
-            <GroobeyBillEmailStatus accessToken={session.access_token} />
-            <Panel title="Bill ID" icon={ClipboardList}>
+          <TabsContent value="bill" className="mt-0">
+            <p className="mb-3 rounded-xl border border-border bg-muted/30 px-3 py-2 text-xs font-semibold leading-relaxed text-muted-foreground">
+              Active pipeline only: create bills and print here. After delivery completes, find the bill
+              under Active tab, Delivered filter (all time).
+            </p>
+            <Panel title="Bill ID & new order" icon={ClipboardList}>
               <OrderTakerWorkspace
-                orders={orders}
+                orders={orders.filter((o) => isOrderPipelineActive(o.status))}
                 products={products}
                 shops={shops}
-                defaultShopId={shops[0]?.id ?? ""}
-                ordersLoading={loading && !hasLoaded.current}
                 missingBillCount={missingBillCount}
                 backfillingBills={backfillingBills}
                 resetNonce={formResetNonce}
                 saving={saving}
                 feedback={orderFormAlert}
                 billActionFeedback={billTabAlert}
-                emailingOrderId={emailingOrderId}
                 nextStatuses={orderTakerNextStatuses}
                 onSubmit={handleCreateOrder}
-                onPrintBill={(order, kind) => {
-                  const opened = printOrderBill(order, kind);
-                  if (opened) {
-                    setBillTabAlert({
-                      notice:
-                        kind === "merchant" ?
-                          "Settlement bill opened — same Bill ID as customer copy."
-                        : "Bill preview opened — print or email from the panel.",
-                    });
-                  }
-                }}
-                onEmailBill={(order, email) => void emailCustomerBill(order, email)}
-                onCopyBillId={(billNumber) => copyBillNumber(billNumber, true)}
+                onPrintBill={(order, kind) => printOrderBill(order, kind)}
                 onUpdateStatus={(id, status) => void updateStatus(id, status)}
                 onBackfillMissingBills={() => runBillBackfill()}
                 focusOrderId={focusBillOrderId}
                 onFocusOrderHandled={() => setFocusBillOrderId(null)}
+                calendarMonth={month}
+                calendarMonthLabel={monthLabel}
               />
             </Panel>
           </TabsContent>
 
           <TabsContent value="orders" className="mt-0 space-y-4">
-            <Panel title="Search & export" icon={Search}>
+            <p className="rounded-xl border border-border bg-muted/30 px-3 py-2 text-xs font-semibold leading-relaxed text-muted-foreground">
+              Default view is active pipeline this month. Tap Delivered above for past days (all time).
+              Delivery alerts you when an order is marked delivered.
+            </p>
+            <Panel title="Search & Orders Excel" icon={Search}>
               <div className="grid gap-3">
                 <input
                   type="search"
@@ -848,17 +1107,66 @@ export function OrdersDashboard() {
                       size="sm"
                       variant={statusFilter === f.id ? "groobey" : "outline"}
                       className="h-8 rounded-lg text-xs"
-                      onClick={() => setStatusFilter(f.id)}
+                      onClick={() => {
+                        setStatusFilter(f.id);
+                        if (f.id === "delivered" || f.id === "cancelled") {
+                          setOrdersListPeriod("all");
+                        } else if (
+                          ordersListPeriod === "all" &&
+                          (f.id === "active" || f.id === "pending" || f.id === "all")
+                        ) {
+                          setOrdersListPeriod("month");
+                        }
+                      }}
                     >
                       {f.label}
                     </Button>
                   ))}
+                  {ordersListPeriod === "today" ?
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-8 rounded-lg text-xs"
+                      onClick={() => setOrdersListPeriod("month")}
+                    >
+                      Back to this month
+                    </Button>
+                  : null}
+                  {ordersListPeriod !== "all" ?
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-8 rounded-lg text-xs"
+                      onClick={() => setOrdersListPeriod("all")}
+                    >
+                      All time ({orders.length})
+                    </Button>
+                  : ordersListPeriod === "all" ?
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="groobey"
+                      className="h-8 rounded-lg text-xs"
+                      onClick={() => setOrdersListPeriod("month")}
+                    >
+                      This month only
+                    </Button>
+                  : null}
                 </div>
-                <div className="flex flex-wrap gap-2">
+                <OrdersExcelExport
+                  orders={filteredOrders}
+                  periodLabel={ordersExportPeriodLabel}
+                  workerName={orderTakerName}
+                  shopNameById={shopNameById}
+                  statusLabels={statusLabel}
+                />
+                <div className="flex flex-wrap gap-2 border-t border-border/60 pt-3">
                   <Button
                     type="button"
                     variant="outline"
-                    className="min-h-10 rounded-xl"
+                    className="min-h-10 rounded-xl text-xs"
                     onClick={exportOrdersCsv}
                     disabled={!filteredOrders.length}
                   >
@@ -869,86 +1177,151 @@ export function OrdersDashboard() {
             </Panel>
 
             <Panel
-              title={`Orders (${filteredOrders.length}${filteredOrders.length !== orders.length ? ` of ${orders.length}` : ""})`}
+              title={
+                ordersListPeriod === "month" ?
+                  `Orders - ${monthLabel}`
+                : ordersListPeriod === "today" ?
+                  "Orders - today"
+                : "Orders - all time"
+              }
               icon={ClipboardList}
               feedback={queueAlert}
             >
+              <OrdersMonthScopeBanner
+                className="mb-4"
+                monthKey={month}
+                monthLabel={monthLabel}
+                orderCount={
+                  ordersListPeriod === "month" ? monthOrders.length
+                  : ordersListPeriod === "today" ? todayOrders.length
+                  : orders.length
+                }
+              />
               {filteredOrders.length === 0 ?
                 <p className="text-sm font-semibold text-muted-foreground">No orders match.</p>
-              : <div className="space-y-3">
-                  {filteredOrders.map((order) => {
-                    const isNew = order.id === lastCreatedOrderId;
-                    return (
-                      <div
-                        key={order.id}
-                        className={`rounded-xl border bg-card/70 p-3 ${
-                          isNew ? "border-primary ring-2 ring-primary/20" : "border-border"
-                        }`}
-                      >
-                        <div className="flex flex-wrap items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="font-mono text-lg font-black text-primary">
-                              {order.bill_number || "No bill ID"}
-                            </p>
-                            <p className="mt-0.5 text-sm font-bold text-foreground">
-                              {order.customer_name} · ₹
-                              {Math.round(Number(order.total_amount || 0))}
-                            </p>
-                          </div>
-                          <span
-                            className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${statusClass[order.status]}`}
-                          >
-                            {statusLabel[order.status]}
-                          </span>
-                        </div>
-                        <p className="mt-2 line-clamp-2 text-xs font-semibold text-muted-foreground">
-                          {order.order_items}
-                        </p>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          <BillKindButtons onPrint={(kind) => printOrderBill(order, kind)} />
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className="min-h-10 rounded-xl"
-                            onClick={() => void emailCustomerBill(order)}
-                            disabled={emailingOrderId === order.id}
-                          >
-                            {emailingOrderId === order.id ?
-                              <Loader2 className="size-4 animate-spin" />
-                            : <Mail className="size-4" />}{" "}
-                            Email bill
-                          </Button>
-                          {order.bill_number ?
-                            <Button
-                              type="button"
-                              variant="outline"
-                              className="min-h-10 rounded-xl"
-                              onClick={() => copyBillNumber(order.bill_number)}
-                            >
-                              <Copy className="size-4" /> Copy bill ID
-                            </Button>
-                          : null}
-                        </div>
-                        {orderTakerNextStatuses[order.status].length ?
-                          <div className="mt-2 flex flex-wrap gap-2 border-t border-border/60 pt-2">
-                            {orderTakerNextStatuses[order.status].map((s) => (
-                              <Button
-                                key={s}
-                                type="button"
-                                variant={s === "cancelled" ? "outline" : "calm"}
-                                className="h-8 rounded-lg text-xs"
-                                onClick={() => void updateStatus(order.id, s)}
+              : (
+                <>
+                  <div className="owner-orders-table-wrap hidden lg:block">
+                    <div className="owner-orders-table-scroll groobey-scrollbar">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th scope="col" className="text-left">
+                              Bill ID
+                            </th>
+                            <th scope="col" className="text-left">
+                              Customer
+                            </th>
+                            <th scope="col" className="text-left">
+                              Address
+                            </th>
+                            <th scope="col" className="text-left">
+                              Shop
+                            </th>
+                            <th scope="col" className="text-left">
+                              Date
+                            </th>
+                            <th scope="col" className="text-left">
+                              Status
+                            </th>
+                            <th scope="col" className="text-right">
+                              Total
+                            </th>
+                            <th scope="col" className="text-left">
+                              Print
+                            </th>
+                            <th scope="col" className="text-left min-w-[10rem]">
+                              Update status
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filteredOrders.map((order) => {
+                            const shopName =
+                              order.shop_id ? shopNameById.get(order.shop_id) : undefined;
+                            return (
+                              <tr
+                                key={order.id}
+                                className={
+                                  order.id === lastCreatedOrderId ? "owner-orders-row--new" : ""
+                                }
                               >
-                                Mark {statusLabel[s]}
-                              </Button>
-                            ))}
-                          </div>
-                        : null}
-                      </div>
-                    );
-                  })}
-                </div>
-              }
+                                <td>
+                                  <span className={orderBillIdHighlightClass}>
+                                    {order.bill_number || "-"}
+                                  </span>
+                                </td>
+                                <td className="max-w-[9rem] font-bold">{order.customer_name}</td>
+                                <td className="max-w-[11rem] text-xs font-semibold text-muted-foreground">
+                                  <span className="line-clamp-2">
+                                    {order.delivery_address?.trim() || "-"}
+                                  </span>
+                                </td>
+                                <td className="max-w-[8rem]">
+                                  {shopName ?
+                                    <span className={orderBillShopHighlightClass}>{shopName}</span>
+                                  : "-"}
+                                </td>
+                                <td className="tabular-nums text-xs font-semibold whitespace-nowrap">
+                                  {orderDisplayDate(order.created_at)}
+                                </td>
+                                <td>
+                                  <span
+                                    className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${statusClass[order.status]}`}
+                                  >
+                                    {statusLabel[order.status]}
+                                  </span>
+                                </td>
+                                <td className="text-right font-bold tabular-nums whitespace-nowrap">
+                                  ₹{Math.round(Number(order.total_amount || 0))}
+                                </td>
+                                <td>
+                                  <BillKindButtons
+                                    compact
+                                    layout="compact"
+                                    onPrint={(kind) => printOrderBill(order, kind)}
+                                  />
+                                </td>
+                                <td>
+                                  <OrderStatusActionButtons
+                                    compact
+                                    nextStatuses={orderTakerNextStatuses[order.status]}
+                                    statusLabels={statusLabel}
+                                    onUpdateStatus={(s) =>
+                                      void updateStatus(order.id, s as OrderStatus)
+                                    }
+                                    orderLabel={
+                                      order.bill_number || order.customer_name
+                                    }
+                                  />
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                  <div className="space-y-3 lg:hidden" role="list" aria-label="Orders list">
+                    {filteredOrders.map((order) => (
+                      <OrderQueueCard
+                        key={order.id}
+                        order={order}
+                        shopName={
+                          order.shop_id ? shopNameById.get(order.shop_id) : undefined
+                        }
+                        statusLabel={statusLabel[order.status]}
+                        statusClassName={statusClass[order.status]}
+                        isHighlighted={order.id === lastCreatedOrderId}
+                        onPrint={(kind) => printOrderBill(order, kind)}
+                        nextStatuses={orderTakerNextStatuses[order.status]}
+                        statusLabels={statusLabel}
+                        onUpdateStatus={(s) => void updateStatus(order.id, s as OrderStatus)}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
             </Panel>
           </TabsContent>
         </Tabs>

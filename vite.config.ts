@@ -1,8 +1,8 @@
-// @lovable.dev/vite-tanstack-config already includes the following — do NOT add them manually
+// @lovable.dev/vite-tanstack-config already includes the following - do NOT add them manually
 // or the app will break with duplicate plugins:
 //   - tanstackStart, viteReact, tailwindcss, componentTagger (dev-only), VITE_* env injection,
 //     @ path alias, React/TanStack dedupe, error logger plugins, and sandbox detection.
-// Cloudflare is disabled here — production is hosted on Vercel (GitHub integration).
+// Cloudflare is disabled here - production is hosted on Vercel (GitHub integration).
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
@@ -121,7 +121,7 @@ export default defineConfig({
             name: "TLD Groobey Merchant Hub",
             short_name: "Groobey",
             description:
-              "Shop operations for grocery retail — pricing, sales, orders, attendance, and bills.",
+              "Shop operations for grocery retail - pricing, sales, orders, attendance, and bills.",
             theme_color: "#9ACD32",
             background_color: "#0a0a0a",
             display: "standalone",
@@ -151,7 +151,7 @@ export default defineConfig({
               },
             ],
           },
-          // SW is generated post-build (TanStack Start uses ssr:true on client — see scripts/generate-sw.mjs)
+          // SW is generated post-build (TanStack Start uses ssr:true on client - see scripts/generate-sw.mjs)
           selfDestroying: false,
           devOptions: {
             enabled: false,

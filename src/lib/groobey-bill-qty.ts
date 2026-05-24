@@ -1,4 +1,4 @@
-/** Pack-size label on bills (K = kg, GS = grams — grocery trade shorthand). */
+/** Pack-size label on bills (K = kg, GS = grams - grocery trade shorthand). */
 
 export function cleanPackUnitLabel(raw?: string | null): string {
   const unit = (raw ?? "").trim();
@@ -29,7 +29,7 @@ export function abbreviatePackUnitForBill(unit: string): string {
 }
 
 function formatQtyNumber(q: number): string {
-  if (!Number.isFinite(q)) return "—";
+  if (!Number.isFinite(q)) return "-";
   if (Number.isInteger(q)) return String(q);
   const rounded = Math.round(q * 1000) / 1000;
   return String(rounded);
@@ -63,7 +63,7 @@ export function resolveBillQtyAndKgs(
   packUnit?: string | null,
 ): BillQtyKgsCells {
   const q = Number(quantity);
-  if (!Number.isFinite(q) || q <= 0) return { qty: "—", kgs: "—" };
+  if (!Number.isFinite(q) || q <= 0) return { qty: "-", kgs: "-" };
 
   const n = formatQtyNumber(q);
   const raw = (packUnit ?? "").trim();
@@ -93,7 +93,7 @@ export function resolveBillQtyAndKgs(
 export function formatBillQtyCell(quantity: number, packUnit?: string | null): string {
   const { qty, kgs } = resolveBillQtyAndKgs(quantity, packUnit);
   if (qty === kgs) return qty;
-  if (kgs === "—") return qty;
+  if (kgs === "-") return qty;
   return kgs;
 }
 
@@ -107,7 +107,7 @@ export function formatBillKgsCell(packUnit?: string | null): string {
   return resolveBillQtyAndKgs(1, packUnit).kgs;
 }
 
-/** Item name without trailing `(1 kg)` pack suffix — pack goes in KGS column. */
+/** Item name without trailing `(1 kg)` pack suffix - pack goes in KGS column. */
 export function stripPackFromItemName(name: string): string {
   const trimmed = name.trim();
   const stripped = trimmed.replace(/\s*\([^)]+\)\s*$/u, "").trim();

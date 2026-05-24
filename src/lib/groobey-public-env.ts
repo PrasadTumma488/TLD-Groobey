@@ -1,4 +1,4 @@
-/** Public Supabase config — build-time (VITE_*), SSR (process.env), and runtime (inline script / meta). */
+/** Public Supabase config - build-time (VITE_*), SSR (process.env), and runtime (inline script / meta). */
 
 declare global {
   interface Window {

@@ -6,9 +6,13 @@ import { downloadGroceryCatalogTemplate } from "@/lib/groobey-excel-catalog";
 
 export function GroobeyExcelCatalogUpload({
   onImport,
+  onExportCatalog,
+  catalogCount = 0,
   importing = false,
 }: {
   onImport: (file: File) => Promise<void>;
+  onExportCatalog?: () => void;
+  catalogCount?: number;
   importing?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -34,21 +38,36 @@ export function GroobeyExcelCatalogUpload({
         <div className="min-w-0">
           <p className="flex items-center gap-2 text-sm font-black text-foreground">
             <FileSpreadsheet className="size-4 shrink-0 text-primary" />
-            Upload grocery list (Excel)
+            Grocery catalog (Excel)
           </p>
           <p className="mt-1 text-xs font-semibold text-muted-foreground">
-            Columns: <strong>Item name</strong>, <strong>Pack size</strong>, <strong>Retail price</strong>, optional{" "}
-            <strong>Default qty</strong>. Matching name + pack updates price and qty; new rows are added to the catalog.
+            Use the <strong>TLD GROOBY</strong> sheet: title row, then{" "}
+            <strong>S.No · CATEGORY · PRODUCT · pack columns (50G, 100G, 1KG, 1.5KG … up to 10KG) · MRP</strong>.
+            Add any gram or kg column you need; each filled price becomes one catalog line. Download blank
+            template or your current catalog in the same layout.
           </p>
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          className="min-h-10 shrink-0 rounded-xl"
-          onClick={() => downloadGroceryCatalogTemplate()}
-        >
-          <Download className="size-4" /> Template
-        </Button>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            className="min-h-10 rounded-xl"
+            onClick={() => downloadGroceryCatalogTemplate()}
+          >
+            <Download className="size-4" /> Blank template
+          </Button>
+          {onExportCatalog ?
+            <Button
+              type="button"
+              variant="outline"
+              className="min-h-10 rounded-xl"
+              disabled={catalogCount === 0}
+              onClick={onExportCatalog}
+            >
+              <Download className="size-4" /> Download catalog ({catalogCount})
+            </Button>
+          : null}
+        </div>
       </div>
       <div
         role="button"
@@ -74,17 +93,16 @@ export function GroobeyExcelCatalogUpload({
           }
         }}
       >
-        {importing ? (
+        {importing ?
           <>
             <Loader2 className="size-8 animate-spin text-primary" />
             <p className="text-sm font-semibold">Importing…</p>
           </>
-        ) : (
-          <>
+        : <>
             <Upload className="size-8 text-primary" />
             <p className="text-sm font-bold text-foreground">Drop .xlsx / .csv here or click to choose</p>
           </>
-        )}
+        }
         <input
           ref={inputRef}
           type="file"

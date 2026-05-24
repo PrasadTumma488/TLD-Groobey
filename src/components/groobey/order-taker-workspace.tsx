@@ -1,20 +1,21 @@
-import { Copy, Loader2, Mail, Plus, Printer, Receipt, Search, Wand2 } from "lucide-react";
+import { Plus, Receipt, Search, Wand2, X } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { GroobeyGroceryLinePicker } from "@/components/groobey/groobey-grocery-line-picker";
+import { GroobeySelect } from "@/components/groobey/groobey-select-field";
 import { Button } from "@/components/ui/button";
 import type { Database } from "@/integrations/supabase/types";
 import { displayBillId } from "@/lib/groobey-bill-id";
 import { exampleBillIdForNow } from "@/lib/groobey-bill-id";
 import {
   billPickerLabel,
-  filterOrdersForBillSearch,
   findOrderByBillQuery,
   normalizeBillIdInput,
   ordersForBillPicker,
   ordersWithBillNumbers,
   type CustomerOrderRow,
 } from "@/lib/groobey-bill-lookup";
+import { resolveCustomerStreetAddressForBill } from "@/lib/groobey-delivery-order-fields";
 import {
   groceryCartRetailTotal,
   groceryCartSummaryText,
@@ -25,8 +26,19 @@ import {
 import { BillKindButtons } from "@/components/groobey/groobey-bill-buttons";
 import type { BillKind } from "@/lib/groobey-dual-bill";
 
+import {
+  BillLookupEmptyHint,
+  OrdersMonthScopeBanner,
+  SelectedBillDetailCard,
+} from "@/components/groobey/groobey-order-list-parts";
+import { cn } from "@/lib/utils";
 import { CustomerOrderDeliveryFields } from "./customer-order-delivery-fields";
+import { GroceryOrderItemsList } from "@/components/groobey/grocery-order-items-list";
 import { Field, InlineFeedback } from "./workspace-ui";
+import {
+  calendarMonthKey,
+  filterOrdersByCalendarMonth,
+} from "@/lib/groobey-order-month";
 
 type Shop = Database["public"]["Tables"]["shops"]["Row"];
 type OrderStatus = Database["public"]["Enums"]["order_status"];
@@ -40,67 +52,83 @@ const statusLabel: Record<OrderStatus, string> = {
   cancelled: "Cancelled",
 };
 
+const statusClass: Record<OrderStatus, string> = {
+  pending: "bg-amber-100 text-amber-800",
+  confirmed: "bg-sky-100 text-sky-800",
+  packed: "bg-indigo-100 text-indigo-800",
+  out_for_delivery: "bg-violet-100 text-violet-800",
+  delivered: "bg-emerald-100 text-emerald-800",
+  cancelled: "bg-rose-100 text-rose-800",
+};
+
 export function OrderTakerWorkspace({
   orders,
   products,
   shops,
-  defaultShopId,
-  ordersLoading = false,
   missingBillCount = 0,
   backfillingBills = false,
   resetNonce = 0,
   saving,
   feedback,
   billActionFeedback,
-  emailingOrderId,
   nextStatuses,
   onSubmit,
   onPrintBill,
-  onEmailBill,
-  onCopyBillId,
   onUpdateStatus,
   onBackfillMissingBills,
   focusOrderId = null,
   onFocusOrderHandled,
+  calendarMonth,
+  calendarMonthLabel,
 }: {
   orders: CustomerOrderRow[];
   products: GroceryProduct[];
   shops: Shop[];
-  defaultShopId: string;
-  ordersLoading?: boolean;
   missingBillCount?: number;
   backfillingBills?: boolean;
   resetNonce?: number;
   saving?: boolean;
   feedback?: { error?: string; notice?: string };
   billActionFeedback?: { error?: string; notice?: string };
-  emailingOrderId?: string | null;
   nextStatuses: Record<OrderStatus, OrderStatus[]>;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-  onPrintBill: (order: CustomerOrderRow, kind: BillKind) => void;
-  onEmailBill: (order: CustomerOrderRow, customerEmail: string) => void | Promise<void>;
-  onCopyBillId: (billNumber: string) => void;
+  onPrintBill: (order: CustomerOrderRow, kind: BillKind) => boolean;
   onUpdateStatus: (orderId: string, status: OrderStatus) => void;
   onBackfillMissingBills?: () => void | Promise<void>;
   /** After creating an order, parent sets this so the new bill is selected in the dropdown. */
   focusOrderId?: string | null;
   onFocusOrderHandled?: () => void;
+  calendarMonth?: string;
+  calendarMonthLabel?: string;
 }) {
+  const monthKey = calendarMonth ?? calendarMonthKey();
+  const monthOrders = useMemo(
+    () => filterOrdersByCalendarMonth(orders, monthKey),
+    [orders, monthKey],
+  );
   const [pickedOrderId, setPickedOrderId] = useState("");
   const [typeQuery, setTypeQuery] = useState("");
-  const [customerEmail, setCustomerEmail] = useState("");
   const [cartLines, setCartLines] = useState<GroceryCartLine[]>([]);
   const [deliveryCharge, setDeliveryCharge] = useState(0);
 
-  const pickerOrders = useMemo(() => ordersForBillPicker(orders), [orders]);
-  const billedOrders = useMemo(() => ordersWithBillNumbers(orders), [orders]);
+  const pickerOrders = useMemo(() => ordersForBillPicker(monthOrders), [monthOrders]);
+  const billedOrders = useMemo(() => ordersWithBillNumbers(monthOrders), [monthOrders]);
   const billCount = billedOrders.length;
+  const billPickerSelectOptions = useMemo(() => {
+    const emptyLabel =
+      billCount === 0 && monthOrders.length > 0 ?
+        "No Bill IDs this month - use Fix missing bill IDs"
+      : billCount === 0 ? "No orders this month - create one below"
+      : `Choose a bill this month (${billCount})…`;
+    return [
+      { value: "__none__", label: emptyLabel },
+      ...pickerOrders.map((order) => ({
+        value: order.id,
+        label: billPickerLabel(order),
+      })),
+    ];
+  }, [billCount, monthOrders.length, pickerOrders]);
   const currentBillIdExample = useMemo(() => exampleBillIdForNow(), []);
-
-  const listBills = useMemo(() => {
-    if (!typeQuery.trim()) return billedOrders;
-    return filterOrdersForBillSearch(orders, typeQuery);
-  }, [billedOrders, orders, typeQuery]);
 
   const billIdSuggestions = useMemo(
     () => billedOrders.map((o) => o.bill_number?.trim()).filter(Boolean) as string[],
@@ -118,26 +146,41 @@ export function OrderTakerWorkspace({
   }, [orders, pickedOrderId, typeQuery]);
 
   const statusActions = selectedOrder ? (nextStatuses[selectedOrder.status] ?? []) : [];
-  const isEmailing = Boolean(selectedOrder && emailingOrderId === selectedOrder.id);
+  const selectedBillAddress = selectedOrder
+    ? resolveCustomerStreetAddressForBill({
+        delivery_address: selectedOrder.delivery_address,
+        delivery_destination: selectedOrder.delivery_destination,
+        notes: selectedOrder.notes,
+      })
+    : "";
+  const selectedShopName = selectedOrder?.shop_id
+    ? shops.find((s) => s.id === selectedOrder.shop_id)?.name
+    : undefined;
 
   useEffect(() => {
     setCartLines([]);
     setTypeQuery("");
     setPickedOrderId("");
-    setCustomerEmail("");
     setDeliveryCharge(0);
   }, [resetNonce]);
-
-  useEffect(() => {
-    if (!selectedOrder) return;
-    const phone = selectedOrder.customer_phone?.trim() ?? "";
-    setCustomerEmail(phone.includes("@") ? phone : "");
-  }, [selectedOrder?.id, selectedOrder?.customer_phone]);
 
   const pickOrder = useCallback((order: CustomerOrderRow) => {
     setPickedOrderId(order.id);
     setTypeQuery(order.bill_number?.trim() ?? "");
   }, []);
+
+  const clearSelectedBill = useCallback(() => {
+    setPickedOrderId("");
+    setTypeQuery("");
+  }, []);
+
+  const handleBillKindClick = useCallback(
+    (kind: BillKind) => {
+      if (!selectedOrder) return;
+      onPrintBill(selectedOrder, kind);
+    },
+    [onPrintBill, selectedOrder],
+  );
 
   useEffect(() => {
     if (!focusOrderId) return;
@@ -146,11 +189,6 @@ export function OrderTakerWorkspace({
     pickOrder(order);
     onFocusOrderHandled?.();
   }, [focusOrderId, orders, onFocusOrderHandled, pickOrder]);
-
-  const recentBillList = useMemo(() => {
-    if (typeQuery.trim()) return listBills.length ? listBills : billedOrders;
-    return billedOrders;
-  }, [typeQuery, listBills, billedOrders]);
 
   const cartTotal = useMemo(
     () => groceryCartRetailTotal(cartLines, products),
@@ -162,25 +200,34 @@ export function OrderTakerWorkspace({
   );
 
   return (
-    <div className="grid max-w-xl gap-6">
-      <section className="grid gap-3">
+    <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-8 xl:gap-10">
+      <div className="flex min-w-0 w-full flex-col gap-3 lg:max-w-md lg:shrink-0 xl:max-w-lg">
+      <section className="grid min-w-0 gap-3" aria-labelledby="bill-lookup-heading">
+        <h2 id="bill-lookup-heading" className="sr-only">
+          Find and manage bills
+        </h2>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2 text-sm font-bold text-foreground">
-            <Receipt className="size-4 text-primary" />
+            <Receipt className="size-4 text-primary" aria-hidden />
             Find bill by Bill ID
           </div>
-          {ordersLoading ?
-            <span className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
-              <Loader2 className="size-3.5 animate-spin" /> Loading bills…
-            </span>
-          : <span className="text-xs font-semibold text-muted-foreground">
-              {billCount} bill{billCount === 1 ? "" : "s"}
-              {missingBillCount > 0 ?
-                ` · ${missingBillCount} missing Bill ID`
-              : null}
-            </span>
-          }
+          <span
+            className="text-xs font-semibold text-muted-foreground"
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            {billCount} bill{billCount === 1 ? "" : "s"} this month
+            {missingBillCount > 0 ?
+              ` · ${missingBillCount} missing Bill ID`
+            : null}
+          </span>
         </div>
+
+        <OrdersMonthScopeBanner
+          monthKey={monthKey}
+          monthLabel={calendarMonthLabel ?? monthKey}
+          orderCount={monthOrders.length}
+        />
 
         {missingBillCount > 0 && onBackfillMissingBills ?
           <div className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900">
@@ -192,7 +239,7 @@ export function OrderTakerWorkspace({
               size="sm"
               variant="outline"
               className="h-8 rounded-lg border-amber-300 bg-white"
-              disabled={backfillingBills || ordersLoading}
+              disabled={backfillingBills}
               onClick={() => void onBackfillMissingBills()}
             >
               {backfillingBills ?
@@ -203,11 +250,15 @@ export function OrderTakerWorkspace({
           </div>
         : null}
 
-        <label className="grid gap-1.5 text-sm font-semibold text-foreground">
+        <label
+          id="bill-id-search-label"
+          className="grid gap-1.5 text-sm font-semibold text-foreground"
+        >
           <span>Type or pick Bill ID</span>
           <span className="flex h-11 min-h-11 items-center gap-2 rounded-xl border border-input bg-card px-3 ring-ring transition focus-within:ring-2">
-            <Search className="size-4 shrink-0 text-muted-foreground" />
+            <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden />
             <input
+              id="bill-id-search"
               type="search"
               value={typeQuery}
               onChange={(e) => {
@@ -216,6 +267,7 @@ export function OrderTakerWorkspace({
               }}
               list="groobey-bill-ids"
               placeholder={`${currentBillIdExample} or last 4 digits…`}
+              aria-labelledby="bill-id-search-label"
               className="min-w-0 flex-1 bg-transparent text-sm font-mono outline-none"
               autoComplete="off"
             />
@@ -227,76 +279,35 @@ export function OrderTakerWorkspace({
           </datalist>
         </label>
 
-        <label className="grid gap-1.5 text-sm font-semibold text-foreground">
-          <span>Bill dropdown</span>
-          <select
-            className="h-11 w-full rounded-xl border border-input bg-card px-3 text-sm font-semibold outline-none ring-ring focus:ring-2 disabled:opacity-60"
-            value={pickedOrderId}
-            onChange={(e) => {
-              const id = e.target.value;
-              if (!id) {
+        <label
+          id="bill-picker-label"
+          className="grid gap-1.5 text-sm font-semibold text-foreground"
+        >
+          <span>Choose from list</span>
+          <GroobeySelect
+            value={pickedOrderId || "__none__"}
+            onValueChange={(id) => {
+              if (id === "__none__") {
                 setPickedOrderId("");
                 return;
               }
               const order = orders.find((o) => o.id === id);
               if (order) pickOrder(order);
             }}
-            disabled={ordersLoading}
-          >
-            <option value="">
-              {ordersLoading ?
-                "Loading bills…"
-              : billCount === 0 && orders.length > 0 ?
-                "No Bill IDs on file — use Fix missing bill IDs"
-              : billCount === 0 ?
-                "No orders yet — create one below"
-              : `Choose a bill (${billCount})…`}
-            </option>
-            {pickerOrders.map((order) => (
-              <option key={order.id} value={order.id}>
-                {billPickerLabel(order)}
-              </option>
-            ))}
-          </select>
+            id="bill-picker"
+            aria-labelledby="bill-picker-label"
+            options={billPickerSelectOptions}
+          />
           <span className="text-[11px] font-medium text-muted-foreground">
             New orders use <span className="font-mono font-bold">{currentBillIdExample}</span> (YYMMDD-##, daily sequence).
             Older GCO-* / GB-* IDs still work in search.
           </span>
         </label>
 
-        {billCount > 0 ?
-          <div className="grid gap-1">
-            <p className="text-xs font-semibold text-muted-foreground">Recent bills (tap to load)</p>
-            <ul className="max-h-48 space-y-1 overflow-y-auto rounded-xl border border-border bg-muted/30 p-2">
-              {recentBillList.map((order) => {
-                const active = selectedOrder?.id === order.id;
-                return (
-                  <li key={order.id}>
-                    <button
-                      type="button"
-                      onClick={() => pickOrder(order)}
-                      className={`w-full rounded-lg px-2 py-2 text-left text-xs font-semibold transition ${
-                        active ?
-                          "bg-primary text-primary-foreground"
-                        : "bg-card hover:bg-primary/10"
-                      }`}
-                    >
-                      <span className="font-mono text-sm font-black">
-                        {displayBillId(order.bill_number)}
-                      </span>
-                      <span className="mt-0.5 block truncate opacity-90">
-                        {order.customer_name} · ₹{Math.round(Number(order.total_amount || 0))} ·{" "}
-                        {statusLabel[order.status]}
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        : !ordersLoading && orders.length > 0 ?
-          <p className="text-sm font-semibold text-muted-foreground">
-            You have {orders.length} order{orders.length === 1 ? "" : "s"} but none show a Bill ID.
+        {billCount === 0 && monthOrders.length > 0 ?
+          <p className="text-sm font-semibold text-muted-foreground" role="status">
+            You have {monthOrders.length} order{monthOrders.length === 1 ? "" : "s"} this month but
+            none show a Bill ID.
             {onBackfillMissingBills ?
               " Use “Fix missing bill IDs” above."
             : " Ask admin to run bill migrations."}
@@ -304,89 +315,92 @@ export function OrderTakerWorkspace({
         : null}
 
         <InlineFeedback {...billActionFeedback} />
+      </section>
 
         {selectedOrder ?
-          <div className="rounded-xl border border-primary/30 bg-primary/5 p-4">
-            <p className="font-mono text-xl font-black text-primary">
-              {displayBillId(selectedOrder.bill_number, "No bill ID")}
-            </p>
-            <p className="mt-1 text-sm font-bold">{selectedOrder.customer_name}</p>
-            <p className="text-xs font-semibold text-muted-foreground">
-              ₹{Math.round(Number(selectedOrder.total_amount || 0))} ·{" "}
-              {statusLabel[selectedOrder.status]}
-            </p>
-            <p className="mt-2 line-clamp-3 text-xs font-semibold text-muted-foreground">
-              {selectedOrder.order_items}
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <BillKindButtons onPrint={(kind) => onPrintBill(selectedOrder, kind)} />
+          <SelectedBillDetailCard
+            billNumber={displayBillId(selectedOrder.bill_number, "No bill ID")}
+            customerName={selectedOrder.customer_name}
+            customerPhone={selectedOrder.customer_phone}
+            address={selectedBillAddress || undefined}
+            shopName={selectedShopName}
+            createdAt={selectedOrder.created_at}
+            totalAmount={Number(selectedOrder.total_amount || 0)}
+            statusClassName={statusClass[selectedOrder.status]}
+            statusLabelText={statusLabel[selectedOrder.status]}
+          >
+            {selectedOrder.order_items ?
+              <GroceryOrderItemsList text={selectedOrder.order_items} showHeading />
+            : null}
+            <div
+              className="grid w-full min-w-0 grid-cols-2 gap-2"
+              role="group"
+              aria-label="Print and clear bill"
+            >
+              <BillKindButtons
+                layout="grid"
+                className="col-span-2 min-w-0"
+                onPrint={handleBillKindClick}
+              />
               <Button
                 type="button"
                 variant="outline"
-                className="min-h-10 rounded-xl"
-                disabled={isEmailing}
-                onClick={() => void onEmailBill(selectedOrder, customerEmail)}
+                className="col-span-2 min-h-10 h-10 w-full min-w-0 rounded-xl text-sm font-bold"
+                onClick={clearSelectedBill}
+                aria-label="Clear selected bill"
               >
-                {isEmailing ?
-                  <Loader2 className="size-4 animate-spin" />
-                : <Mail className="size-4" />}{" "}
-                Email
+                <X className="size-4 shrink-0" aria-hidden />
+                <span className="truncate">Clear bill</span>
               </Button>
-              {selectedOrder.bill_number ?
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="min-h-10 rounded-xl"
-                  onClick={() => onCopyBillId(selectedOrder.bill_number!)}
-                >
-                  <Copy className="size-4" /> Copy ID
-                </Button>
-              : null}
             </div>
-            <label className="mt-3 grid gap-1 text-xs font-semibold text-foreground">
-              <span>Customer email (required to send bill)</span>
-              <input
-                type="email"
-                value={customerEmail}
-                onChange={(e) => setCustomerEmail(e.target.value)}
-                placeholder="name@example.com"
-                className="h-10 rounded-lg border border-input bg-card px-3 text-sm outline-none ring-ring focus:ring-2"
-              />
-            </label>
+
             {statusActions.length ?
-              <div className="mt-3 flex flex-wrap gap-2 border-t border-border/60 pt-3">
+              <div
+                className="grid w-full min-w-0 grid-cols-2 gap-2 border-t border-border/60 pt-3"
+                role="group"
+                aria-label="Update order status"
+              >
                 {statusActions.map((s) => (
                   <Button
                     key={s}
                     type="button"
-                    size="sm"
                     variant={s === "cancelled" ? "outline" : "calm"}
-                    className="h-8 rounded-lg text-xs"
+                    className={cn(
+                      "min-h-10 h-10 w-full min-w-0 rounded-xl text-xs font-bold",
+                      statusActions.length === 1 && "col-span-2",
+                    )}
                     onClick={() => onUpdateStatus(selectedOrder.id, s)}
+                    aria-label={`Mark ${statusLabel[s]} for ${displayBillId(selectedOrder.bill_number)}`}
                   >
-                    Mark {statusLabel[s]}
+                    <span className="truncate">Mark {statusLabel[s]}</span>
                   </Button>
                 ))}
               </div>
             : null}
-          </div>
-        : typeQuery.trim() && !ordersLoading ?
-          <p className="text-sm font-semibold text-muted-foreground">
+          </SelectedBillDetailCard>
+        : typeQuery.trim() ?
+          <p className="text-sm font-semibold text-muted-foreground" role="status">
             No order matches “{normalizeBillIdInput(typeQuery)}”.
           </p>
-        : null}
-      </section>
+        : <BillLookupEmptyHint />}
+      </div>
 
-      <section className="border-t border-border pt-4">
-        <div className="mb-3 flex items-center gap-2 text-sm font-bold text-foreground">
-          <Plus className="size-4 text-primary" />
+      <section
+        className="min-w-0 flex-1 border-t border-border pt-4 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-8 xl:pl-10"
+        aria-labelledby="quick-order-heading"
+      >
+        <h2
+          id="quick-order-heading"
+          className="mb-3 flex items-center gap-2 text-sm font-bold text-foreground"
+        >
+          <Plus className="size-4 text-primary" aria-hidden />
           Quick new order
-        </div>
-        <form className="grid gap-4" onSubmit={onSubmit}>
+        </h2>
+        <form key={resetNonce} className="grid gap-4" onSubmit={onSubmit}>
           <InlineFeedback {...feedback} />
           <Field name="customerName" label="Customer name" required />
-          <input type="hidden" name="customerPhone" value="" />
-          <input type="hidden" name="shopId" value={defaultShopId} />
+          <Field name="customerPhone" label="Customer mobile" type="tel" required />
+          <Field name="customerAddress" label="Customer location (address)" required />
           <input type="hidden" name="orderItems" value={orderItemsText} />
           <input type="hidden" name="totalAmount" value={String(cartTotal)} />
           <input type="hidden" name="requiredDate" value="" />
@@ -404,6 +418,7 @@ export function OrderTakerWorkspace({
             disabled={saving}
             cartItemsSummary={orderItemsText}
             onDeliveryChargeChange={setDeliveryCharge}
+            orderTakerMode
           />
           <p className="text-sm font-black text-foreground">
             Grocery: ₹{Math.round(cartTotal)}

@@ -1,4 +1,4 @@
-/** Groobey Bill ID — YYMMDD-NN (Asia/Kolkata day, daily sequence from 01). */
+/** Groobey Bill ID - YYMMDD-NN (Asia/Kolkata day, daily sequence from 01). */
 
 export type GroobeyBillStream = "sale" | "customer_order" | "legacy";
 
@@ -55,7 +55,7 @@ export function billStreamFromNumber(billNumber: string | null | undefined): Gro
 
 export function displayBillId(
   billNumber: string | null | undefined,
-  fallback = "—",
+  fallback = "-",
 ): string {
   const id = billNumber?.trim();
   return id || fallback;

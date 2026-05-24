@@ -1,4 +1,11 @@
-import { Outlet, Link, createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
+import {
+  Outlet,
+  Link,
+  createRootRoute,
+  HeadContent,
+  Scripts,
+  useRouterState,
+} from "@tanstack/react-router";
 
 import { GroobeyBillPreviewModal } from "@/components/groobey/groobey-bill-preview-modal";
 import { GroobeyBrandLogo } from "@/components/groobey/groobey-brand-logo";
@@ -14,11 +21,11 @@ const favicon = (file: string) => `${file}?v=${GROOBEY_FAVICON_VERSION}`;
 
 const PWA_THEME_COLOR = "#9ACD32";
 const PWA_DESCRIPTION =
-  "Groobey merchant hub for grocery retail — shop owners, staff, order takers, and platform admin.";
+  "Groobey merchant hub for grocery retail - shop owners, staff, order takers, and platform admin.";
 
 function NotFoundComponent() {
   return (
-    <div className="groobey-shell flex min-h-screen items-center justify-center px-4">
+    <div className="groobey-shell groobey-page flex min-h-dvh items-center justify-center px-4 py-8">
       <div className="max-w-md text-center">
         <GroobeyBrandLogo size="lg" withPlate className="mx-auto mb-6" />
         <h1 className="text-7xl font-bold text-foreground">404</h1>
@@ -45,8 +52,7 @@ export const Route = createRootRoute({
       { charSet: "utf-8" },
       {
         name: "viewport",
-        content:
-          "width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no",
+        content: "width=device-width, initial-scale=1, viewport-fit=cover",
       },
       { title: "Groobey Merchant Hub" },
       { name: "description", content: PWA_DESCRIPTION },
@@ -94,7 +100,7 @@ function RootShell({ children }: { children: React.ReactNode }) {
         <link rel="icon" type="image/png" sizes="32x32" href={favicon("/favicon-32x32.png")} />
         <HeadContent />
       </head>
-      <body>
+      <body className="antialiased">
         <script
           dangerouslySetInnerHTML={{
             __html: buildPublicEnvInlineScript(),
@@ -109,9 +115,10 @@ function RootShell({ children }: { children: React.ReactNode }) {
 }
 
 function RootComponent() {
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
   return (
     <>
-      <Outlet />
+      <Outlet key={pathname} />
       <GroobeyBillPreviewModal />
     </>
   );

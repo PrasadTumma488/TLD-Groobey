@@ -57,7 +57,7 @@ export function GroobeyBrandLogo({
 /** Full-screen branded loader for route guards. */
 export function GroobeyLoadingScreen({ message = "Loading…" }: { message?: string }) {
   return (
-    <div className="groobey-shell flex min-h-screen flex-col items-center justify-center gap-4 px-4 text-center">
+    <div className="groobey-shell groobey-page flex min-h-dvh flex-col items-center justify-center gap-4 px-4 py-8 text-center">
       <GroobeyBrandLogo size="xl" withPlate />
       <p className="text-sm font-semibold text-muted-foreground">{message}</p>
     </div>
@@ -89,20 +89,24 @@ export function GroobeyDashboardHeader({
   actions?: React.ReactNode;
 }) {
   return (
-    <header className="sticky top-0 z-20 border-b-2 border-primary/25 bg-card/92 px-4 py-3 shadow-soft backdrop-blur-xl">
-      <div className="mx-auto flex max-w-7xl items-center justify-between gap-3">
-        <div className="flex min-w-0 flex-1 items-center gap-3 sm:gap-4">
+    <header className="groobey-header-safe sticky top-0 z-20 border-b-2 border-primary/25 bg-card/92 px-4 pb-3 shadow-soft backdrop-blur-xl">
+      <div className="mx-auto flex max-w-7xl flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+        <div className="flex min-w-0 flex-1 items-center gap-2.5 sm:gap-4">
           <GroobeyBrandLogo size="md" withPlate className="hidden sm:inline-flex" />
           <GroobeyBrandLogo size="sm" withPlate className="sm:hidden" />
-          <div className="min-w-0 border-l-2 border-primary/30 pl-3 sm:pl-4">
-            <h1 className="truncate text-lg font-black tracking-tight sm:text-2xl">{title}</h1>
+          <div className="min-w-0 border-l-2 border-primary/30 pl-2.5 sm:pl-4">
+            <h1 className="truncate text-base font-black tracking-tight sm:text-2xl">{title}</h1>
             {subtitle ?
-              <p className="truncate text-xs font-semibold text-muted-foreground">{subtitle}</p>
+              <p className="truncate text-[11px] font-semibold text-muted-foreground sm:text-xs">
+                {subtitle}
+              </p>
             : null}
           </div>
         </div>
         {actions ?
-          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">{actions}</div>
+          <div className="flex w-full shrink-0 flex-wrap items-stretch justify-end gap-1.5 sm:w-auto sm:items-center sm:gap-2">
+            {actions}
+          </div>
         : null}
       </div>
     </header>

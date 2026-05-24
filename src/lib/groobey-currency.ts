@@ -1,14 +1,20 @@
-/** Indian Rupee — use these helpers so files never get mojibake (â‚¹). */
+/** Indian Rupee - use these helpers so files never get mojibake (â‚¹). */
 
 export const INR = "\u20B9";
 
-export const EM_DASH = "\u2014";
+export const EM_DASH = "-";
+
+/** Middle dot for compact inline separators (avoids mojibake like Â·). */
+export const MIDDLE_DOT = "\u00B7";
+
+/** Bullet for plain-text lists (e.g. confirm dialogs). */
+export const BULLET = "\u2022";
 
 export function formatInr(amount: number): string {
   return `${INR}${Math.round(amount)}`;
 }
 
-/** PDF standard fonts (Helvetica / WinAnsi) cannot render ₹ — use in server PDF output only. */
+/** PDF standard fonts (Helvetica / WinAnsi) cannot render ₹ - use in server PDF output only. */
 export function formatInrForPdf(amount: number): string {
   return `Rs.${Math.round(amount)}`;
 }

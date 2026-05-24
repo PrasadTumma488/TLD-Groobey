@@ -4,12 +4,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { GroobeyDashboardHeader } from "@/components/groobey/groobey-brand-logo";
+import { GroobeyNotificationBell } from "@/components/groobey/groobey-notification-bell";
 import { MerchantWorkspace } from "@/components/groobey/groobey-forms";
 import { TradeMarginPanel } from "@/components/groobey/groobey-trade-margin-panel";
-import { InlineFeedback, Message, Panel, Stat } from "@/components/groobey/workspace-ui";
+import { InlineFeedback, Message, Stat } from "@/components/groobey/workspace-ui";
 import type { MarginSaveResult } from "@/components/groobey/groobey-trade-margin-panel";
 import { GROOBEY_APP_NAME } from "@/lib/groobey-brand";
-import { allocateSaleBillNumber, asBillRpcClient } from "@/lib/groobey-bill-id";
+import { groobeySignOut } from "@/lib/groobey-auth-logout";
+import { setGroobeyNotificationNavigate } from "@/lib/groobey-notification-nav";
+import { useGroobeyWorkspaceNotifications } from "@/lib/groobey-workspace-notifications";
 import { backfillMySaleBillIds, salesMissingBillId } from "@/lib/groobey-bill-backfill";
 import { clampMarginPercent, schemaSetupHint } from "@/lib/groobey-trade-margin";
 import { supabase } from "@/integrations/supabase/client";
@@ -206,7 +209,7 @@ export function MerchantDashboard() {
     );
     void load();
     return {
-      notice: `Groobey margin set to ${pct}%. Submit a new sale — trade lines use this % (loaded fresh from the server).`,
+      notice: `Groobey margin set to ${pct}%. Submit a new sale - trade lines use this % (loaded fresh from the server).`,
     };
   }
 
@@ -222,15 +225,7 @@ export function MerchantDashboard() {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
       return { error: "Invalid customer email." };
     }
-    const rows = filteredSaleItems
-      .filter((item) => item.sale_id === sale.id)
-      .map((row) => ({
-        name: row.product_name,
-        quantity: Number(row.quantity || 0),
-        packUnit: row.product_unit ?? undefined,
-        unitPrice: Number(row.unit_price || 0),
-        merchantUnitPrice: Number(row.merchant_unit_price ?? row.unit_price ?? 0),
-      }));
+    const rows = saleEmailItemRows(sale);
     try {
       const result = await sendBillEmail({
         data: {
@@ -238,8 +233,8 @@ export function MerchantDashboard() {
           customerEmail: trimmed,
           subject:
             sale.bill_number ?
-              `Bill ${sale.bill_number} — ${GROOBEY_APP_NAME}`
-            : `Bill — ${GROOBEY_APP_NAME}`,
+              `Bill ${sale.bill_number} - ${GROOBEY_APP_NAME}`
+            : `Bill - ${GROOBEY_APP_NAME}`,
           shopName: GROOBEY_APP_NAME,
           ownerName,
           billDate: (sale.sold_at || sale.created_at || "").slice(0, 16),
@@ -256,12 +251,79 @@ export function MerchantDashboard() {
     }
   }
 
+  function saleEmailItemRows(sale: SaleRow) {
+    return filteredSaleItems
+      .filter((item) => item.sale_id === sale.id)
+      .map((row) => ({
+        name: row.product_name,
+        quantity: Number(row.quantity || 0),
+        packUnit: row.product_unit ?? undefined,
+        unitPrice: Number(row.unit_price || 0),
+        merchantUnitPrice: Number(row.merchant_unit_price ?? row.unit_price ?? 0),
+      }));
+  }
+
+  const shopOwnerRegisteredEmail = profile?.email?.trim() ?? "";
+
+  async function sendSaleTradeBillEmail(
+    sale: SaleRow,
+    shopOwnerEmailInput?: string,
+  ): Promise<BillPreviewEmailResult> {
+    if (!session?.access_token || !assignedShop) return { error: "Not signed in." };
+    const trimmed = (shopOwnerEmailInput ?? shopOwnerRegisteredEmail).trim();
+    if (!trimmed) {
+      return {
+        error:
+          "Your shop owner email is not on your Groobey profile. Ask Platform Admin to add it before emailing trade bills.",
+      };
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      return { error: "Your registered shop owner email is not valid. Ask Platform Admin to fix it." };
+    }
+    const rows = saleEmailItemRows(sale);
+    try {
+      const result = await sendBillEmail({
+        data: {
+          requesterToken: session.access_token,
+          customerEmail: trimmed,
+          shopId: assignedShop.id,
+          subject:
+            sale.bill_number ?
+              `Settlement bill ${sale.bill_number} - ${assignedShop.name}`
+            : `Settlement bill - ${assignedShop.name}`,
+          shopName: assignedShop.name,
+          ownerName,
+          billDate: (sale.sold_at || sale.created_at || "").slice(0, 16),
+          billKind: "merchant",
+          billNumber: sale.bill_number?.trim() || undefined,
+          items: rows,
+        },
+      });
+      return { notice: `Trade settlement bill emailed to ${result.deliveredTo}.` };
+    } catch (e) {
+      return {
+        error: e instanceof Error ? e.message : "Unable to send trade bill email.",
+      };
+    }
+  }
+
   function saleBillPreviewOptions(sale: SaleRow): BillPreviewShowOptions | undefined {
     if (!session?.access_token) return undefined;
     return {
       email: {
         defaultEmail: "",
         send: (customerEmail) => sendSaleCustomerBillEmail(sale, customerEmail),
+      },
+    };
+  }
+
+  function saleTradeBillPreviewOptions(sale: SaleRow): BillPreviewShowOptions | undefined {
+    if (!session?.access_token) return undefined;
+    return {
+      settlementEmail: {
+        defaultEmail: shopOwnerRegisteredEmail,
+        shopId: assignedShop?.id,
+        send: (shopOwnerEmail) => sendSaleTradeBillEmail(sale, shopOwnerEmail),
       },
     };
   }
@@ -291,7 +353,7 @@ export function MerchantDashboard() {
     openBillPrintGuarded(
       html,
       kind,
-      kind === "customer" ? saleBillPreviewOptions(sale) : undefined,
+      kind === "customer" ? saleBillPreviewOptions(sale) : saleTradeBillPreviewOptions(sale),
     );
   }
 
@@ -300,68 +362,53 @@ export function MerchantDashboard() {
     status: Database["public"]["Enums"]["verification_status"],
   ) {
     if (!session?.user) return;
-    setWorkspaceAlert({});
-    const patch: Record<string, unknown> = {
-      status,
-      verified_by: session.user.id,
-      verified_at: new Date().toISOString(),
-    };
-    if (status === "verified") {
-      const { data: fresh, error: selErr } = await supabase
-        .from("sales")
-        .select("bill_number")
-        .eq("id", saleId)
-        .maybeSingle();
-      if (selErr) {
-        setWorkspaceAlert({ error: selErr.message });
-        return;
-      }
-      if (!fresh?.bill_number) {
-        const { billNo: nextBill, error: rpcError } = await allocateSaleBillNumber(
-          asBillRpcClient(supabase),
-        );
-        if (rpcError) {
-          setWorkspaceAlert({ error: rpcError.message });
-          return;
-        }
-        if (!nextBill) {
-          setWorkspaceAlert({ error: "Could not assign bill number." });
-          return;
-        }
-        patch.bill_number = nextBill;
-      }
+    if (!assignedShop) {
+      setWorkspaceAlert({ error: "No shop assigned. Ask Platform Admin to link your shop." });
+      return;
     }
-    const { error: saleError } = await supabase
-      .from("sales")
-      .update(patch as never)
-      .eq("id", saleId)
-      .eq("created_by", session.user.id);
+    const sale = sales.find((row) => row.id === saleId);
+    if (!sale) {
+      setWorkspaceAlert({ error: "Sale not found. Refresh and try again." });
+      return;
+    }
+    if (sale.status !== "pending") {
+      setWorkspaceAlert({ error: "This sale is already settled." });
+      return;
+    }
+    setWorkspaceAlert({});
+    const { data: updated, error: saleError } = await supabase
+      .rpc("verify_shop_owner_sale", {
+        p_sale_id: saleId,
+        p_status: status,
+      })
+      .single();
     if (saleError) {
       setWorkspaceAlert({ error: saleError.message });
       return;
     }
-    const billNo =
-      typeof patch.bill_number === "string" ? patch.bill_number : undefined;
+    const billNo = updated.bill_number?.trim() || undefined;
+    const verifiedAt = updated.verified_at ?? new Date().toISOString();
+    setSales((prev) =>
+      prev.map((row) =>
+        row.id === saleId ?
+          {
+            ...row,
+            status: updated.status,
+            bill_number: billNo ?? row.bill_number,
+            verified_by: updated.verified_by,
+            verified_at: verifiedAt,
+          }
+        : row,
+      ),
+    );
     setWorkspaceAlert({
       notice:
         status === "verified" ?
-          "Sale approved. Opening trade settlement bill…"
+          billNo ?
+            `Sale approved (Bill ${billNo}). You can print or email bills below.`
+          : "Sale approved. You can print or email bills below."
         : "Sale rejected.",
     });
-    if (status === "verified") {
-      const sale = sales.find((row) => row.id === saleId);
-      if (sale) {
-        printSaleBill(
-          {
-            ...sale,
-            status: "verified",
-            bill_number: billNo ?? sale.bill_number,
-          },
-          "merchant",
-          billNo ?? sale.bill_number,
-        );
-      }
-    }
     void load();
   }
 
@@ -388,12 +435,6 @@ export function MerchantDashboard() {
     void load();
   }
 
-  function handleEmailBill(saleId: string) {
-    const sale = sales.find((row) => row.id === saleId);
-    if (!sale) return;
-    printSaleBill(sale, "customer");
-  }
-
   async function handleSaleConfirmationMail(saleId: string) {
     if (!session?.access_token) return;
     await sendWorkMail({
@@ -405,21 +446,46 @@ export function MerchantDashboard() {
     });
   }
 
+  const shopIds = useMemo(() => shops.map((s) => s.id), [shops]);
+
+  const merchantNotifications = useGroobeyWorkspaceNotifications({
+    userId: session?.user?.id,
+    mode: "merchant",
+    shopIds,
+    onRefresh: () => void load(),
+  });
+
+  useEffect(() => {
+    setGroobeyNotificationNavigate(() => {
+      document.querySelector(".groobey-dashboard-body")?.scrollIntoView({ behavior: "smooth" });
+    });
+    return () => setGroobeyNotificationNavigate(null);
+  }, []);
+
   if (!session?.user) return null;
 
   return (
-    <main className="groobey-shell min-h-screen text-foreground">
+    <main className="groobey-shell groobey-page min-h-dvh min-w-0 overflow-x-hidden text-foreground">
       <GroobeyDashboardHeader
         title="Shop Owner dashboard"
         subtitle="Shops and sales from owner rates"
         actions={
-          <Button variant="calm" className="rounded-xl" onClick={() => supabase.auth.signOut()}>
-            Logout
-          </Button>
+          <>
+            <GroobeyNotificationBell
+              items={merchantNotifications.items}
+              unreadCount={merchantNotifications.unreadCount}
+              onMarkAllRead={merchantNotifications.markAllRead}
+              onMarkRead={merchantNotifications.markRead}
+              onClearAll={merchantNotifications.clearAll}
+            />
+            <Button variant="calm" className="rounded-xl" onClick={() => void groobeySignOut()}>
+              Logout
+            </Button>
+          </>
         }
       />
-      <div className="mx-auto max-w-7xl space-y-5 px-4 py-6">
-        <section className="grid gap-3 sm:grid-cols-2">
+      <div className="groobey-dashboard-body mx-auto max-w-7xl space-y-5 px-4 py-4 sm:py-6">
+        <section className="grid grid-cols-2 gap-3">
           <Stat icon={ShoppingBasket} label="Grocery items" value={String(products.length)} />
           <Stat icon={ShoppingBasket} label="My shop" value={assignedShop?.name || "-"} />
         </section>
@@ -430,47 +496,40 @@ export function MerchantDashboard() {
           refreshing={loading && hasLoaded.current}
           showAlerts={false}
         />
-        {assignedShop && hasLoaded.current ?
-          <TradeMarginPanel
-            title="Your shop Groobey margin"
-            description="One margin for your whole shop. Trade bill lines use retail minus this % on every item when you submit a sale."
-            marginPercent={Number(assignedShop.trade_margin_percent ?? 0)}
-            saving={savingMargin}
-            onSave={saveShopMargin}
+        <InlineFeedback {...workspaceAlert} className="mb-1" />
+        {loading && !hasLoaded.current ?
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <Loader2 className="size-4 animate-spin" /> Loading workspace…
+          </div>
+        : (
+          <MerchantWorkspace
+            products={products}
+            assignedShop={assignedShop}
+            ownerName={ownerName}
+            ownerProfile={profile}
+            userId={session.user.id}
+            submittedSales={sales}
+            saleItems={filteredSaleItems}
+            marginPanel={
+              assignedShop ?
+                <TradeMarginPanel
+                  title="Your shop Groobey margin"
+                  description="One margin for your whole shop. Trade bill lines use retail minus this % on every item when you submit a sale."
+                  marginPercent={Number(assignedShop.trade_margin_percent ?? 0)}
+                  saving={savingMargin}
+                  onSave={saveShopMargin}
+                />
+              : undefined
+            }
+            onEditSale={handleEditSaleItems}
+            onVerifySale={handleVerifySale}
+            onDownloadBill={handleDownloadBill}
+            onArchiveSale={(saleId) => void handleArchiveSale(saleId)}
+            onSaleSubmitted={handleSaleConfirmationMail}
+            onDone={load}
+            onError={(msg) => setWorkspaceAlert({ error: msg })}
           />
-        : null}
-        <Panel
-          title="Shop Owner workspace"
-          icon={ShoppingBasket}
-          feedback={workspaceAlert}
-          feedbackPlacement="bottom"
-        >
-          {loading && !hasLoaded.current ?
-            <div className="flex items-center gap-2 text-sm font-semibold">
-              <Loader2 className="size-4 animate-spin" /> Loading…
-            </div>
-          : (
-            <MerchantWorkspace
-              products={products}
-              assignedShop={assignedShop}
-              ownerName={ownerName}
-              ownerProfile={profile}
-              userId={session.user.id}
-              submittedSales={sales}
-              saleItems={filteredSaleItems}
-              onEditSale={handleEditSaleItems}
-              onVerifySale={handleVerifySale}
-              onDownloadBill={handleDownloadBill}
-              onArchiveSale={(saleId) => void handleArchiveSale(saleId)}
-              onEmailBill={async (saleId) => {
-                await handleEmailBill(saleId);
-              }}
-              onSaleSubmitted={handleSaleConfirmationMail}
-              onDone={load}
-              onError={(msg) => setWorkspaceAlert({ error: msg })}
-            />
-          )}
-        </Panel>
+        )}
       </div>
     </main>
   );

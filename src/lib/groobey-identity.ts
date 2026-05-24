@@ -1,4 +1,4 @@
-/** Public-facing staff identity — Groobey code only (never Auth user UUID). */
+/** Public-facing staff identity - Groobey code only (never Auth user UUID). */
 
 export function formatStaffBillLabel(params: {
   displayName: string;

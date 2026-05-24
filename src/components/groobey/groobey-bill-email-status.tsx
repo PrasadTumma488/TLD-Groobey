@@ -53,7 +53,7 @@ export function GroobeyBillEmailStatus({ accessToken }: { accessToken: string | 
           <strong className="text-foreground">Local dev:</strong> bill mail uses the same Resend rules as
           production. Put <code className="text-foreground">RESEND_FROM_EMAIL</code> (verified domain) in{" "}
           <code className="text-foreground">.env</code> and restart <code className="text-foreground">npm run dev</code>{" "}
-          after you change it — the API key alone is not enough for customer inboxes. The server also accepts{" "}
+          after you change it - the API key alone is not enough for customer inboxes. The server also accepts{" "}
           <code className="text-foreground">VITE_RESEND_FROM_EMAIL</code> for the From line only (never put the API key
           in a <code className="text-foreground">VITE_</code> variable).
         </p>
@@ -76,7 +76,7 @@ export function GroobeyBillEmailStatus({ accessToken }: { accessToken: string | 
               <span className={data.resendFromEnvSet ? "text-emerald-700" : "text-amber-800"}>
                 {data.resendFromEnvSet ?
                   "set (or RESEND_MAIL_FROM / EMAIL_FROM)"
-                : "not set — still on Resend default test sender"}
+                : "not set - still on Resend default test sender"}
               </span>
             </li>
             <li>
@@ -93,14 +93,14 @@ export function GroobeyBillEmailStatus({ accessToken }: { accessToken: string | 
             </li>
             {data.fromDomain && data.fromDomain !== "tldgroobey.in" && data.fromDomain.includes("groobey") ?
               <li className="text-amber-800">
-                Resend shows <strong>tldgroobey.in</strong> as verified — use{" "}
+                Resend shows <strong>tldgroobey.in</strong> as verified - use{" "}
                 <code className="text-foreground">@tldgroobey.in</code> in RESEND_FROM_EMAIL, not @groobey.in.
               </li>
             : null}
             <li>
               Customer inboxes:{" "}
               {data.canReachCustomerInboxes ?
-                <span className="text-emerald-700">OK — bills deliver to the email you enter</span>
+                <span className="text-emerald-700">OK - bills deliver to the email you enter</span>
               : <span className="text-amber-800">
                   Set RESEND_FROM_EMAIL to an address on a domain you verified at resend.com/domains
                 </span>}
