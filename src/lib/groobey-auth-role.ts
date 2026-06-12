@@ -3,7 +3,14 @@ import { z } from "zod";
 
 import type { Database } from "@/integrations/supabase/types";
 
-const roleSchema = z.enum(["main_admin", "admin", "merchant", "employee", "order_taker"]);
+const roleSchema = z.enum([
+  "main_admin",
+  "admin",
+  "merchant",
+  "employee",
+  "order_taker",
+  "customer",
+]);
 
 type AppRole = Database["public"]["Enums"]["app_role"];
 

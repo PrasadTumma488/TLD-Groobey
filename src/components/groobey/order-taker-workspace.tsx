@@ -1,4 +1,4 @@
-import { Plus, Receipt, Search, Wand2, X } from "lucide-react";
+import { Loader2, Plus, Receipt, Search, Wand2, X } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { GroobeyGroceryLinePicker } from "@/components/groobey/groobey-grocery-line-picker";
@@ -438,7 +438,7 @@ export function OrderTakerWorkspace({
             {saving ?
               <Loader2 className="size-4 animate-spin" />
             : <Plus className="size-4" />}
-            Create order &amp; print bill
+            Create order
           </Button>
         </form>
       </section>

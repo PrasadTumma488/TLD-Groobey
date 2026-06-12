@@ -44,6 +44,8 @@ export function readKeyFromEnvFiles(key: string): string {
     ".env.production.local",
     ".env.production",
     ".env",
+    ".dev.vars",
+    join("dist", "server", ".dev.vars"),
   ];
   for (const root of candidateProjectRoots()) {
     for (const base of bases) {

@@ -99,17 +99,10 @@ export function groobeyBillPrintHeaderHtml(options?: {
   const tagline =
     options?.kind === "merchant" ?
       "Grocery trade · Internal settlement"
-    : "Grocery · Your bill";
-  return `<header class="groobey-bill-header groobey-bill-header--centered">
-    <div class="groobey-bill-header-inner">
-      <div class="groobey-bill-logo-plate" aria-hidden="true">
-        <img src="${logo}" alt="TLD Groobey" class="groobey-bill-logo" decoding="sync" />
-      </div>
-      <div class="groobey-bill-header-text">
-        <p class="groobey-bill-header-brand">TLD GROOBEY</p>
-        <p class="groobey-bill-header-tagline">${tagline}</p>
-      </div>
-    </div>
+    : "";
+  return `<header class="groobey-bill-header groobey-bill-header--light">
+    <img src="${logo}" alt="${GROOBEY_APP_NAME}" class="groobey-bill-logo" decoding="sync" />
+    ${tagline ? `<p class="groobey-bill-header-tagline">${tagline}</p>` : ""}
   </header>`;
 }
 

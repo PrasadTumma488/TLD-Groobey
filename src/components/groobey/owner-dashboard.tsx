@@ -30,6 +30,10 @@ import {
 } from "@/components/groobey/groobey-sheet-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { GROOBEY_APP_NAME } from "@/lib/groobey-brand";
+import {
+  ADMIN_CUSTOMER_ORDERS_FOCUS,
+  SHOW_SETTLEMENT_BILLS,
+} from "@/lib/groobey-site-visibility";
 import { GroceryOrderItemsList } from "@/components/groobey/grocery-order-items-list";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -89,11 +93,13 @@ import {
 } from "@/lib/groobey-delivery-order-fields";
 import { GroobeyDashboardHeader } from "./groobey-brand-logo";
 import { GroobeyNotificationBell } from "./groobey-notification-bell";
+import { GroobeyServiceRoleSetupPanel } from "./groobey-service-role-setup-panel";
 import { BillKindButtons } from "./groobey-bill-buttons";
 import {
   createStaffAccount,
   deleteStaffAccount,
   ensureMyGroobeyCode,
+  getSetupStatus,
   listStaffAccounts,
   sendCustomerBillEmail,
   setStaffAccountActive,
@@ -247,6 +253,8 @@ export function OwnerDashboard() {
   const ensureOwnCode = useServerFn(ensureMyGroobeyCode);
   const saveMyProfile = useServerFn(updateMyProfile);
   const sendBillEmail = useServerFn(sendCustomerBillEmail);
+  const fetchSetupStatus = useServerFn(getSetupStatus);
+  const customerBillOnly = !SHOW_SETTLEMENT_BILLS;
 
   const [session, setSession] =
     useState<Awaited<ReturnType<typeof supabase.auth.getSession>>["data"]["session"]>(null);
@@ -266,6 +274,7 @@ export function OwnerDashboard() {
     "all" | "pending" | "verified" | "rejected"
   >("all");
   const [activeTab, setActiveTab] = useState("overview");
+  const [serverSetup, setServerSetup] = useState<{ hasServiceRoleKey: boolean } | null>(null);
   const [loading, setLoading] = useState(true);
   const [staffLoading, setStaffLoading] = useState(false);
   const [tabAlerts, setTabAlerts] = useState<
@@ -558,6 +567,12 @@ export function OwnerDashboard() {
   );
 
   useEffect(() => {
+    void fetchSetupStatus()
+      .then((status) => setServerSetup(status))
+      .catch(() => setServerSetup({ hasServiceRoleKey: false }));
+  }, [fetchSetupStatus]);
+
+  useEffect(() => {
     const { data: listener } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
     return () => listener.subscription.unsubscribe();
@@ -770,11 +785,20 @@ export function OwnerDashboard() {
           displayName,
           email,
           phone,
-          password,
+          password: role === "employee" ? "" : password,
           role,
         },
         headers: { Authorization: `Bearer ${accessToken}` },
       });
+      if ("pendingSignup" in result && result.pendingSignup) {
+        setNotice(
+          `Delivery boy assigned for ${result.email}. Ask them to create an account at Register on the website, then sign in.`,
+        );
+        formElement.reset();
+        setStaffFormResetNonce((prev) => prev + 1);
+        await loadStaff({ quietListError: true });
+        return;
+      }
       const optimisticRow: StaffRow = {
         userId: result.userId,
         role,
@@ -1493,25 +1517,28 @@ export function OwnerDashboard() {
   }
 
   function exportCustomerOrderBill(orderId: string, kind: "customer" | "merchant") {
+    const effectiveKind = customerBillOnly ? "customer" : kind;
     const order = customerOrders.find((row) => row.id === orderId);
     if (!order) return;
     const shop = order.shop_id ? shops.find((s) => s.id === order.shop_id) : undefined;
     const takerRow = staffRows.find((r) => r.userId === order.created_by);
     const displayName =
-      staffNameByUserId.get(order.created_by) || takerRow?.displayName?.trim() || "Order taker";
+      staffNameByUserId.get(order.created_by) ||
+      takerRow?.displayName?.trim() ||
+      (ADMIN_CUSTOMER_ORDERS_FOCUS ? "Online customer" : "Order taker");
     const orderTakerLabel = formatStaffBillLabel({
       displayName,
       groobeyCode: takerRow?.groobeyId ?? null,
     });
     const opened = printCustomerOrderBill({
-      kind,
+      kind: effectiveKind,
       order,
       shopName: shop?.name ?? null,
       orderTakerLabel,
       shopMarginPercent: shopMarginPercentForOrder(order),
-      preview: orderBillPreviewOptions(order, kind),
+      preview: orderBillPreviewOptions(order, effectiveKind),
     });
-    if (opened && kind === "merchant") {
+    if (opened && effectiveKind === "merchant") {
       setNotice(`Settlement bill opened ${EM_DASH} same Bill ID as the customer copy.`);
     }
   }
@@ -1685,32 +1712,68 @@ export function OwnerDashboard() {
   const pendingAttendance = attendance.filter((a) => a.verification_status === "pending");
   const today = new Date().toISOString().slice(0, 10);
   const month = today.slice(0, 7);
+  const merchantStaffRows = staffRows.filter((row) => row.role === "merchant");
+  const deliveryStaffRows = staffRows.filter((row) => row.role === "employee");
+  const orderTakerRows = staffRows.filter((row) => row.role === "order_taker");
+  const orderTakerUserIds = useMemo(
+    () => new Set(orderTakerRows.map((row) => row.userId)),
+    [orderTakerRows],
+  );
+  const pipelineCustomerOrders = useMemo(() => {
+    if (!ADMIN_CUSTOMER_ORDERS_FOCUS) return customerOrders;
+    return customerOrders.filter((order) => !orderTakerUserIds.has(order.created_by));
+  }, [customerOrders, orderTakerUserIds]);
+  const customerDirectory = useMemo(() => {
+    const map = new Map<
+      string,
+      { name: string; phone: string; address: string; count: number; lastOrder: string }
+    >();
+    for (const order of pipelineCustomerOrders) {
+      const key = (order.customer_phone || order.customer_name || order.id).trim().toLowerCase();
+      const existing = map.get(key);
+      if (existing) {
+        existing.count += 1;
+        if ((order.created_at || "") > existing.lastOrder) {
+          existing.lastOrder = order.created_at || "";
+        }
+      } else {
+        map.set(key, {
+          name: order.customer_name?.trim() || "Customer",
+          phone: order.customer_phone?.trim() || EM_DASH,
+          address: order.delivery_address?.trim() || EM_DASH,
+          count: 1,
+          lastOrder: order.created_at || "",
+        });
+      }
+    }
+    return [...map.values()].sort((a, b) => b.lastOrder.localeCompare(a.lastOrder));
+  }, [pipelineCustomerOrders]);
   const pendingOrderTakerOrders = useMemo(
-    () => customerOrders.filter((o) => o.status === "pending"),
-    [customerOrders],
+    () => pipelineCustomerOrders.filter((o) => o.status === "pending"),
+    [pipelineCustomerOrders],
   );
   const activeOrderTakerOrders = useMemo(
     () =>
       sortActivePipelineOrders(
-        customerOrders.filter((o) => isOrderPipelineActive(o.status)),
+        pipelineCustomerOrders.filter((o) => isOrderPipelineActive(o.status)),
       ),
-    [customerOrders],
+    [pipelineCustomerOrders],
   );
   const unassignedHandoffOrders = useMemo(
     () => activeOrderTakerOrders.filter((o) => orderNeedsDeliveryAssignment(o)),
     [activeOrderTakerOrders],
   );
   const completedOrderTakerOrdersToday = useMemo(
-    () => ordersCompletedOnDay(customerOrders, today),
-    [customerOrders, today],
+    () => ordersCompletedOnDay(pipelineCustomerOrders, today),
+    [pipelineCustomerOrders, today],
   );
   const outForDeliveryOrderTakerOrders = useMemo(
-    () => customerOrders.filter((o) => o.status === "out_for_delivery"),
-    [customerOrders],
+    () => pipelineCustomerOrders.filter((o) => o.status === "out_for_delivery"),
+    [pipelineCustomerOrders],
   );
   const monthOrderTakerOrders = useMemo(
-    () => customerOrders.filter((o) => (o.created_at || "").slice(0, 7) === month),
-    [customerOrders, month],
+    () => pipelineCustomerOrders.filter((o) => (o.created_at || "").slice(0, 7) === month),
+    [pipelineCustomerOrders, month],
   );
   const todaySales = useMemo(
     () => salesForPeriodAnalytics(sales, today, "day"),
@@ -1722,9 +1785,6 @@ export function OwnerDashboard() {
   );
   const todayAttendance = attendance.filter((a) => (a.work_date || "").slice(0, 10) === today);
   const monthAttendance = attendance.filter((a) => (a.work_date || "").slice(0, 7) === month);
-  const merchantStaffRows = staffRows.filter((row) => row.role === "merchant");
-  const deliveryStaffRows = staffRows.filter((row) => row.role === "employee");
-  const orderTakerRows = staffRows.filter((row) => row.role === "order_taker");
   const deliveryBoySelectOptions = useMemo(
     () => [
       { value: DELIVERY_BOY_UNASSIGNED, label: "Unassigned" },
@@ -2269,11 +2329,13 @@ export function OwnerDashboard() {
   return (
     <>
       <GroobeyDashboardHeader
-        title={isProfileView ? "Platform Admin profile" : "Platform Admin dashboard"}
+        title={isProfileView ? "Admin profile" : "Admin dashboard"}
         subtitle={
           isProfileView
-            ? "Your main admin identity and account details."
-            : "Full company control - grocery catalog, staff, shops, sales, and attendance."
+            ? "Your account details."
+            : ADMIN_CUSTOMER_ORDERS_FOCUS
+              ? "Catalog, online customers, orders, and delivery."
+              : "Catalog, staff, shops, sales, and attendance."
         }
         actions={
           <>
@@ -2320,6 +2382,8 @@ export function OwnerDashboard() {
       />
       <div className="groobey-dashboard-body mx-auto flex min-w-0 max-w-7xl flex-col gap-5 px-4 py-4 sm:gap-6 sm:px-6 sm:py-6 lg:px-10">
 
+      {serverSetup && !serverSetup.hasServiceRoleKey ? <GroobeyServiceRoleSetupPanel /> : null}
+
       {!isProfileView ? (
         <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <Stat
@@ -2328,16 +2392,24 @@ export function OwnerDashboard() {
             value={String(products.length)}
             onClick={() => setActiveTab("catalog")}
           />
-          <Stat
-            icon={Store}
-            label="Shops"
-            value={String(shops.filter((s) => s.is_active).length)}
-            onClick={() => setActiveTab("shop-owners")}
-          />
+          {ADMIN_CUSTOMER_ORDERS_FOCUS ?
+            <Stat
+              icon={UsersRound}
+              label="Customers"
+              value={String(customerDirectory.length)}
+              onClick={() => setActiveTab("customers")}
+            />
+          : <Stat
+              icon={Store}
+              label="Shops"
+              value={String(shops.filter((s) => s.is_active).length)}
+              onClick={() => setActiveTab("shop-owners")}
+            />
+          }
           <Stat
             icon={ReceiptText}
-            label="Sales (loaded)"
-            value={String(sales.length)}
+            label={ADMIN_CUSTOMER_ORDERS_FOCUS ? "Orders (loaded)" : "Sales (loaded)"}
+            value={String(ADMIN_CUSTOMER_ORDERS_FOCUS ? pipelineCustomerOrders.length : sales.length)}
             onClick={() => setActiveTab("sales")}
           />
           <Stat
@@ -2364,29 +2436,41 @@ export function OwnerDashboard() {
               <LayoutDashboard className="size-4 shrink-0 opacity-90" aria-hidden />
               <span>Overview</span>
             </TabsTrigger>
-            <TabsTrigger value="create-logins" className="owner-admin-tab-trigger">
-              <UsersRound className="size-4 shrink-0 opacity-90" aria-hidden />
-              <span>Create logins</span>
-            </TabsTrigger>
-            <TabsTrigger value="shop-owners" className="owner-admin-tab-trigger">
-              <UsersRound className="size-4 shrink-0 opacity-90" aria-hidden />
-              <span>Shop owners</span>
-            </TabsTrigger>
+            {ADMIN_CUSTOMER_ORDERS_FOCUS ?
+              <TabsTrigger value="customers" className="owner-admin-tab-trigger">
+                <UsersRound className="size-4 shrink-0 opacity-90" aria-hidden />
+                <span>Customers</span>
+              </TabsTrigger>
+            : null}
+            {!ADMIN_CUSTOMER_ORDERS_FOCUS ?
+              <>
+                <TabsTrigger value="create-logins" className="owner-admin-tab-trigger">
+                  <UsersRound className="size-4 shrink-0 opacity-90" aria-hidden />
+                  <span>Create logins</span>
+                </TabsTrigger>
+                <TabsTrigger value="shop-owners" className="owner-admin-tab-trigger">
+                  <UsersRound className="size-4 shrink-0 opacity-90" aria-hidden />
+                  <span>Shop owners</span>
+                </TabsTrigger>
+              </>
+            : null}
             <TabsTrigger value="staff" className="owner-admin-tab-trigger">
               <UsersRound className="size-4 shrink-0 opacity-90" aria-hidden />
-              <span>Staff</span>
+              <span>{ADMIN_CUSTOMER_ORDERS_FOCUS ? "Delivery" : "Staff"}</span>
             </TabsTrigger>
-            <TabsTrigger value="orders-team" className="owner-admin-tab-trigger">
-              <UsersRound className="size-4 shrink-0 opacity-90" aria-hidden />
-              <span>Orders team</span>
-            </TabsTrigger>
+            {!ADMIN_CUSTOMER_ORDERS_FOCUS ?
+              <TabsTrigger value="orders-team" className="owner-admin-tab-trigger">
+                <UsersRound className="size-4 shrink-0 opacity-90" aria-hidden />
+                <span>Orders team</span>
+              </TabsTrigger>
+            : null}
             <TabsTrigger value="catalog" className="owner-admin-tab-trigger">
               <IndianRupee className="size-4 shrink-0 opacity-90" aria-hidden />
               <span>Grocery</span>
             </TabsTrigger>
             <TabsTrigger value="sales" className="owner-admin-tab-trigger">
               <ReceiptText className="size-4 shrink-0 opacity-90" aria-hidden />
-              <span>Sales</span>
+              <span>{ADMIN_CUSTOMER_ORDERS_FOCUS ? "Orders" : "Sales"}</span>
             </TabsTrigger>
             <TabsTrigger value="attendance" className="owner-admin-tab-trigger">
               <ClipboardList className="size-4 shrink-0 opacity-90" aria-hidden />
@@ -2544,9 +2628,9 @@ export function OwnerDashboard() {
               >
                 <ReceiptText className="size-5 shrink-0 text-primary" aria-hidden />
                 <span>
-                  Pending sales
+                  {ADMIN_CUSTOMER_ORDERS_FOCUS ? "Pending orders" : "Pending sales"}
                   <span className="mt-0.5 block text-xs font-bold text-primary tabular-nums">
-                    {pendingSales.length}
+                    {ADMIN_CUSTOMER_ORDERS_FOCUS ? pendingOrderTakerOrders.length : pendingSales.length}
                   </span>
                 </span>
               </Button>
@@ -2558,28 +2642,44 @@ export function OwnerDashboard() {
               >
                 <ShoppingBasket className="size-5 shrink-0 text-primary" aria-hidden />
                 <span>
-                  Order taker bills
+                  {ADMIN_CUSTOMER_ORDERS_FOCUS ? "Active customer orders" : "Order taker bills"}
                   <span className="mt-0.5 block text-xs font-bold text-primary tabular-nums">
                     {activeOrderTakerOrders.length}
                   </span>
                 </span>
               </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="h-auto min-h-12 w-full justify-start gap-2 rounded-xl border-2 px-4 py-3 text-left text-sm font-semibold leading-snug shadow-sm hover:bg-card"
-                onClick={() => setActiveTab("create-logins")}
-              >
-                <UsersRound className="size-5 shrink-0 text-primary" aria-hidden />
-                <span>Add shop owner / staff / order taker</span>
-              </Button>
+              {ADMIN_CUSTOMER_ORDERS_FOCUS ?
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-auto min-h-12 w-full justify-start gap-2 rounded-xl border-2 px-4 py-3 text-left text-sm font-semibold leading-snug shadow-sm hover:bg-card"
+                  onClick={() => setActiveTab("customers")}
+                >
+                  <UsersRound className="size-5 shrink-0 text-primary" aria-hidden />
+                  <span>
+                    Registered shoppers
+                    <span className="mt-0.5 block text-xs font-bold text-primary tabular-nums">
+                      {customerDirectory.length}
+                    </span>
+                  </span>
+                </Button>
+              : <Button
+                  type="button"
+                  variant="outline"
+                  className="h-auto min-h-12 w-full justify-start gap-2 rounded-xl border-2 px-4 py-3 text-left text-sm font-semibold leading-snug shadow-sm hover:bg-card"
+                  onClick={() => setActiveTab("create-logins")}
+                >
+                  <UsersRound className="size-5 shrink-0 text-primary" aria-hidden />
+                  <span>Add shop owner / staff / order taker</span>
+                </Button>
+              }
             </div>
           </section>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Stat
               icon={ReceiptText}
-              label="Pending sales"
-              value={String(pendingSales.length)}
+              label={ADMIN_CUSTOMER_ORDERS_FOCUS ? "Pending orders" : "Pending sales"}
+              value={String(ADMIN_CUSTOMER_ORDERS_FOCUS ? pendingOrderTakerOrders.length : pendingSales.length)}
               onClick={() => setActiveTab("sales")}
             />
             <Stat
@@ -2591,19 +2691,35 @@ export function OwnerDashboard() {
                 setActiveTab("attendance");
               }}
             />
-            <Stat
-              icon={Store}
-              label="Active shops"
-              value={String(shops.filter((s) => s.is_active).length)}
-              onClick={() => setActiveTab("shop-owners")}
-            />
-            <Stat
-              icon={Percent}
-              label="Groobey margin (all shops)"
-              value={`${globalTradeMargin}%`}
-              hint={`Set on Sales tab ${EM_DASH} off retail on trade / settlement bills.`}
-              onClick={() => setActiveTab("sales")}
-            />
+            {ADMIN_CUSTOMER_ORDERS_FOCUS ?
+              <Stat
+                icon={UsersRound}
+                label="Customers"
+                value={String(customerDirectory.length)}
+                onClick={() => setActiveTab("customers")}
+              />
+            : <Stat
+                icon={Store}
+                label="Active shops"
+                value={String(shops.filter((s) => s.is_active).length)}
+                onClick={() => setActiveTab("shop-owners")}
+              />
+            }
+            {ADMIN_CUSTOMER_ORDERS_FOCUS ?
+              <Stat
+                icon={ShoppingBasket}
+                label="Orders today"
+                value={String(completedOrderTakerOrdersToday.length + activeOrderTakerOrders.length)}
+                onClick={() => setActiveTab("sales")}
+              />
+            : <Stat
+                icon={Percent}
+                label="Groobey margin (all shops)"
+                value={`${globalTradeMargin}%`}
+                hint={`Set on Sales tab ${EM_DASH} off retail on trade / settlement bills.`}
+                onClick={() => setActiveTab("sales")}
+              />
+            }
           </div>
           <div className="grid gap-4 lg:grid-cols-2">
             <Panel title="Quick approvals - attendance" icon={Bike}>
@@ -2653,6 +2769,50 @@ export function OwnerDashboard() {
           </div>
         </TabsContent>
 
+        {ADMIN_CUSTOMER_ORDERS_FOCUS ?
+          <TabsContent value="customers" className="space-y-4">
+            <InlineFeedback {...alertsFor("customers")} />
+            <Panel title="Online customers" icon={UsersRound}>
+              <p className="mb-3 text-xs font-semibold text-muted-foreground">
+                Shoppers who placed orders on the website. Open Orders to manage delivery and print
+                customer bills.
+              </p>
+              {customerDirectory.length === 0 ?
+                <EmptyState
+                  icon={UsersRound}
+                  title="No customer orders yet"
+                  text="Orders from the online shop will appear here."
+                />
+              : <div className="space-y-2">
+                  {customerDirectory.map((customer) => (
+                    <div
+                      key={`${customer.phone}-${customer.name}`}
+                      className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-border bg-card/70 p-3"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-semibold text-foreground">{customer.name}</p>
+                        <p className="text-xs text-muted-foreground">{customer.phone}</p>
+                        <p className="mt-1 line-clamp-2 text-xs font-medium text-muted-foreground">
+                          {customer.address}
+                        </p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className="text-lg font-black text-primary tabular-nums">{customer.count}</p>
+                        <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+                          order{customer.count === 1 ? "" : "s"}
+                        </p>
+                        <p className="mt-1 text-[11px] font-semibold text-muted-foreground">
+                          Last {customer.lastOrder.slice(0, 10) || EM_DASH}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              }
+            </Panel>
+          </TabsContent>
+        : null}
+
         <TabsContent value="create-logins" className="space-y-6">
           <InlineFeedback {...alertsFor("create-logins")} />
           <div className={directoryShellClass()}>
@@ -2676,12 +2836,27 @@ export function OwnerDashboard() {
 
         <TabsContent value="staff" className="space-y-6">
           <InlineFeedback {...alertsFor("staff")} />
+          {ADMIN_CUSTOMER_ORDERS_FOCUS ?
+            <div className={directoryShellClass()}>
+              <Panel title="Assign delivery boy" icon={UsersRound}>
+                <AccountForm onCreate={handleCreateStaff} resetNonce={staffFormResetNonce} />
+              </Panel>
+            </div>
+          : null}
           <div className={directoryShellClass()}>
             <Panel title="Delivery Staff Directory" icon={UsersRound}>
               {renderStaffTable(deliveryStaffRows, "No delivery boy logins yet.")}
             </Panel>
             {!staffLoading && deliveryStaffRows.length === 0 ? (
-              <EmptyState icon={UsersRound} title="No delivery boys yet" text="Use Create Logins tab to add users." />
+              <EmptyState
+                icon={UsersRound}
+                title="No delivery boys yet"
+                text={
+                  ADMIN_CUSTOMER_ORDERS_FOCUS ?
+                    "Use the form above to assign a delivery boy email."
+                  : "Use Create Logins tab to add users."
+                }
+              />
             ) : null}
           </div>
         </TabsContent>
@@ -2877,14 +3052,23 @@ export function OwnerDashboard() {
 
         <TabsContent value="sales" className="space-y-4">
           <InlineFeedback {...alertsFor("sales")} />
-          <TradeMarginPanel
-            title="Groobey margin (all active shops)"
-            description={`One margin for every shop. New sales: trade = retail minus this % (e.g. 8% \u2192 ${formatInr(100)} retail \u2192 ${formatInr(92)} trade). Settlement bills use this %.`}
-            marginPercent={globalTradeMargin}
-            saving={savingGlobalMargin}
-            onSave={saveGlobalTradeMargin}
-          />
-          <Panel title="Order taker bills - active pipeline" icon={ClipboardList}>
+          {!ADMIN_CUSTOMER_ORDERS_FOCUS ?
+            <TradeMarginPanel
+              title="Groobey margin (all active shops)"
+              description={`One margin for every shop. New sales: trade = retail minus this % (e.g. 8% \u2192 ${formatInr(100)} retail \u2192 ${formatInr(92)} trade). Settlement bills use this %.`}
+              marginPercent={globalTradeMargin}
+              saving={savingGlobalMargin}
+              onSave={saveGlobalTradeMargin}
+            />
+          : null}
+          <Panel
+            title={
+              ADMIN_CUSTOMER_ORDERS_FOCUS ?
+                "Customer orders - active pipeline"
+              : "Order taker bills - active pipeline"
+            }
+            icon={ClipboardList}
+          >
             <div className="min-w-0 overflow-x-hidden">
             <p className="mb-3 text-xs font-semibold text-muted-foreground">
               Pending {EM_DASH} Confirmed {EM_DASH} Packed {EM_DASH} Out for delivery only. Assign a
@@ -2892,7 +3076,10 @@ export function OwnerDashboard() {
               {unassignedHandoffOrders.length ?
                 ` (${unassignedHandoffOrders.length} need assignment now)`
               : ""}
-              . Same Bill ID for customer and settlement copies.
+              .
+              {ADMIN_CUSTOMER_ORDERS_FOCUS ?
+                " Print customer bill only."
+              : " Same Bill ID for customer and settlement copies."}
               {completedOrderTakerOrdersToday.length ?
                 ` ${completedOrderTakerOrdersToday.length} completed today - see panel below.`
               : ""}
@@ -2941,16 +3128,19 @@ export function OwnerDashboard() {
                         <div className="mt-2 flex flex-wrap items-center gap-2">
                           <OrderStatusPill status={status} />
                           <span className="text-[11px] font-semibold text-muted-foreground">
-                            {takerName}
-                            {MIDDLE_DOT} {order.created_at?.slice(0, 16) ?? EM_DASH}
+                            {ADMIN_CUSTOMER_ORDERS_FOCUS ?
+                              `${order.customer_phone || EM_DASH}${MIDDLE_DOT} ${order.created_at?.slice(0, 16) ?? EM_DASH}`
+                            : `${takerName}${MIDDLE_DOT} ${order.created_at?.slice(0, 16) ?? EM_DASH}`}
                           </span>
                         </div>
                       </div>
                       <div className="shrink-0 text-right text-xs font-bold leading-snug">
-                        <div>{formatInr(retail)} retail</div>
-                        <div className="text-[11px] font-semibold text-muted-foreground">
-                          {formatInr(trade)} trade {MIDDLE_DOT} {formatInr(margin)} margin
-                        </div>
+                        <div>{formatInr(retail)}{ADMIN_CUSTOMER_ORDERS_FOCUS ? " total" : " retail"}</div>
+                        {!ADMIN_CUSTOMER_ORDERS_FOCUS ?
+                          <div className="text-[11px] font-semibold text-muted-foreground">
+                            {formatInr(trade)} trade {MIDDLE_DOT} {formatInr(margin)} margin
+                          </div>
+                        : null}
                       </div>
                     </div>
                     <div className="mt-3 grid gap-2">
@@ -2993,6 +3183,7 @@ export function OwnerDashboard() {
                           compact
                           layout="equal"
                           className="w-full"
+                          customerOnly={customerBillOnly}
                           onPrint={(kind) => exportCustomerOrderBill(order.id, kind)}
                         />
                         <Button
@@ -3104,6 +3295,7 @@ export function OwnerDashboard() {
                             <BillKindButtons
                               compact
                               layout="compact"
+                              customerOnly={customerBillOnly}
                               onPrint={(kind) => exportCustomerOrderBill(order.id, kind)}
                             />
                           </td>
@@ -3128,8 +3320,12 @@ export function OwnerDashboard() {
               {activeOrderTakerOrders.length === 0 ?
                 <EmptyState
                   icon={ClipboardList}
-                  title="No active order bills"
-                  text="New bills from the Orders dashboard appear here until delivery is completed."
+                  title={ADMIN_CUSTOMER_ORDERS_FOCUS ? "No active customer orders" : "No active order bills"}
+                  text={
+                    ADMIN_CUSTOMER_ORDERS_FOCUS ?
+                      "New orders from the online shop appear here until delivery is completed."
+                    : "New bills from the Orders dashboard appear here until delivery is completed."
+                  }
                 />
               : null}
             </div>
@@ -3137,8 +3333,12 @@ export function OwnerDashboard() {
               <div className="lg:hidden">
                 <EmptyState
                   icon={ClipboardList}
-                  title="No active order bills"
-                  text="New bills from the Orders dashboard appear here until delivery is completed."
+                  title={ADMIN_CUSTOMER_ORDERS_FOCUS ? "No active customer orders" : "No active order bills"}
+                  text={
+                    ADMIN_CUSTOMER_ORDERS_FOCUS ?
+                      "New orders from the online shop appear here until delivery is completed."
+                    : "New bills from the Orders dashboard appear here until delivery is completed."
+                  }
                 />
               </div>
             : null}
@@ -3147,7 +3347,9 @@ export function OwnerDashboard() {
           <Panel title={`Completed today (${completedOrderTakerOrdersToday.length})`} icon={ClipboardList}>
               <p className="mb-3 text-xs font-semibold text-muted-foreground">
                 End of day: skim this list and Remove any mistakes. Clears automatically tomorrow morning.
-                Monthly settlement export above keeps every bill for the month.
+                {!ADMIN_CUSTOMER_ORDERS_FOCUS ?
+                  " Monthly settlement export above keeps every bill for the month."
+                : null}
               </p>
               {completedOrderTakerOrdersToday.length === 0 ?
                 <p className="text-sm font-semibold text-muted-foreground">
@@ -3176,6 +3378,7 @@ export function OwnerDashboard() {
                         <BillKindButtons
                           compact
                           layout="compact"
+                          customerOnly={customerBillOnly}
                           onPrint={(kind) => exportCustomerOrderBill(order.id, kind)}
                         />
                         <Button
@@ -3195,6 +3398,8 @@ export function OwnerDashboard() {
               </ul>
               }
           </Panel>
+          {!ADMIN_CUSTOMER_ORDERS_FOCUS ?
+            <>
           <Panel title="Monthly settlement export" icon={Download}>
             <p className="text-sm font-semibold text-muted-foreground">
               Full month totals for Groobey settlement {EM_DASH} includes verified merchant sales and all
@@ -3375,6 +3580,8 @@ export function OwnerDashboard() {
               : null}
             </div>
           </Panel>
+            </>
+          : null}
         </TabsContent>
 
         <Dialog open={selectedStaff != null} onOpenChange={(open) => !open && closeStaffDetail()}>

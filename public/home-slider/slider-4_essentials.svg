@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="400" viewBox="0 0 1200 400" role="img" aria-label="Daily essentials at TLD Groobey">
+  <defs>
+    <linearGradient id="bg4" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#5a9420"/>
+      <stop offset="50%" stop-color="#92c82e"/>
+      <stop offset="100%" stop-color="#9acd32"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="400" fill="url(#bg4)"/>
+  <circle cx="920" cy="100" r="110" fill="#ffffff" opacity="0.1"/>
+  <text x="72" y="160" fill="#ffffff" font-family="Inter, Arial, sans-serif" font-size="52" font-weight="800">Daily essentials</text>
+  <text x="72" y="230" fill="#f0fce8" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="600">Spices, oil, rice, dal and more</text>
+  <text x="72" y="290" fill="#ffffff" font-family="Inter, Arial, sans-serif" font-size="22" font-weight="700" opacity="0.9">Shop online at TLD Groobey</text>
+</svg>

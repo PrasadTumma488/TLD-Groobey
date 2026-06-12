@@ -10,19 +10,40 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as StaffRouteImport } from './routes/staff'
+import { Route as SignupRouteImport } from './routes/signup'
 import { Route as ShopOwnerRouteImport } from './routes/shop-owner'
+import { Route as ShopRouteImport } from './routes/shop'
+import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as PlatformAdminRouteImport } from './routes/platform-admin'
 import { Route as OrdersRouteImport } from './routes/orders'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as TeamLoginRouteImport } from './routes/team/login'
+import { Route as MySlugRouteImport } from './routes/my/$slug'
 
 const StaffRoute = StaffRouteImport.update({
   id: '/staff',
   path: '/staff',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SignupRoute = SignupRouteImport.update({
+  id: '/signup',
+  path: '/signup',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ShopOwnerRoute = ShopOwnerRouteImport.update({
   id: '/shop-owner',
   path: '/shop-owner',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ShopRoute = ShopRouteImport.update({
+  id: '/shop',
+  path: '/shop',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProfileRoute = ProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PlatformAdminRoute = PlatformAdminRouteImport.update({
@@ -35,54 +56,121 @@ const OrdersRoute = OrdersRouteImport.update({
   path: '/orders',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TeamLoginRoute = TeamLoginRouteImport.update({
+  id: '/team/login',
+  path: '/team/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MySlugRoute = MySlugRouteImport.update({
+  id: '/my/$slug',
+  path: '/my/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
   '/orders': typeof OrdersRoute
   '/platform-admin': typeof PlatformAdminRoute
+  '/profile': typeof ProfileRoute
+  '/shop': typeof ShopRoute
   '/shop-owner': typeof ShopOwnerRoute
+  '/signup': typeof SignupRoute
   '/staff': typeof StaffRoute
+  '/my/$slug': typeof MySlugRoute
+  '/team/login': typeof TeamLoginRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
   '/orders': typeof OrdersRoute
   '/platform-admin': typeof PlatformAdminRoute
+  '/profile': typeof ProfileRoute
+  '/shop': typeof ShopRoute
   '/shop-owner': typeof ShopOwnerRoute
+  '/signup': typeof SignupRoute
   '/staff': typeof StaffRoute
+  '/my/$slug': typeof MySlugRoute
+  '/team/login': typeof TeamLoginRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
   '/orders': typeof OrdersRoute
   '/platform-admin': typeof PlatformAdminRoute
+  '/profile': typeof ProfileRoute
+  '/shop': typeof ShopRoute
   '/shop-owner': typeof ShopOwnerRoute
+  '/signup': typeof SignupRoute
   '/staff': typeof StaffRoute
+  '/my/$slug': typeof MySlugRoute
+  '/team/login': typeof TeamLoginRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/orders' | '/platform-admin' | '/shop-owner' | '/staff'
+  fullPaths:
+    | '/'
+    | '/login'
+    | '/orders'
+    | '/platform-admin'
+    | '/profile'
+    | '/shop'
+    | '/shop-owner'
+    | '/signup'
+    | '/staff'
+    | '/my/$slug'
+    | '/team/login'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/orders' | '/platform-admin' | '/shop-owner' | '/staff'
+  to:
+    | '/'
+    | '/login'
+    | '/orders'
+    | '/platform-admin'
+    | '/profile'
+    | '/shop'
+    | '/shop-owner'
+    | '/signup'
+    | '/staff'
+    | '/my/$slug'
+    | '/team/login'
   id:
     | '__root__'
     | '/'
+    | '/login'
     | '/orders'
     | '/platform-admin'
+    | '/profile'
+    | '/shop'
     | '/shop-owner'
+    | '/signup'
     | '/staff'
+    | '/my/$slug'
+    | '/team/login'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  LoginRoute: typeof LoginRoute
   OrdersRoute: typeof OrdersRoute
   PlatformAdminRoute: typeof PlatformAdminRoute
+  ProfileRoute: typeof ProfileRoute
+  ShopRoute: typeof ShopRoute
   ShopOwnerRoute: typeof ShopOwnerRoute
+  SignupRoute: typeof SignupRoute
   StaffRoute: typeof StaffRoute
+  MySlugRoute: typeof MySlugRoute
+  TeamLoginRoute: typeof TeamLoginRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -94,11 +182,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StaffRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/signup': {
+      id: '/signup'
+      path: '/signup'
+      fullPath: '/signup'
+      preLoaderRoute: typeof SignupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/shop-owner': {
       id: '/shop-owner'
       path: '/shop-owner'
       fullPath: '/shop-owner'
       preLoaderRoute: typeof ShopOwnerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/shop': {
+      id: '/shop'
+      path: '/shop'
+      fullPath: '/shop'
+      preLoaderRoute: typeof ShopRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/profile': {
+      id: '/profile'
+      path: '/profile'
+      fullPath: '/profile'
+      preLoaderRoute: typeof ProfileRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/platform-admin': {
@@ -115,6 +224,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrdersRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -122,15 +238,35 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/team/login': {
+      id: '/team/login'
+      path: '/team/login'
+      fullPath: '/team/login'
+      preLoaderRoute: typeof TeamLoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/my/$slug': {
+      id: '/my/$slug'
+      path: '/my/$slug'
+      fullPath: '/my/$slug'
+      preLoaderRoute: typeof MySlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  LoginRoute: LoginRoute,
   OrdersRoute: OrdersRoute,
   PlatformAdminRoute: PlatformAdminRoute,
+  ProfileRoute: ProfileRoute,
+  ShopRoute: ShopRoute,
   ShopOwnerRoute: ShopOwnerRoute,
+  SignupRoute: SignupRoute,
   StaffRoute: StaffRoute,
+  MySlugRoute: MySlugRoute,
+  TeamLoginRoute: TeamLoginRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

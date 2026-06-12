@@ -569,21 +569,24 @@ export function buildCustomerOrderBillContent(
   const meta =
     kind === "customer" ?
       [
-        ...billIdMetaRowsForKind(billNumber, dateLabel, kind, "Pending"),
-        { label: "From", value: GROOBEY_APP_NAME },
+        {
+          label: "Bill no.",
+          value: billNumber?.trim() || "Pending",
+          subValue: dateLabel,
+        },
         { label: "Customer", value: customerName },
         ...(customerPhone?.trim() ? [{ label: "Phone", value: customerPhone.trim() }] : []),
-        ...(billAddress ? [{ label: "Customer address", value: billAddress }] : []),
-        ...(deliveryTimeSlot?.trim() ? [{ label: "Delivery time", value: deliveryTimeSlot.trim() }] : []),
+        ...(billAddress ? [{ label: "Address", value: billAddress }] : []),
+        ...(deliveryTimeSlot?.trim() ? [{ label: "Delivery", value: deliveryTimeSlot.trim() }] : []),
         ...(deliveryCharge > 0 ?
-          [{ label: "Delivery charge", value: formatInr(deliveryCharge) }]
+          [{ label: "Delivery fee", value: formatInr(deliveryCharge) }]
         : []),
       ]
     : [
         ...billIdMetaRowsForKind(billNumber, dateLabel, kind, "Pending"),
         ...(shopName?.trim() ? [{ label: "Shop", value: shopName.trim() }] : []),
         { label: "Order taker", value: orderTakerLabel },
-        { label: "Customer", value: customerName },
+        { label: "Customer name", value: customerName },
         ...(customerPhone?.trim() ? [{ label: "Phone", value: customerPhone.trim() }] : []),
         ...(deliveryAddress?.trim() ? [{ label: "Address", value: deliveryAddress.trim() }] : []),
         ...(deliveryTimeSlot?.trim() ? [{ label: "Delivery time", value: deliveryTimeSlot.trim() }] : []),

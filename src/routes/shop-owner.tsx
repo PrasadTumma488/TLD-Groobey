@@ -1,4 +1,5 @@
 import { createFileRoute, Navigate } from "@tanstack/react-router";
+import { SHOW_SHOP_OWNER_PORTAL } from "@/lib/groobey-site-visibility";
 import { useEffect, useState } from "react";
 
 import { GroobeyLoadingScreen } from "@/components/groobey/groobey-brand-logo";
@@ -16,6 +17,11 @@ function ShopOwnerRoute() {
   const [to, setTo] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!SHOW_SHOP_OWNER_PORTAL) {
+      setTo("/");
+      setUi("nav");
+      return;
+    }
     let cancelled = false;
     (async () => {
       try {

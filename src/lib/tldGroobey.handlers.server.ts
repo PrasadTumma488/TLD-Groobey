@@ -7,9 +7,16 @@ import type { Database } from "@/integrations/supabase/types";
 import { parseRoleFromAuthClaims } from "@/lib/groobey-auth-role";
 import { isGroobeyPlatformAdminEmail } from "@/lib/groobey-platform-admin";
 import {
+  applyPendingStaffRolesForUser,
+  findUserIdByEmail,
+  listPendingStaffEmailAssignments,
+  upsertStaffEmailAssignment,
+} from "@/lib/groobey-staff-email-assignments.server";
+import {
   getPlatformAdminEmailsResolved,
   getPlatformAdminUserIdsResolved,
 } from "@/lib/platform-admin-bootstrap.server";
+import { registerCustomerSchema, requesterTokenSchema } from "@/lib/tldGroobey.functions-schemas";
 import { GROOBEY_APP_NAME } from "@/lib/groobey-brand";
 import { buildBillDeliveryEmail } from "@/lib/groobey-bill-email.server";
 import { resolveBillQtyAndKgs, stripPackFromItemName } from "@/lib/groobey-bill-qty";
@@ -227,6 +234,24 @@ async function maybeBootstrapAllowlistedPlatformAdmin(
   return { dbRoles: nextDb, metadataRole: meta, combined: nextCombined };
 }
 
+async function bootstrapAllowlistedRolesForUser(
+  user: User,
+  dbRoles: AppRole[],
+  metadataRole: AppRole | null,
+) {
+  const adminStep = await maybeBootstrapAllowlistedPlatformAdmin(user, dbRoles, metadataRole);
+  await applyPendingStaffRolesForUser(user);
+  const { data: roleRows, error: roleErr } = await supabaseAdmin
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", user.id);
+  if (roleErr) return adminStep;
+  const nextDb = (roleRows ?? []).map((r) => r.role);
+  const meta = parseRoleFromAuthClaims(user);
+  const nextCombined: AppRole[] = meta ? [...nextDb, meta] : nextDb;
+  return { dbRoles: nextDb, metadataRole: meta, combined: nextCombined };
+}
+
 /** After `assertAdminOrMain`: RLS only trusts `user_roles`, not JWT. Use service role for cross-user reads/writes when configured. */
 function platformAdminDataActor(requesterToken: string) {
   return hasServiceRoleKey() ? supabaseAdmin : createOwnerScopedClient(requesterToken);
@@ -388,7 +413,7 @@ const createAccountSchema = z
     displayName: z.string().trim().min(2).max(80),
     email: z.string().trim().email().max(255).optional().or(z.literal("")),
     phone: z.string().trim().min(8).max(20).optional().or(z.literal("")),
-    password: z.string().min(8).max(72),
+    password: z.union([z.string().min(8).max(72), z.literal("")]).optional(),
     role: roleSchema,
   })
   .refine((value) => (value.role === "merchant" ? Boolean(value.email && value.phone) : true), {
@@ -408,6 +433,14 @@ const createAccountSchema = z
       message: "Staff and Order Taker logins need a login email (same one used at sign-in).",
       path: ["email"],
     },
+  )
+  .refine(
+    (value) => {
+      if (value.role === "employee") return true;
+      const pwd = value.password?.trim() ?? "";
+      return pwd.length >= 8;
+    },
+    { message: "Password is required for this role (min 8 characters).", path: ["password"] },
   );
 
 const shopDetailsSchema = z.object({
@@ -446,7 +479,7 @@ async function loadSessionRolesMerged(token: string) {
     if (roleError) throw new Error(roleError.message);
     const dbRoles = (roleRows ?? []).map((r) => r.role);
     const metadataRole = parseRoleFromAuthClaims(user);
-    const merged = await maybeBootstrapAllowlistedPlatformAdmin(user, dbRoles, metadataRole);
+    const merged = await bootstrapAllowlistedRolesForUser(user, dbRoles, metadataRole);
     return { user, dbRoles: merged.dbRoles, metadataRole: merged.metadataRole, combined: merged.combined };
   }
 
@@ -462,13 +495,35 @@ async function loadSessionRolesMerged(token: string) {
 
   const dbRoles = (roleRows ?? []).map((r) => r.role);
   const metadataRole = parseRoleFromAuthClaims(data.user);
-  const merged = await maybeBootstrapAllowlistedPlatformAdmin(data.user, dbRoles, metadataRole);
+  const merged = await bootstrapAllowlistedRolesForUser(data.user, dbRoles, metadataRole);
   return {
     user: data.user,
     dbRoles: merged.dbRoles,
     metadataRole: merged.metadataRole,
     combined: merged.combined,
   };
+}
+
+export async function bootstrapAllowlistedRolesHandler(ctx: { data: unknown }) {
+  const parsed = requesterTokenSchema.parse(ctx.data);
+  const token = resolveRequesterBearerFromRequest(parsed) || parsed.requesterToken;
+  const session = await loadSessionRolesMerged(token);
+  if (!session) throw new Error("Session expired. Please sign in again.");
+  return { ok: true as const, roles: session.combined };
+}
+
+export async function ensureMyShopSlugHandler(ctx: { data: unknown }) {
+  const parsed = requesterTokenSchema.parse(ctx.data);
+  const token = resolveRequesterBearerFromRequest(parsed) || parsed.requesterToken;
+  const session = await loadSessionRolesMerged(token);
+  if (!session) throw new Error("Session expired. Please sign in again.");
+  const { ensureProfileShopSlug } = await import("@/lib/groobey-profile-slug.server");
+  const slug = await ensureProfileShopSlug(
+    session.user.id,
+    session.user.user_metadata?.display_name as string | undefined,
+    session.user.email,
+  );
+  return { ok: true as const, slug };
 }
 
 async function assertAdminOrMain(token?: string) {
@@ -555,16 +610,63 @@ const normalizedPhone = normalizePhone(data.phone);
       );
     }
 
-    if (hasServiceRoleKey()) {
-      if (!requesterBearer) {
-        throw new Error("Your session was not sent to the server. Refresh the page and try again.");
-      }
-      await assertAdminOrMain(requesterBearer);
-      if (!staffRoles.has(data.role)) {
-        throw new Error("Platform admin can create only shop owner, delivery boy, and order taker logins.");
-      }
+    if (!requesterBearer) {
+      throw new Error("Your session was not sent to the server. Refresh the page and try again.");
+    }
+    await assertAdminOrMain(requesterBearer);
+    if (!staffRoles.has(data.role)) {
+      throw new Error("Platform admin can create only shop owner, delivery boy, and order taker logins.");
+    }
 
-      const emailTrimmed = data.email?.trim() || "";
+    const emailTrimmed = String(data.email || "")
+      .trim()
+      .toLowerCase();
+    const displayName = String(data.displayName || "").trim();
+
+    /** Delivery boys register as customers first; admin only assigns their email. */
+    if (data.role === "employee" && hasServiceRoleKey()) {
+      if (!emailTrimmed) throw new Error("Delivery boy email is required.");
+      const session = await loadSessionRolesMerged(requesterBearer);
+      const existingUserId = await findUserIdByEmail(emailTrimmed);
+      if (existingUserId) {
+        const { error: roleError } = await supabaseAdmin.from("user_roles").upsert(
+          { user_id: existingUserId, role: "employee" } as never,
+          { onConflict: "user_id,role" },
+        );
+        if (roleError) throw new Error(roleError.message);
+        if (displayName) {
+          await supabaseAdmin
+            .from("profiles")
+            .update({ display_name: displayName } as never)
+            .eq("user_id", existingUserId);
+        }
+        await supabaseAdmin.from("staff_email_assignments").delete().eq("email", emailTrimmed);
+        const { data: prof } = await supabaseAdmin
+          .from("profiles")
+          .select("groobey_code")
+          .eq("user_id", existingUserId)
+          .maybeSingle();
+        return {
+          ok: true,
+          userId: existingUserId,
+          groobeyId: prof?.groobey_code ?? null,
+        };
+      }
+      await upsertStaffEmailAssignment({
+        email: emailTrimmed,
+        role: "employee",
+        displayName,
+        assignedBy: session?.user.id,
+      });
+      return {
+        ok: true,
+        pendingSignup: true as const,
+        email: emailTrimmed,
+        displayName,
+      };
+    }
+
+    if (hasServiceRoleKey()) {
       const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
         email: emailTrimmed || undefined,
         phone: normalizedPhone || undefined,
@@ -745,8 +847,18 @@ const normalizedPhone = normalizePhone(data.phone);
 }
 
 export async function getSetupStatusHandler() {
+  const hasServiceRoleKeyConfigured = hasServiceRoleKey();
+  let hasOwner = false;
+  if (hasServiceRoleKeyConfigured) {
+    try {
+      hasOwner = await hasPlatformBootstrapAccount();
+    } catch {
+      hasOwner = false;
+    }
+  }
   return {
-    hasOwner: await hasPlatformBootstrapAccount(),
+    hasOwner,
+    hasServiceRoleKey: hasServiceRoleKeyConfigured,
   };
 }
 
@@ -1042,33 +1154,65 @@ await assertAdminOrMain(data.requesterToken);
     const merged = [...mergedByUser.values()].sort(
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
     );
-    if (!merged.length) return { staff: [] as const };
+
+    const pendingRows = hasServiceRoleKey() ? await listPendingStaffEmailAssignments() : [];
+
+    if (!merged.length && !pendingRows.length) return { staff: [] as const };
 
     const userIds = merged.map((row) => row.user_id);
-    const profileActor = hasServiceRoleKey() ? supabaseAdmin : actor;
-    const { data: profs, error: profError } = await profileActor
-      .from("profiles")
-      .select("user_id, display_name, email, phone, is_active, created_at, groobey_code")
-      .in("user_id", userIds);
+    const profById = new Map<
+      string,
+      {
+        user_id: string;
+        display_name: string | null;
+        email: string | null;
+        phone: string | null;
+        is_active: boolean | null;
+        created_at: string | null;
+        groobey_code: string | null;
+      }
+    >();
+    if (userIds.length) {
+      const profileActor = hasServiceRoleKey() ? supabaseAdmin : actor;
+      const { data: profs, error: profError } = await profileActor
+        .from("profiles")
+        .select("user_id, display_name, email, phone, is_active, created_at, groobey_code")
+        .in("user_id", userIds);
 
-    if (profError) throw new Error(profError.message);
-
-    const profById = new Map((profs ?? []).map((profile) => [profile.user_id, profile]));
+      if (profError) throw new Error(profError.message);
+      for (const profile of profs ?? []) {
+        profById.set(profile.user_id, profile);
+      }
+    }
 
     return {
-      staff: merged.map((row) => {
-        const profile = profById.get(row.user_id);
-        return {
-          userId: row.user_id,
-          role: row.role,
-          displayName: profile?.display_name ?? "",
-          email: profile?.email ?? null,
-          phone: profile?.phone ?? null,
-          groobeyId: profile?.groobey_code ?? null,
-          isActive: profile?.is_active ?? true,
-          joinedAt: profile?.created_at ?? row.created_at ?? null,
-        };
-      }),
+      staff: [
+        ...merged.map((row) => {
+          const profile = profById.get(row.user_id);
+          return {
+            userId: row.user_id,
+            role: row.role,
+            displayName: profile?.display_name ?? "",
+            email: profile?.email ?? null,
+            phone: profile?.phone ?? null,
+            groobeyId: profile?.groobey_code ?? null,
+            isActive: profile?.is_active ?? true,
+            joinedAt: profile?.created_at ?? row.created_at ?? null,
+            pendingSignup: false as const,
+          };
+        }),
+        ...pendingRows.map((pending) => ({
+          userId: `pending:${pending.email}`,
+          role: pending.role,
+          displayName: pending.displayName ?? "",
+          email: pending.email,
+          phone: null,
+          groobeyId: null,
+          isActive: true,
+          joinedAt: pending.createdAt,
+          pendingSignup: true as const,
+        })),
+      ],
     };
 }
 
@@ -1257,13 +1401,29 @@ export async function sendCustomerBillEmailHandler(ctx: { data: unknown }) {
 const { data } = ctx as { data: Record<string, unknown> };
 const user = await getAuthenticatedUser(data.requesterToken);
     const ownerClient = createOwnerScopedClient(data.requesterToken);
+    const ownOrderId = typeof data.orderId === "string" ? data.orderId.trim() : "";
+    let ownOrderVerified = false;
+    if (ownOrderId) {
+      const { data: owned, error: ownErr } = await ownerClient
+        .from("customer_orders")
+        .select("id")
+        .eq("id", ownOrderId)
+        .eq("created_by", user.id)
+        .maybeSingle();
+      if (ownErr) throw new Error(ownErr.message);
+      if (!owned) throw new Error("Order not found.");
+      ownOrderVerified = true;
+    }
+
     const { data: roleRows, error: roleError } = await ownerClient
       .from("user_roles")
       .select("role")
       .eq("user_id", user.id)
       .in("role", ["main_admin", "merchant", "employee", "order_taker"]);
     if (roleError) throw new Error(roleError.message);
-    if (!roleRows?.length) throw new Error("Only logged-in staff can send bill emails.");
+    if (!roleRows?.length && !ownOrderVerified) {
+      throw new Error("Only logged-in staff can send bill emails.");
+    }
 
     const { data: senderProfile, error: senderProfErr } = await ownerClient
       .from("profiles")
@@ -1275,6 +1435,16 @@ const user = await getAuthenticatedUser(data.requesterToken);
 
     const billKind = data.billKind ?? "customer";
     let customerRef = normalizeBillRecipientEmail(data.customerEmail);
+
+    if (billKind === "customer" && !customerRef && ownOrderVerified) {
+      const { data: custProf, error: custProfErr } = await ownerClient
+        .from("profiles")
+        .select("email")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (custProfErr) throw new Error(custProfErr.message);
+      customerRef = normalizeBillRecipientEmail(custProf?.email ?? user.email ?? "");
+    }
 
     if (billKind === "customer" && !customerRef) {
       throw new Error(
@@ -1454,16 +1624,29 @@ const user = await getAuthenticatedUser(data.requesterToken);
       billKind,
     });
 
+    const orderCustomerName =
+      typeof data.orderBill === "object" &&
+      data.orderBill &&
+      "customerName" in data.orderBill &&
+      typeof (data.orderBill as { customerName?: string }).customerName === "string" ?
+        (data.orderBill as { customerName: string }).customerName
+      : undefined;
+
     const { html, text } = buildBillDeliveryEmail({
       shopName: data.shopName,
       billTitle: title,
       billNumber: billNo,
       customerEmail: customerRef,
+      customerName: orderCustomerName,
       billKind,
     });
     const billSubject =
       data.subject.trim() ||
-      (billKind === "customer" ?
+      (ownOrderVerified && billKind === "customer" ?
+        billNo ?
+          `Order confirmed — Bill ${billNo} — ${GROOBEY_APP_NAME}`
+        : `Order confirmed — ${GROOBEY_APP_NAME}`
+      : billKind === "customer" ?
         billNo ?
           `Bill ${billNo} ΓÇö ${GROOBEY_APP_NAME}`
         : `Bill ΓÇö ${GROOBEY_APP_NAME}`
@@ -1654,4 +1837,176 @@ export async function markDeliveryOrderStatusHandler(ctx: { data: unknown }) {
 
   if (updateError) throw new Error(updateError.message);
   return { ok: true as const };
+}
+
+type RegisterCustomerInput = {
+  displayName: string;
+  email: string;
+  phone: string;
+  defaultAddress: string;
+  password: string;
+};
+
+async function registerCustomerViaSignUp(data: RegisterCustomerInput) {
+  const url = getSupabaseUrl();
+  const key = getPublishableKey();
+  if (!url || !key) {
+    throw new Error(
+      "Customer registration is not configured. Set SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY in .env, or add SUPABASE_SERVICE_ROLE_KEY.",
+    );
+  }
+
+  const emailTrimmed = data.email.trim().toLowerCase();
+  const normalizedPhone = normalizePhone(data.phone);
+  if (!normalizedPhone) {
+    throw new Error("Enter a valid mobile number.");
+  }
+
+  const anonClient = createClient<Database>(url, key, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+  });
+
+  const { data: signUpData, error: signUpError } = await anonClient.auth.signUp({
+    email: emailTrimmed,
+    password: data.password,
+    options: {
+      data: {
+        display_name: data.displayName,
+        role: "customer",
+        default_address: data.defaultAddress.trim(),
+        phone: normalizedPhone,
+      },
+    },
+  });
+
+  if (signUpError) {
+    const msg = signUpError.message || "Unable to create account.";
+    if (/already|registered|exists/i.test(msg)) {
+      throw new Error("This email or mobile is already registered. Try logging in instead.");
+    }
+    throw new Error(msg);
+  }
+
+  if (signUpData.user && (signUpData.user.identities ?? []).length === 0) {
+    throw new Error("This email is already registered. Try logging in instead.");
+  }
+
+  const userId = signUpData.user?.id;
+  if (!userId) {
+    throw new Error("Unable to create account. Try again or contact support.");
+  }
+
+  const session = signUpData.session;
+  if (!session?.access_token) {
+    return {
+      ok: true as const,
+      userId,
+      needsEmailConfirmation: true as const,
+    };
+  }
+
+  const authedClient = createClient<Database>(url, key, {
+    global: {
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+      },
+    },
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+  });
+
+  const { error: rpcError } = await authedClient.rpc("register_customer_self", {
+    p_display_name: data.displayName,
+    p_email: emailTrimmed,
+    p_phone: normalizedPhone,
+    p_default_address: data.defaultAddress.trim(),
+  });
+
+  if (rpcError) {
+    if (/register_customer_self|schema cache|could not find the function/i.test(rpcError.message)) {
+      throw new Error(
+        "Customer registration database setup is pending. Apply the latest Supabase migration (register_customer_self) or set SUPABASE_SERVICE_ROLE_KEY in .env.",
+      );
+    }
+    throw new Error(rpcError.message);
+  }
+
+  return { ok: true as const, userId, needsEmailConfirmation: false as const };
+}
+
+async function registerCustomerWithServiceRole(data: RegisterCustomerInput) {
+  const emailTrimmed = data.email.trim().toLowerCase();
+  const normalizedPhone = normalizePhone(data.phone);
+  if (!normalizedPhone) {
+    throw new Error("Enter a valid mobile number.");
+  }
+
+  const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+    email: emailTrimmed,
+    phone: normalizedPhone,
+    password: data.password,
+    email_confirm: true,
+    phone_confirm: true,
+    user_metadata: {
+      display_name: data.displayName,
+      role: "customer",
+    },
+  });
+
+  if (authError || !authData.user) {
+    const msg = authError?.message || "Unable to create account.";
+    if (/already|registered|exists/i.test(msg)) {
+      throw new Error("This email or mobile is already registered. Try logging in instead.");
+    }
+    throw new Error(msg);
+  }
+
+  const userId = authData.user.id;
+  try {
+    const { error: profileError } = await supabaseAdmin.from("profiles").upsert(
+      {
+        user_id: userId,
+        display_name: data.displayName,
+        email: emailTrimmed,
+        phone: normalizedPhone,
+        default_address: data.defaultAddress.trim(),
+        is_active: true,
+      } as never,
+      { onConflict: "user_id" },
+    );
+    if (profileError) throw new Error(profileError.message);
+
+    const { error: roleError } = await supabaseAdmin.from("user_roles").upsert(
+      { user_id: userId, role: "customer" } as never,
+      { onConflict: "user_id,role" },
+    );
+    if (roleError) throw new Error(roleError.message);
+
+    const { ensureProfileShopSlug } = await import("@/lib/groobey-profile-slug.server");
+    await applyPendingStaffRolesForUser(authData.user, data.displayName);
+    await bootstrapAllowlistedRolesForUser(authData.user, ["customer"], "customer");
+    await ensureProfileShopSlug(userId, data.displayName, emailTrimmed);
+  } catch (e) {
+    await supabaseAdmin.auth.admin.deleteUser(userId).catch(() => undefined);
+    throw new Error(e instanceof Error ? e.message : "Unable to save customer profile.");
+  }
+
+  return { ok: true as const, userId, needsEmailConfirmation: false as const };
+}
+
+/** Public customer registration (no staff portal). */
+export async function registerCustomerAccountHandler(ctx: { data: unknown }) {
+  const { registerCustomerSchema } = await import("@/lib/tldGroobey.functions-schemas");
+  const data = registerCustomerSchema.parse(ctx.data);
+
+  if (hasServiceRoleKey()) {
+    return registerCustomerWithServiceRole(data);
+  }
+
+  return registerCustomerViaSignUp(data);
 }

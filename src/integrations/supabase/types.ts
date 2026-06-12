@@ -194,36 +194,42 @@ export type Database = {
       profiles: {
         Row: {
           created_at: string;
+          default_address: string | null;
           display_name: string;
           email: string | null;
           groobey_code: string | null;
           id: string;
           is_active: boolean;
           phone: string | null;
+          shop_slug: string | null;
           trade_margin_percent: number;
           updated_at: string;
           user_id: string;
         };
         Insert: {
           created_at?: string;
+          default_address?: string | null;
           display_name?: string;
           email?: string | null;
           groobey_code?: string | null;
           id?: string;
           is_active?: boolean;
           phone?: string | null;
+          shop_slug?: string | null;
           trade_margin_percent?: number;
           updated_at?: string;
           user_id: string;
         };
         Update: {
           created_at?: string;
+          default_address?: string | null;
           display_name?: string;
           email?: string | null;
           groobey_code?: string | null;
           id?: string;
           is_active?: boolean;
           phone?: string | null;
+          shop_slug?: string | null;
           trade_margin_percent?: number;
           updated_at?: string;
           user_id?: string;
@@ -451,9 +457,28 @@ export type Database = {
         Args: { p_order_id: string; p_status: Database["public"]["Enums"]["order_status"] };
         Returns: undefined;
       };
+      register_customer_self: {
+        Args: {
+          p_display_name: string;
+          p_email: string;
+          p_phone: string;
+          p_default_address: string;
+        };
+        Returns: undefined;
+      };
+      purge_my_old_customer_orders: {
+        Args: { p_days?: number };
+        Returns: undefined;
+      };
     };
     Enums: {
-      app_role: "main_admin" | "admin" | "merchant" | "employee" | "order_taker";
+      app_role:
+        | "main_admin"
+        | "admin"
+        | "merchant"
+        | "employee"
+        | "order_taker"
+        | "customer";
       attendance_status: "present" | "absent" | "half_day";
       order_status:
         | "pending"
@@ -589,7 +614,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["main_admin", "admin", "merchant", "employee", "order_taker"],
+      app_role: ["main_admin", "admin", "merchant", "employee", "order_taker", "customer"],
       attendance_status: ["present", "absent", "half_day"],
       order_status: [
         "pending",

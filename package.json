@@ -4,16 +4,21 @@
   "sideEffects": false,
   "type": "module",
   "scripts": {
-    "dev": "vite dev",
+    "dev": "npm run voice:copy && vite dev",
     "pwa:icons": "node scripts/generate-pwa-icons.mjs",
     "bill-logo": "node scripts/generate-bill-logo.mjs",
-    "prebuild": "npm run pwa:icons",
+    "voice:copy": "node scripts/copy-welcome-voice.mjs",
+    "prebuild": "npm run pwa:icons && npm run voice:copy",
     "build": "vite build && node scripts/generate-sw.mjs",
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "db:push": "npx supabase db push --linked --yes"
+    "db:check": "node scripts/check-db-schema.mjs",
+    "db:push": "node scripts/push-db.mjs",
+    "db:push:cli": "npx supabase db push --linked --yes",
+    "env:db-password": "node scripts/set-db-password.mjs",
+    "env:service-role": "node scripts/set-supabase-service-role.mjs"
   },
   "dependencies": {
     "@cloudflare/vite-plugin": "^1.25.5",
@@ -88,6 +93,7 @@
     "eslint-plugin-react-refresh": "^0.4.20",
     "globals": "^15.15.0",
     "nitro": "^3.0.260429-beta",
+    "pg": "^8.21.0",
     "prettier": "^3.7.3",
     "sharp": "^0.34.5",
     "to-ico": "^1.1.5",

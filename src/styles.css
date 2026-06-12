@@ -72,6 +72,10 @@
   /* TLD Groobey logo greens - used for primary UI, gradients, and glows */
   --groobey-lime: #9acd32;
   --groobey-lime-dark: #92c82e;
+  --groobey-footer-bg: oklch(0.22 0.06 145);
+  --groobey-footer-fg: oklch(0.98 0.02 115);
+  --groobey-footer-muted: oklch(0.78 0.04 130);
+  --groobey-nav-offset: 3.35rem;
 
   --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --radius: 0.75rem;
@@ -171,6 +175,13 @@
     height: 100%;
     overflow-x: hidden;
     -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
   }
 
   body {
@@ -270,6 +281,4530 @@
 
   .groobey-glow {
     box-shadow: var(--shadow-glow);
+  }
+
+  .groobey-public-page {
+    background:
+      radial-gradient(ellipse 100% 80% at 50% -30%, color-mix(in oklab, var(--groobey-lime) 18%, transparent), transparent 50%),
+      var(--gradient-soft);
+  }
+
+  .groobey-nav-scroll-mt {
+    scroll-margin-top: calc(var(--groobey-nav-offset) + 0.75rem);
+  }
+
+  .groobey-nav-backdrop {
+    pointer-events: auto;
+    position: fixed;
+    inset: 0;
+    z-index: 45;
+    border: none;
+    background: color-mix(in oklab, black 45%, transparent);
+  }
+
+  .groobey-floating-nav-wrap {
+    pointer-events: none;
+    position: fixed;
+    inset-inline: 0;
+    top: 0;
+    z-index: 50;
+    display: flex;
+    justify-content: center;
+    padding: 0.65rem 0.65rem 0;
+  }
+
+  @media (min-width: 1024px) {
+    .groobey-floating-nav-wrap {
+      padding: 0.7rem 1rem 0;
+    }
+  }
+
+  .groobey-floating-nav {
+    pointer-events: auto;
+    width: min(100%, 80rem);
+    overflow: hidden;
+    border: 1px solid #3f3f46;
+    border-radius: 1rem;
+    background: #141414;
+    box-shadow:
+      0 16px 40px -18px color-mix(in oklab, black 80%, transparent),
+      0 0 0 1px color-mix(in oklab, var(--primary) 18%, transparent);
+    transition: border-radius 0.2s ease;
+  }
+
+  @media (min-width: 1024px) {
+    .groobey-floating-nav {
+      border-radius: 999px;
+    }
+  }
+
+  .groobey-floating-nav--open {
+    border-radius: 1rem;
+  }
+
+  .groobey-floating-nav-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.65rem;
+    height: 2.75rem;
+    min-height: 0;
+    padding: 0 0.6rem 0 0.7rem;
+    overflow: visible;
+  }
+
+  @media (max-width: 1023px) {
+    .groobey-floating-nav:not(.groobey-floating-nav--open) {
+      overflow: hidden;
+    }
+
+    .groobey-floating-nav-wrap {
+      padding: 0.5rem 0.65rem 0;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .groobey-floating-nav-bar {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 0;
+      height: auto;
+      padding: 0 0.9rem 0 1rem;
+      overflow: visible;
+    }
+  }
+
+  .groobey-nav-brand {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+  }
+
+  @media (min-width: 1024px) {
+    .groobey-nav-brand {
+      position: relative;
+      z-index: 2;
+    }
+  }
+
+  .groobey-nav-logo {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    line-height: 0;
+  }
+
+  .groobey-nav-logo img {
+    height: 2.15rem !important;
+    width: auto !important;
+    max-width: 7.5rem !important;
+    object-fit: contain;
+  }
+
+  @media (min-width: 1024px) {
+    .groobey-nav-logo img {
+      height: 4.35rem !important;
+      max-width: 13rem !important;
+    }
+  }
+
+  /* Desktop-only horizontal link track */
+  .groobey-nav-track {
+    display: none;
+    align-items: center;
+    gap: 0.2rem;
+    width: max-content;
+    padding: 0.3rem 0.35rem;
+    border: 1px solid color-mix(in oklab, var(--primary) 32%, #404040);
+    border-radius: 999px;
+    background: linear-gradient(180deg, #2a2a2a 0%, #1c1c1c 100%);
+    box-shadow:
+      inset 0 1px 0 color-mix(in oklab, white 8%, transparent),
+      0 8px 22px -14px color-mix(in oklab, black 75%, transparent);
+  }
+
+  @media (min-width: 1024px) {
+    .groobey-nav-track {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      z-index: 1;
+      display: inline-flex;
+      transform: translate(-50%, -50%);
+      pointer-events: auto;
+    }
+  }
+
+  .groobey-nav-track-link {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    min-height: 2.15rem;
+    padding: 0.42rem 0.95rem;
+    border-radius: 999px;
+    font-size: 0.84rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    color: #ececec;
+    white-space: nowrap;
+    transition: background-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
+  }
+
+  .groobey-nav-track-link:hover {
+    background: #3f3f46;
+    color: #fff;
+    transform: translateY(-1px);
+  }
+
+  .groobey-nav-track-link--active {
+    background: linear-gradient(135deg, var(--primary) 0%, #a3e635 100%);
+    color: #14230a;
+    font-weight: 800;
+    box-shadow: 0 6px 16px -10px color-mix(in oklab, var(--primary) 70%, transparent);
+  }
+
+  .groobey-nav-actions {
+    display: none;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 0.7rem;
+  }
+
+  @media (min-width: 1024px) {
+    .groobey-nav-actions {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      flex-shrink: 0;
+      margin-left: auto;
+    }
+  }
+
+  .groobey-nav-login {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: #d4d4d8;
+    transition:
+      color 0.15s ease,
+      background-color 0.15s ease,
+      border-color 0.15s ease,
+      transform 0.15s ease,
+      box-shadow 0.15s ease;
+  }
+
+  .groobey-nav-login:hover {
+    color: #fff;
+  }
+
+  @media (min-width: 1024px) {
+    .groobey-nav-actions .groobey-nav-login {
+      display: inline-flex;
+      min-height: 2.15rem;
+      align-items: center;
+      justify-content: center;
+      padding: 0.38rem 0.95rem;
+      border: 1px solid transparent;
+      border-radius: 999px;
+    }
+
+    .groobey-nav-actions .groobey-nav-login:hover {
+      border-color: color-mix(in oklab, var(--primary) 45%, #52525b);
+      background: #2e2e2e;
+      color: #fafafa;
+      transform: translateY(-1px);
+      box-shadow: 0 6px 16px -12px color-mix(in oklab, var(--primary) 50%, transparent);
+    }
+
+    .groobey-nav-actions .groobey-nav-login--active:hover {
+      border-color: color-mix(in oklab, var(--primary) 55%, #52525b);
+      background: color-mix(in oklab, var(--primary) 18%, #2e2e2e);
+      color: #fefce8;
+    }
+  }
+
+  .groobey-nav-login--active {
+    color: #fefce8;
+    text-shadow: 0 0 10px color-mix(in oklab, var(--primary) 65%, transparent);
+  }
+
+  .groobey-nav-cta {
+    display: inline-flex;
+    min-height: 2.15rem;
+    align-items: center;
+    justify-content: center;
+    padding: 0.38rem 1rem;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--primary) 0%, #22d3ee 100%);
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: #052e16;
+    box-shadow: 0 8px 20px -12px color-mix(in oklab, var(--primary) 55%, #0891b2 30%);
+    transition: filter 0.15s ease;
+  }
+
+  .groobey-nav-cta:hover {
+    filter: brightness(1.06);
+  }
+
+  .groobey-nav-cta--active {
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, var(--primary) 75%, transparent),
+      0 0 0 4px color-mix(in oklab, var(--primary) 35%, transparent),
+      0 10px 24px -10px color-mix(in oklab, var(--primary) 70%, #0891b2 25%);
+  }
+
+  .groobey-nav-role-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-height: 2.15rem;
+    padding: 0.35rem 0.7rem;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: #e4e4e7;
+    white-space: nowrap;
+    transition:
+      background-color 0.15s ease,
+      border-color 0.15s ease,
+      color 0.15s ease;
+  }
+
+  .groobey-nav-role-link:hover {
+    border-color: #52525b;
+    background: #27272a;
+    color: #fafafa;
+  }
+
+  .groobey-nav-role-link--active {
+    border-color: color-mix(in oklab, var(--primary) 45%, #52525b);
+    background: color-mix(in oklab, var(--primary) 14%, #27272a);
+    color: #ecfccb;
+  }
+
+  .groobey-nav-user-chip {
+    display: inline-flex;
+    max-width: 9.5rem;
+    align-items: center;
+    gap: 0.4rem;
+    min-height: 2.15rem;
+    padding: 0.35rem 0.55rem;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    color: #d4d4d8;
+    white-space: nowrap;
+    transition:
+      background-color 0.15s ease,
+      border-color 0.15s ease,
+      color 0.15s ease;
+  }
+
+  .groobey-nav-user-chip:hover {
+    border-color: #52525b;
+    background: #27272a;
+    color: #fafafa;
+  }
+
+  .groobey-nav-user-chip--active {
+    border-color: color-mix(in oklab, var(--primary) 45%, #52525b);
+    background: color-mix(in oklab, var(--primary) 14%, #27272a);
+    color: #ecfccb;
+  }
+
+  .groobey-nav-user-chip-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.8125rem;
+    font-weight: 600;
+  }
+
+  .groobey-nav-logout-btn {
+    display: inline-flex;
+    width: 2.15rem;
+    height: 2.15rem;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    background: transparent;
+    color: #d4d4d8;
+    transition:
+      background-color 0.15s ease,
+      border-color 0.15s ease,
+      color 0.15s ease;
+  }
+
+  .groobey-nav-logout-btn:hover {
+    border-color: #52525b;
+    background: #27272a;
+    color: #fafafa;
+  }
+
+  /* Mobile menu toggle - lines only, no circle */
+  .groobey-nav-menu-btn {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    color: #fafafa;
+    transition: color 0.15s ease, opacity 0.15s ease;
+  }
+
+  .groobey-nav-menu-btn:hover {
+    color: var(--primary);
+    opacity: 0.95;
+  }
+
+  .groobey-nav-menu-lines {
+    display: flex;
+    width: 1.4rem;
+    flex-direction: column;
+    gap: 0.32rem;
+  }
+
+  .groobey-nav-menu-lines span {
+    display: block;
+    width: 100%;
+    height: 2px;
+    border-radius: 999px;
+    background: currentColor;
+  }
+
+  @media (min-width: 1024px) {
+    .groobey-nav-menu-btn {
+      display: none;
+    }
+  }
+
+  /* Mobile-only dropdown panel */
+  .groobey-nav-mobile-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    border-top: 1px solid #333333;
+    padding: 0.75rem 0.65rem 0.9rem;
+  }
+
+  @media (min-width: 1024px) {
+    .groobey-nav-mobile-panel {
+      display: none;
+    }
+  }
+
+  .groobey-nav-mobile-list {
+    display: flex;
+    width: 100%;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.45rem;
+  }
+
+  .groobey-nav-mobile-link {
+    display: inline-flex;
+    width: auto;
+    min-width: 9.5rem;
+    min-height: 2.5rem;
+    align-items: center;
+    justify-content: center;
+    padding: 0.45rem 1.25rem;
+    border: 1px solid #404040;
+    border-radius: 999px;
+    background: #222222;
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: #f4f4f5;
+    white-space: nowrap;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+  }
+
+  .groobey-nav-mobile-link:hover {
+    background: #2e2e2e;
+    border-color: #525252;
+  }
+
+  .groobey-nav-mobile-link--active {
+    border-color: color-mix(in oklab, var(--primary) 65%, #404040);
+    background: linear-gradient(135deg, color-mix(in oklab, var(--primary) 88%, #222) 0%, #365314 100%);
+    color: #ecfccb;
+  }
+
+  .groobey-nav-mobile-link--muted {
+    min-height: 2.35rem;
+    padding: 0.4rem 1.1rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: #d4d4d8;
+  }
+
+  .groobey-nav-mobile-link--cta {
+    border-color: transparent;
+    background: linear-gradient(90deg, var(--primary) 0%, #22d3ee 100%);
+    color: #052e16;
+  }
+
+  .groobey-nav-mobile-link--auth-active {
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, var(--primary) 70%, transparent),
+      0 0 0 3px color-mix(in oklab, var(--primary) 40%, transparent);
+  }
+
+  .groobey-nav-mobile-actions {
+    display: flex;
+    width: 100%;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.45rem;
+    margin-top: 0.65rem;
+    padding-top: 0.65rem;
+    border-top: 1px solid #333333;
+  }
+
+  .groobey-public-hero {
+    isolation: isolate;
+  }
+
+  .groobey-category-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+
+  @media (min-width: 640px) and (max-width: 1023px) {
+    .groobey-category-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.85rem;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .groobey-category-grid {
+      display: grid;
+      width: 100%;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 1rem;
+    }
+
+    .groobey-category-card:nth-child(5) {
+      grid-column: 2;
+    }
+
+    .groobey-category-card:nth-child(6) {
+      grid-column: 3;
+    }
+  }
+
+  .groobey-category-card {
+    box-sizing: border-box;
+    position: relative;
+    display: flex;
+    width: 100%;
+    overflow: hidden;
+    flex-direction: column;
+    isolation: isolate;
+    border: 1px solid color-mix(in oklab, var(--primary) 12%, white);
+    border-radius: 1.125rem;
+    background: #ffffff;
+    box-shadow:
+      0 1px 0 color-mix(in oklab, white 90%, transparent) inset,
+      0 12px 30px -22px color-mix(in oklab, var(--groobey-lime-dark) 38%, transparent);
+    transition:
+      transform 0.24s ease,
+      box-shadow 0.24s ease,
+      border-color 0.24s ease;
+  }
+
+  .groobey-category-card::after {
+    content: "";
+    position: absolute;
+    inset: auto 0 0;
+    z-index: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--groobey-lime-dark), var(--groobey-lime));
+    opacity: 0;
+    transition: opacity 0.24s ease;
+  }
+
+  .groobey-category-card:hover {
+    border-color: color-mix(in oklab, var(--primary) 36%, white);
+    box-shadow:
+      0 1px 0 color-mix(in oklab, white 92%, transparent) inset,
+      0 20px 40px -18px color-mix(in oklab, var(--groobey-lime) 52%, transparent);
+    transform: translateY(-4px);
+  }
+
+  .groobey-category-card:hover::after {
+    opacity: 1;
+  }
+
+  @media (min-width: 1024px) {
+    .groobey-category-card {
+      width: 100%;
+      max-width: none;
+      border-radius: 1.25rem;
+    }
+
+    .groobey-category-card-body {
+      padding: 0.7rem 0.6rem 0.85rem;
+      gap: 0.25rem;
+    }
+  }
+
+  .groobey-category-card-media {
+    position: relative;
+    z-index: 1;
+    overflow: hidden;
+    flex-shrink: 0;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    border-radius: 0;
+    background: linear-gradient(
+      145deg,
+      color-mix(in oklab, var(--primary) 12%, #f7faf3) 0%,
+      color-mix(in oklab, var(--primary) 4%, #eef3e8) 100%
+    );
+  }
+
+  .groobey-category-card-media--photo {
+    background: #111111;
+  }
+
+  .groobey-category-card-media--photo::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, transparent 58%, color-mix(in oklab, black 28%, transparent) 100%);
+    opacity: 0.35;
+    pointer-events: none;
+  }
+
+  .groobey-category-card-img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+    transition: transform 0.4s ease;
+  }
+
+  .groobey-category-card:hover .groobey-category-card-img {
+    transform: scale(1.05);
+  }
+
+  .groobey-category-card-placeholder {
+    display: flex;
+    width: 100%;
+    height: 100%;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(
+      145deg,
+      color-mix(in oklab, var(--primary) 20%, white) 0%,
+      color-mix(in oklab, var(--primary) 8%, #edf4e4) 100%
+    );
+  }
+
+  .groobey-category-card-body {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-shrink: 0;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.2rem;
+    padding: 0.6rem 0.5rem 0.75rem;
+    text-align: center;
+  }
+
+  @media (min-width: 640px) and (max-width: 1023px) {
+    .groobey-category-card-body {
+      padding: 0.65rem 0.55rem 0.8rem;
+    }
+  }
+
+  .groobey-category-card-title {
+    font-size: 0.8125rem;
+    font-weight: 800;
+    line-height: 1.2;
+    letter-spacing: -0.015em;
+    color: color-mix(in oklab, var(--foreground) 94%, #14210a);
+  }
+
+  @media (min-width: 640px) and (max-width: 1023px) {
+    .groobey-category-card-title {
+      font-size: 0.875rem;
+      line-height: 1.2;
+    }
+  }
+
+  .groobey-category-card-subtitle {
+    max-width: 14rem;
+    font-size: 0.625rem;
+    font-weight: 600;
+    line-height: 1.35;
+    color: color-mix(in oklab, var(--muted-foreground) 78%, #4f5f46);
+  }
+
+  @media (min-width: 640px) and (max-width: 1023px) {
+    .groobey-category-card-subtitle {
+      font-size: 0.6875rem;
+      line-height: 1.3;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .groobey-category-card-title {
+      font-size: 0.875rem;
+      line-height: 1.2;
+    }
+
+    .groobey-category-card-subtitle {
+      font-size: 0.6875rem;
+      line-height: 1.3;
+    }
+  }
+
+  .groobey-slider-shell {
+    position: relative;
+    padding-bottom: 1.125rem;
+  }
+
+  .groobey-slider-nav-pill {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    gap: 0.125rem;
+    padding: 0.2rem 0.35rem;
+    transform: translate(-50%, 50%);
+    border: 1px solid color-mix(in oklab, white 18%, transparent);
+    border-radius: 999px;
+    background: #000000;
+    box-shadow: 0 4px 14px -4px color-mix(in oklab, black 70%, transparent);
+  }
+
+  .groobey-slider-nav-pill-btn {
+    display: flex;
+    width: 1.625rem;
+    height: 1.625rem;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    color: oklch(0.98 0 0);
+    transition: background-color 0.2s ease;
+  }
+
+  .groobey-slider-nav-pill-btn:hover {
+    background: color-mix(in oklab, white 15%, transparent);
+  }
+
+  .groobey-slider-nav-pill-dots {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding-inline: 0.2rem;
+  }
+
+  .groobey-slider-nav-dot {
+    width: 0.375rem;
+    height: 0.375rem;
+    padding: 0;
+    border: none;
+    border-radius: 999px;
+    background: color-mix(in oklab, white 42%, transparent);
+    transition:
+      width 0.2s ease,
+      background-color 0.2s ease;
+  }
+
+  .groobey-slider-nav-dot:hover {
+    background: color-mix(in oklab, white 68%, transparent);
+  }
+
+  .groobey-slider-nav-dot--active {
+    width: 0.875rem;
+    background: var(--primary);
+  }
+
+  @media (max-width: 1023px) {
+    .groobey-slider-nav-dot {
+      width: 0.625rem;
+      height: 2px;
+      border-radius: 999px;
+    }
+
+    .groobey-slider-nav-dot--active {
+      width: 1.125rem;
+      height: 2px;
+    }
+  }
+
+  .groobey-public-shell {
+    display: flex;
+    min-height: 100dvh;
+    flex-direction: column;
+    background: var(--gradient-soft);
+    color: var(--foreground);
+    padding-top: var(--groobey-nav-offset);
+    padding-bottom: 0;
+  }
+
+  @media (min-width: 1024px) {
+    .groobey-public-shell {
+      --groobey-nav-offset: 5.25rem;
+    }
+  }
+
+  .groobey-public-main {
+    flex: 1 1 auto;
+    width: 100%;
+  }
+
+  .groobey-home-main {
+    padding-top: 0.35rem;
+  }
+
+  @media (min-width: 1024px) {
+    .groobey-home-main {
+      padding-top: 0.5rem;
+    }
+  }
+
+  .groobey-home-staff-visual {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.85rem;
+    margin: 0;
+    width: 100%;
+    padding-top: 0.5rem;
+    line-height: 0;
+    user-select: none;
+  }
+
+  .groobey-home-staff-caption {
+    display: block;
+    width: min(90%, 17.5rem);
+    height: auto;
+    flex-shrink: 0;
+    object-fit: contain;
+    -webkit-user-drag: none;
+    user-select: none;
+  }
+
+  .groobey-home-staff-photo {
+    display: block;
+    width: 108%;
+    max-width: 108%;
+    height: auto;
+    max-height: min(72vh, 27.5rem);
+    margin-inline: -4%;
+    object-fit: contain;
+    object-position: center bottom;
+    -webkit-user-drag: none;
+    user-select: none;
+  }
+
+  @media (min-width: 1024px) {
+    .groobey-home-staff-visual {
+      gap: 1.1rem;
+      padding-top: 0.65rem;
+    }
+
+    .groobey-home-staff-caption {
+      width: min(92%, 20rem);
+    }
+
+    .groobey-home-staff-photo {
+      width: 122%;
+      max-width: 122%;
+      max-height: 31rem;
+      margin-inline: -11%;
+    }
+  }
+
+  /* Homepage how-it-works section */
+  .groobey-home-how {
+    overflow: hidden;
+    border: 1px solid color-mix(in oklab, var(--groobey-lime) 28%, var(--border));
+    border-radius: 2rem;
+    background: #ffffff;
+    box-shadow: 0 4px 24px color-mix(in oklab, #1a2818 8%, transparent);
+  }
+
+  .groobey-home-how-hero {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    margin: 1.15rem 1.15rem 0;
+    padding: 1.75rem 1.25rem 1.5rem;
+    border-radius: 1.25rem;
+    border: 1px solid color-mix(in oklab, #7dd3fc 28%, white);
+    background: linear-gradient(165deg, #e8f6fd 0%, #f3faff 58%, #fbfdff 100%);
+    color: var(--foreground);
+    text-align: center;
+    box-shadow:
+      inset 0 1px 0 color-mix(in oklab, white 85%, transparent),
+      0 1px 2px color-mix(in oklab, #0369a1 6%, transparent);
+  }
+
+  .groobey-home-how-hero::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.28;
+    mix-blend-mode: soft-light;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 180px 180px;
+  }
+
+  .groobey-home-how-hero::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.14;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.35' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
+    background-size: 120px 120px;
+    mix-blend-mode: multiply;
+  }
+
+  .groobey-home-how-hero > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  @media (min-width: 640px) {
+    .groobey-home-how-hero {
+      margin: 1.35rem 1.35rem 0;
+      padding: 2.15rem 1.75rem 1.85rem;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .groobey-home-how-hero {
+      margin: 1.5rem 1.5rem 0;
+      padding: 2.25rem 2rem 2rem;
+    }
+  }
+
+  .groobey-home-how-title {
+    margin-top: 0;
+    font-size: clamp(1.85rem, 4.5vw, 2.5rem);
+    font-weight: 900;
+    line-height: 1.1;
+    color: var(--foreground);
+  }
+
+  .groobey-home-how-lead {
+    max-width: 34rem;
+    margin: 0.85rem auto 0;
+    font-size: 0.98rem;
+    font-weight: 500;
+    line-height: 1.65;
+    color: var(--muted-foreground);
+  }
+
+  .groobey-home-how-body {
+    padding: 1.35rem 1.25rem 1.75rem;
+    background: #ffffff;
+  }
+
+  @media (min-width: 640px) {
+    .groobey-home-how-body {
+      padding: 2rem 1.75rem 2rem;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .groobey-home-how-body {
+      padding: 2.25rem 2.25rem 2.15rem;
+    }
+  }
+
+  .groobey-home-how-steps {
+    position: relative;
+    display: grid;
+    gap: 1.25rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  @media (min-width: 768px) {
+    .groobey-home-how-steps {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 1rem;
+    }
+
+    .groobey-home-how-steps::before {
+      content: "";
+      position: absolute;
+      top: 2.35rem;
+      left: 16%;
+      right: 16%;
+      height: 2px;
+      border-radius: 999px;
+      background: linear-gradient(
+        90deg,
+        transparent,
+        color-mix(in oklab, var(--groobey-lime) 70%, white),
+        var(--groobey-lime),
+        color-mix(in oklab, var(--groobey-lime) 70%, white),
+        transparent
+      );
+      box-shadow: 0 0 10px color-mix(in oklab, var(--groobey-lime) 55%, transparent);
+      opacity: 0.85;
+      pointer-events: none;
+    }
+  }
+
+  .groobey-home-how-step {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 0;
+    text-align: center;
+  }
+
+  @media (max-width: 767px) {
+    .groobey-home-how-step {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 0 1rem;
+      align-items: start;
+      text-align: left;
+    }
+
+    .groobey-home-how-step:not(:last-child)::after {
+      content: "";
+      position: absolute;
+      top: 4.25rem;
+      left: 1.72rem;
+      width: 2px;
+      height: calc(100% - 2.5rem);
+      background: linear-gradient(
+        180deg,
+        color-mix(in oklab, var(--groobey-lime) 55%, white),
+        color-mix(in oklab, var(--groobey-lime) 15%, white)
+      );
+      border-radius: 999px;
+    }
+  }
+
+  .groobey-home-how-node {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    place-items: center;
+    width: 4.7rem;
+    height: 4.7rem;
+    flex-shrink: 0;
+  }
+
+  .groobey-home-how-node-glow {
+    position: absolute;
+    inset: -0.45rem;
+    border-radius: 999px;
+    background: radial-gradient(
+      circle,
+      color-mix(in oklab, var(--groobey-lime) 42%, transparent) 0%,
+      transparent 72%
+    );
+    filter: blur(6px);
+    opacity: 0.9;
+    pointer-events: none;
+  }
+
+  .groobey-home-how-node-ring {
+    position: absolute;
+    inset: 0;
+    border-radius: 999px;
+    border: 2px solid color-mix(in oklab, var(--groobey-lime) 88%, white);
+    background: color-mix(in oklab, white 94%, var(--groobey-lime));
+    box-shadow:
+      0 0 10px color-mix(in oklab, var(--groobey-lime) 75%, transparent),
+      0 0 22px color-mix(in oklab, var(--groobey-lime) 45%, transparent),
+      inset 0 0 14px color-mix(in oklab, var(--groobey-lime) 22%, transparent);
+    transition: box-shadow 0.2s ease;
+  }
+
+  .groobey-home-how-step:hover .groobey-home-how-node-ring {
+    box-shadow:
+      0 0 14px color-mix(in oklab, var(--groobey-lime) 90%, transparent),
+      0 0 28px color-mix(in oklab, var(--groobey-lime) 58%, transparent),
+      inset 0 0 16px color-mix(in oklab, var(--groobey-lime) 30%, transparent);
+  }
+
+  .groobey-home-how-step:hover .groobey-home-how-node-glow {
+    opacity: 1;
+    filter: blur(8px);
+  }
+
+  .groobey-home-how-node-inner {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    place-items: center;
+    width: 3.35rem;
+    height: 3.35rem;
+    border-radius: 999px;
+    background: white;
+    color: var(--groobey-lime-dark);
+  }
+
+  .groobey-home-how-node-icon {
+    width: 1.65rem;
+    height: 1.65rem;
+  }
+
+  .groobey-home-how-node-num {
+    position: absolute;
+    top: -0.35rem;
+    right: -0.15rem;
+    z-index: 2;
+    min-width: 1.65rem;
+    padding: 0.15rem 0.4rem;
+    border-radius: 999px;
+    border: 1px solid color-mix(in oklab, var(--groobey-lime) 55%, white);
+    background: white;
+    font-size: 0.62rem;
+    font-weight: 900;
+    letter-spacing: 0.04em;
+    line-height: 1.2;
+    color: var(--groobey-lime-dark);
+    box-shadow: 0 0 10px color-mix(in oklab, var(--groobey-lime) 35%, transparent);
+  }
+
+  .groobey-home-how-step-card {
+    width: 100%;
+    margin-top: 1rem;
+    padding: 1.1rem 1rem 1.05rem;
+    border: 1px solid color-mix(in oklab, var(--groobey-lime) 18%, var(--border));
+    border-radius: 1.2rem;
+    background: white;
+    box-shadow: 0 8px 22px color-mix(in oklab, var(--primary) 7%, transparent);
+    transition:
+      border-color 0.18s ease,
+      box-shadow 0.18s ease,
+      transform 0.18s ease;
+  }
+
+  @media (max-width: 767px) {
+    .groobey-home-how-step-card {
+      margin-top: 0;
+    }
+  }
+
+  .groobey-home-how-step:hover .groobey-home-how-step-card {
+    border-color: color-mix(in oklab, var(--groobey-lime) 45%, var(--border));
+    box-shadow: 0 14px 30px color-mix(in oklab, var(--primary) 14%, transparent);
+    transform: translateY(-2px);
+  }
+
+  .groobey-home-how-step-title {
+    font-size: 1.15rem;
+    font-weight: 900;
+    line-height: 1.25;
+    color: var(--foreground);
+  }
+
+  .groobey-home-how-step-text {
+    margin-top: 0.45rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    line-height: 1.6;
+    color: var(--muted-foreground);
+  }
+
+  .groobey-home-how-footer {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 1.75rem;
+    padding-top: 1.5rem;
+    border-top: 1px dashed color-mix(in oklab, var(--groobey-lime) 28%, var(--border));
+    text-align: center;
+  }
+
+  @media (min-width: 640px) {
+    .groobey-home-how-footer {
+      flex-direction: row;
+      flex-wrap: nowrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1.25rem;
+      text-align: left;
+    }
+  }
+
+  .groobey-home-how-tagline {
+    width: 100%;
+    max-width: 100%;
+    font-family: "Caveat", "Segoe Script", "Brush Script MT", cursive;
+    font-size: clamp(1.4rem, 5.5vw, 1.9rem);
+    font-weight: 700;
+    font-style: normal;
+    line-height: 1.15;
+    letter-spacing: 0.02em;
+    text-align: center;
+    color: color-mix(in oklab, #1e3a5f 78%, #0369a1);
+  }
+
+  @media (min-width: 1024px) {
+    .groobey-home-how-tagline {
+      width: auto;
+      text-align: left;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+  }
+
+  .groobey-home-how-cta {
+    position: relative;
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 0.65rem;
+    min-height: 3rem;
+    padding: 0.35rem 0.4rem 0.35rem 1.35rem;
+    border-radius: 999px;
+    border: 1.5px solid color-mix(in oklab, var(--groobey-lime) 72%, white);
+    background: linear-gradient(145deg, #2f4529 0%, #243322 52%, #1f2d1d 100%);
+    color: #f8f6ef;
+    font-size: 0.875rem;
+    font-weight: 900;
+    letter-spacing: 0.03em;
+    text-decoration: none;
+    box-shadow:
+      0 0 16px color-mix(in oklab, var(--groobey-lime) 32%, transparent),
+      0 10px 24px color-mix(in oklab, #1a2818 22%, transparent),
+      inset 0 1px 0 color-mix(in oklab, white 14%, transparent);
+    transition:
+      transform 0.2s ease,
+      border-color 0.2s ease,
+      box-shadow 0.2s ease;
+  }
+
+  .groobey-home-how-cta::before {
+    content: "";
+    position: absolute;
+    inset: 1px;
+    border-radius: inherit;
+    background: linear-gradient(
+      180deg,
+      color-mix(in oklab, white 10%, transparent),
+      transparent 42%
+    );
+    pointer-events: none;
+  }
+
+  .groobey-home-how-cta:hover {
+    transform: translateY(-2px);
+    border-color: var(--groobey-lime);
+    box-shadow:
+      0 0 22px color-mix(in oklab, var(--groobey-lime) 52%, transparent),
+      0 14px 28px color-mix(in oklab, #1a2818 26%, transparent),
+      inset 0 1px 0 color-mix(in oklab, white 18%, transparent);
+  }
+
+  .groobey-home-how-cta--outline {
+    border-color: color-mix(in oklab, var(--groobey-lime) 45%, var(--border));
+    background: white;
+    color: color-mix(in oklab, #243322 88%, black);
+    box-shadow:
+      0 0 12px color-mix(in oklab, var(--groobey-lime) 18%, transparent),
+      0 6px 18px color-mix(in oklab, #1a2818 8%, transparent);
+  }
+
+  .groobey-home-how-cta--outline::before {
+    background: linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--groobey-lime) 8%, white),
+      transparent 55%
+    );
+  }
+
+  .groobey-home-how-cta--outline:hover {
+    border-color: var(--groobey-lime);
+    background: color-mix(in oklab, var(--groobey-lime) 7%, white);
+  }
+
+  .groobey-home-how-cta--outline .groobey-home-how-cta-icon-wrap {
+    background: color-mix(in oklab, var(--groobey-lime) 16%, white);
+    color: color-mix(in oklab, #243322 85%, var(--groobey-lime-dark));
+  }
+
+  .groobey-home-how-cta-label {
+    position: relative;
+    z-index: 1;
+    white-space: nowrap;
+  }
+
+  .groobey-home-how-cta-icon-wrap {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    place-items: center;
+    width: 2.15rem;
+    height: 2.15rem;
+    flex-shrink: 0;
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--groobey-lime) 88%, white);
+    color: #243322;
+    box-shadow: 0 0 10px color-mix(in oklab, var(--groobey-lime) 45%, transparent);
+    transition: transform 0.2s ease;
+  }
+
+  .groobey-home-how-cta-icon {
+    width: 1rem;
+    height: 1rem;
+    transition: transform 0.2s ease;
+  }
+
+  .groobey-home-how-cta:hover .groobey-home-how-cta-icon-wrap {
+    transform: scale(1.05);
+  }
+
+  .groobey-home-how-cta:hover .groobey-home-how-cta-icon {
+    transform: translateX(1px);
+  }
+
+  .groobey-slide-order {
+    position: relative;
+    width: min(100%, 20rem);
+    height: 3rem;
+    flex-shrink: 0;
+    padding: 0.35rem;
+    border-radius: 999px;
+    border: 1.5px solid color-mix(in oklab, var(--groobey-lime) 72%, white);
+    background: linear-gradient(145deg, #2f4529 0%, #243322 52%, #1f2d1d 100%);
+    box-shadow:
+      0 0 16px color-mix(in oklab, var(--groobey-lime) 32%, transparent),
+      0 10px 24px color-mix(in oklab, #1a2818 22%, transparent),
+      inset 0 1px 0 color-mix(in oklab, white 14%, transparent);
+    touch-action: none;
+    user-select: none;
+    overflow: hidden;
+  }
+
+  .groobey-slide-order::before {
+    content: "";
+    position: absolute;
+    inset: 1px;
+    border-radius: inherit;
+    background: linear-gradient(
+      180deg,
+      color-mix(in oklab, white 10%, transparent),
+      transparent 42%
+    );
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .groobey-slide-order-fill {
+    position: absolute;
+    top: 0.35rem;
+    left: 0.35rem;
+    bottom: 0.35rem;
+    z-index: 0;
+    max-width: calc(100% - 0.7rem);
+    border-radius: 999px;
+    background: linear-gradient(
+      90deg,
+      color-mix(in oklab, var(--groobey-lime) 35%, transparent),
+      color-mix(in oklab, var(--groobey-lime) 18%, transparent)
+    );
+    pointer-events: none;
+    transition: width 0.5s cubic-bezier(0.34, 1.55, 0.64, 1);
+  }
+
+  .groobey-slide-order--dragging .groobey-slide-order-fill {
+    transition: none;
+  }
+
+  .groobey-slide-order-hint {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    padding-left: 2.5rem;
+    padding-right: 0.75rem;
+    font-size: 0.8rem;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    color: color-mix(in oklab, #f8f6ef 88%, var(--groobey-lime));
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+  }
+
+  .groobey-slide-order-hint-arrows {
+    font-size: 0.95rem;
+    font-weight: 900;
+    color: var(--groobey-lime);
+    animation: groobey-slide-order-nudge 1.4s ease-in-out infinite;
+  }
+
+  @keyframes groobey-slide-order-nudge {
+    0%,
+    100% {
+      transform: translateX(0);
+      opacity: 0.55;
+    }
+
+    50% {
+      transform: translateX(4px);
+      opacity: 1;
+    }
+  }
+
+  .groobey-slide-order-thumb {
+    position: relative;
+    z-index: 2;
+    display: grid;
+    place-items: center;
+    width: 2.15rem;
+    height: 2.15rem;
+    border: none;
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--groobey-lime) 88%, white);
+    color: #243322;
+    cursor: grab;
+    box-shadow:
+      0 0 12px color-mix(in oklab, var(--groobey-lime) 55%, transparent),
+      0 4px 10px color-mix(in oklab, #1a2818 18%, transparent);
+    transition: transform 0.5s cubic-bezier(0.34, 1.55, 0.64, 1);
+  }
+
+  .groobey-slide-order--dragging .groobey-slide-order-thumb {
+    cursor: grabbing;
+    transition: none;
+  }
+
+  .groobey-slide-order--ready {
+    border-color: var(--groobey-lime);
+    box-shadow:
+      0 0 22px color-mix(in oklab, var(--groobey-lime) 48%, transparent),
+      0 10px 24px color-mix(in oklab, #1a2818 22%, transparent),
+      inset 0 1px 0 color-mix(in oklab, white 14%, transparent);
+  }
+
+  .groobey-slide-order--ready .groobey-slide-order-thumb {
+    box-shadow:
+      0 0 18px color-mix(in oklab, var(--groobey-lime) 75%, transparent),
+      0 4px 12px color-mix(in oklab, #1a2818 20%, transparent);
+  }
+
+  .groobey-slide-order--ready .groobey-slide-order-hint {
+    color: var(--groobey-lime);
+    font-weight: 900;
+  }
+
+  .groobey-slide-order--complete .groobey-slide-order-thumb {
+    background: #f8f6ef;
+    color: #243322;
+  }
+
+  .groobey-slide-order-thumb:focus-visible {
+    outline: 2px solid var(--groobey-lime);
+    outline-offset: 2px;
+  }
+
+  .groobey-slide-order-thumb-icon {
+    width: 1rem;
+    height: 1rem;
+    pointer-events: none;
+  }
+
+  @media (min-width: 640px) {
+    .groobey-slide-order {
+      width: min(100%, 18.5rem);
+    }
+  }
+
+  .groobey-home-shoppers-slide {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+  }
+
+  .groobey-home-shoppers-slide .groobey-slide-order {
+    width: min(100%, 20rem);
+  }
+
+  @media (min-width: 1024px) {
+    .groobey-home-shoppers-slide .groobey-slide-order {
+      width: min(100%, 21rem);
+    }
+  }
+
+  /* Homepage contact section */
+  .groobey-home-contact {
+    padding: 1.5rem;
+    border: 1px solid color-mix(in oklab, var(--groobey-lime) 28%, var(--border));
+    border-radius: 2rem;
+    background: linear-gradient(
+      165deg,
+      color-mix(in oklab, var(--groobey-lime) 8%, white) 0%,
+      white 42%,
+      color-mix(in oklab, var(--groobey-lime) 5%, white) 100%
+    );
+  }
+
+  @media (min-width: 640px) {
+    .groobey-home-contact {
+      padding: 2rem;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .groobey-home-contact {
+      padding: 2.5rem;
+    }
+  }
+
+  .groobey-home-contact-header {
+    max-width: 42rem;
+  }
+
+  .groobey-home-contact-title {
+    margin-top: 0;
+    font-size: clamp(1.75rem, 4vw, 2.25rem);
+    font-weight: 900;
+    line-height: 1.15;
+    color: var(--foreground);
+  }
+
+  .groobey-home-contact-lead {
+    margin-top: 0.85rem;
+    font-size: 1rem;
+    font-weight: 500;
+    line-height: 1.65;
+    color: var(--muted-foreground);
+  }
+
+  .groobey-home-contact-block {
+    margin-top: 2rem;
+  }
+
+  .groobey-home-contact-block + .groobey-home-contact-block {
+    margin-top: 1.75rem;
+  }
+
+  .groobey-home-contact-grid {
+    display: grid;
+    gap: 0.85rem;
+    margin: 0.85rem 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .groobey-home-contact-grid--order {
+    grid-template-columns: 1fr;
+  }
+
+  .groobey-home-contact-grid--community {
+    grid-template-columns: 1fr;
+  }
+
+  @media (min-width: 640px) {
+    .groobey-home-contact-grid--order {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .groobey-home-contact-grid--community {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (min-width: 1280px) {
+    .groobey-home-contact-grid--order {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+
+  .groobey-home-contact-card {
+    min-width: 0;
+  }
+
+  .groobey-home-contact-card-link {
+    display: flex;
+    height: 100%;
+    gap: 0.9rem;
+    padding: 1.1rem 1.15rem;
+    border: 1px solid var(--border);
+    border-radius: 1.25rem;
+    background: white;
+    color: var(--foreground);
+    text-decoration: none;
+    transition:
+      border-color 0.15s ease,
+      box-shadow 0.15s ease,
+      transform 0.15s ease;
+  }
+
+  .groobey-home-contact-card-link:hover {
+    border-color: color-mix(in oklab, var(--primary) 45%, var(--border));
+    box-shadow: 0 8px 24px color-mix(in oklab, var(--primary) 12%, transparent);
+    transform: translateY(-1px);
+  }
+
+  .groobey-home-contact-card-icon-wrap {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 2.65rem;
+    height: 2.65rem;
+    border-radius: 0.9rem;
+    background: color-mix(in oklab, var(--primary) 14%, white);
+    color: var(--primary);
+  }
+
+  .groobey-home-contact-card-icon {
+    width: 1.35rem;
+    height: 1.35rem;
+  }
+
+  .groobey-home-contact-card-body {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    gap: 0.35rem;
+  }
+
+  .groobey-home-contact-card-title {
+    font-size: 1.05rem;
+    font-weight: 900;
+    line-height: 1.25;
+  }
+
+  .groobey-home-contact-card-text {
+    font-size: 0.875rem;
+    font-weight: 500;
+    line-height: 1.55;
+    color: var(--muted-foreground);
+  }
+
+  .groobey-home-contact-card-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    margin-top: 0.35rem;
+    font-size: 0.8rem;
+    font-weight: 800;
+    color: var(--primary);
+    word-break: break-word;
+  }
+
+  .groobey-home-contact-card-arrow {
+    width: 0.95rem;
+    height: 0.95rem;
+    flex-shrink: 0;
+    transition: transform 0.15s ease;
+  }
+
+  .groobey-home-contact-card-link:hover .groobey-home-contact-card-arrow {
+    transform: translate(1px, -1px);
+  }
+
+  /* Customer shop - browse, cart, checkout (inherit groobey-public-shell background only) */
+  .groobey-shop-page {
+    background: transparent;
+  }
+
+  .groobey-shop-wrap {
+    width: 100%;
+    max-width: 72rem;
+    margin-inline: auto;
+    padding: 1.25rem 1rem 2rem;
+  }
+
+  @media (min-width: 640px) {
+    .groobey-shop-wrap {
+      padding: 1.75rem 1.5rem 2.5rem;
+    }
+  }
+
+  .groobey-shop-topbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.65rem;
+    margin-bottom: 1rem;
+  }
+
+  .groobey-shop-topbar-title {
+    font-size: clamp(1.25rem, 3.5vw, 1.5rem);
+    font-weight: 900;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+  }
+
+  .groobey-shop-topbar-sub {
+    margin-top: 0.2rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    line-height: 1.45;
+    color: var(--muted-foreground);
+  }
+
+  .groobey-shop-topbar--compact {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.65rem;
+  }
+
+  .groobey-shop-topbar--compact .groobey-shop-topbar-title {
+    font-size: 1.125rem;
+    margin: 0;
+  }
+
+  .groobey-shop-topbar-actions {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 0.45rem;
+  }
+
+  .groobey-shop-topbar-cart {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    color: var(--primary);
+    cursor: pointer;
+  }
+
+  .groobey-shop-topbar-cart-badge {
+    position: absolute;
+    top: -0.3rem;
+    right: -0.3rem;
+    min-width: 1.1rem;
+    height: 1.1rem;
+    padding: 0 0.25rem;
+    border-radius: 999px;
+    background: var(--primary);
+    color: var(--primary-foreground);
+    font-size: 0.625rem;
+    font-weight: 900;
+    line-height: 1.1rem;
+    text-align: center;
+  }
+
+  .groobey-shop-profile-link-text {
+    display: none;
+  }
+
+  @media (min-width: 480px) {
+    .groobey-shop-profile-link-text {
+      display: inline;
+    }
+  }
+
+  .groobey-shop-flow-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.85rem;
+  }
+
+  .groobey-shop-flow-back {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 0.15rem;
+    padding: 0.35rem 0.5rem 0.35rem 0.25rem;
+    border: none;
+    border-radius: 0.65rem;
+    background: color-mix(in oklab, white 80%, transparent);
+    font-size: 0.8125rem;
+    font-weight: 800;
+    color: var(--primary);
+    cursor: pointer;
+  }
+
+  .groobey-shop-flow-title {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    font-size: 1.125rem;
+    font-weight: 900;
+  }
+
+  .groobey-shop-catalog-toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 12;
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+    margin-bottom: 0.75rem;
+    padding: 0.35rem 0 0.5rem;
+    background: transparent;
+  }
+
+  .groobey-shop-search-field {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    min-width: 0;
+    padding: 0.5rem 0.65rem;
+    border: 1px solid color-mix(in oklab, var(--border) 80%, transparent);
+    border-radius: 0.65rem;
+    background: transparent;
+    color: var(--muted-foreground);
+  }
+
+  .groobey-shop-search-input {
+    width: 100%;
+    min-width: 0;
+    border: none;
+    background: transparent;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--foreground);
+    outline: none;
+  }
+
+  .groobey-shop-search-input::placeholder {
+    color: var(--muted-foreground);
+  }
+
+  .groobey-shop-category-select-field {
+    min-width: 0;
+  }
+
+  .groobey-shop-category-select {
+    width: 100%;
+    height: 100%;
+    min-height: 2.35rem;
+    padding: 0.45rem 1.75rem 0.45rem 0.6rem;
+    border: 1px solid color-mix(in oklab, var(--border) 80%, transparent);
+    border-radius: 0.65rem;
+    background: transparent
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")
+      no-repeat right 0.45rem center;
+    font-size: 0.8125rem;
+    font-weight: 800;
+    color: var(--foreground);
+    appearance: none;
+    cursor: pointer;
+  }
+
+  .groobey-shop-catalog-count {
+    margin: 0;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    color: var(--muted-foreground);
+  }
+
+  .groobey-shop-category-rail {
+    display: flex;
+    gap: 0.65rem;
+    margin-inline: -1rem;
+    padding: 0.15rem 1rem 0.35rem;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: 1rem;
+  }
+
+  .groobey-shop-category-rail::-webkit-scrollbar {
+    display: none;
+  }
+
+  @media (min-width: 640px) {
+    .groobey-shop-category-rail {
+      margin-inline: 0;
+      padding-inline: 0;
+      flex-wrap: wrap;
+      overflow: visible;
+      scroll-snap-type: none;
+    }
+  }
+
+  .groobey-shop-category-tile {
+    scroll-snap-align: center;
+    display: flex;
+    flex-shrink: 0;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.45rem;
+    width: 5.1rem;
+    padding: 0;
+    border: none;
+    background: transparent;
+    text-align: center;
+    cursor: pointer;
+    transition: transform 0.15s ease, opacity 0.15s ease;
+  }
+
+  .groobey-shop-category-tile:active {
+    transform: scale(0.96);
+  }
+
+  @media (min-width: 640px) {
+    .groobey-shop-category-tile {
+      flex-direction: row;
+      align-items: center;
+      gap: 0.55rem;
+      width: min(13.25rem, calc(50% - 0.25rem));
+      padding: 0.45rem 0.65rem 0.45rem 0.45rem;
+      border: 1px solid color-mix(in oklab, var(--border) 85%, white);
+      border-radius: 1rem;
+      text-align: left;
+      transition:
+        border-color 0.2s ease,
+        box-shadow 0.2s ease,
+        transform 0.2s ease;
+    }
+
+    .groobey-shop-category-tile:hover {
+      border-color: color-mix(in oklab, var(--primary) 28%, white);
+      transform: translateY(-1px);
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .groobey-shop-category-tile {
+      width: min(13.5rem, calc(33.333% - 0.35rem));
+    }
+  }
+
+  .groobey-shop-category-tile.is-active .groobey-shop-category-tile-media {
+    border-color: color-mix(in oklab, var(--primary) 55%, white);
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--primary) 22%, transparent);
+  }
+
+  @media (min-width: 640px) {
+    .groobey-shop-category-tile.is-active {
+      border-color: color-mix(in oklab, var(--primary) 45%, white);
+      box-shadow: 0 10px 28px -18px color-mix(in oklab, var(--groobey-lime) 55%, transparent);
+    }
+  }
+
+  .groobey-shop-category-tile-media {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    width: 4.15rem;
+    height: 4.15rem;
+    border: 2px solid color-mix(in oklab, var(--border) 82%, white);
+    border-radius: 999px;
+    background: linear-gradient(
+      145deg,
+      color-mix(in oklab, var(--primary) 10%, #f7faf3) 0%,
+      color-mix(in oklab, var(--primary) 4%, #eef3e8) 100%
+    );
+    color: color-mix(in oklab, var(--primary) 70%, #3d4f38);
+    transition:
+      border-color 0.15s ease,
+      box-shadow 0.15s ease;
+  }
+
+  @media (min-width: 640px) {
+    .groobey-shop-category-tile-media {
+      width: 2.75rem;
+      height: 2.75rem;
+      border-radius: 0.7rem;
+      border-width: 1px;
+    }
+  }
+
+  .groobey-shop-category-tile-img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .groobey-shop-category-tile-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .groobey-shop-category-tile-label {
+    overflow: hidden;
+    font-size: 0.6875rem;
+    font-weight: 800;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  @media (min-width: 640px) {
+    .groobey-shop-category-tile-label {
+      font-size: 0.8125rem;
+      white-space: normal;
+    }
+  }
+
+  .groobey-shop-category-tile-sub {
+    display: none;
+  }
+
+  @media (min-width: 640px) {
+    .groobey-shop-category-tile-sub {
+      display: block;
+      overflow: hidden;
+      font-size: 0.625rem;
+      font-weight: 600;
+      line-height: 1.3;
+      color: var(--muted-foreground);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+
+  .groobey-shop-hero {
+    margin-bottom: 1.25rem;
+    padding: 1.25rem 1.15rem;
+    border: 1px solid color-mix(in oklab, var(--primary) 16%, white);
+    border-radius: 1.25rem;
+    background: linear-gradient(
+      145deg,
+      color-mix(in oklab, white 92%, var(--groobey-lime)) 0%,
+      color-mix(in oklab, white 96%, #e8f0dc) 100%
+    );
+    box-shadow: var(--shadow-soft);
+  }
+
+  @media (min-width: 640px) {
+    .groobey-shop-hero {
+      margin-bottom: 1.5rem;
+      padding: 1.5rem 1.35rem;
+    }
+  }
+
+  .groobey-shop-hero-title {
+    font-size: clamp(1.5rem, 4.5vw, 2rem);
+    font-weight: 900;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+  }
+
+  .groobey-shop-hero-tagline {
+    margin-top: 0.35rem;
+    font-family: "Caveat", "Segoe Script", "Brush Script MT", cursive;
+    font-size: clamp(1.25rem, 4vw, 1.55rem);
+    font-weight: 700;
+    line-height: 1.2;
+    color: color-mix(in oklab, #1e3a5f 78%, #0369a1);
+  }
+
+  .groobey-shop-hero-lead {
+    margin-top: 0.5rem;
+    max-width: 36rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    line-height: 1.55;
+    color: var(--muted-foreground);
+  }
+
+  .groobey-shop-hero-link {
+    margin-top: 0.65rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: color-mix(in oklab, var(--foreground) 72%, var(--primary));
+    word-break: break-all;
+  }
+
+  .groobey-shop-stepper {
+    display: flex;
+    align-items: flex-start;
+    gap: 0;
+    margin-bottom: 1.25rem;
+    padding: 0.35rem;
+    border: 1px solid color-mix(in oklab, var(--border) 80%, white);
+    border-radius: 999px;
+    background: color-mix(in oklab, white 88%, transparent);
+    box-shadow: var(--shadow-soft);
+  }
+
+  .groobey-shop-stepper-item {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    min-width: 0;
+  }
+
+  .groobey-shop-stepper-line {
+    display: none;
+    flex-shrink: 0;
+    width: 0.75rem;
+    height: 2px;
+    margin-inline: 0.15rem;
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--border) 90%, transparent);
+  }
+
+  .groobey-shop-stepper-line.is-complete {
+    background: linear-gradient(90deg, var(--groobey-lime-dark), var(--groobey-lime));
+  }
+
+  @media (min-width: 480px) {
+    .groobey-shop-stepper-line {
+      display: block;
+    }
+  }
+
+  .groobey-shop-step {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    min-width: 0;
+    padding: 0.55rem 0.5rem;
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--muted-foreground);
+    font-size: 0.75rem;
+    font-weight: 800;
+    transition:
+      background 0.2s ease,
+      color 0.2s ease,
+      box-shadow 0.2s ease;
+    cursor: pointer;
+  }
+
+  @media (min-width: 640px) {
+    .groobey-shop-step {
+      padding: 0.65rem 0.85rem;
+      font-size: 0.8125rem;
+    }
+  }
+
+  .groobey-shop-step:hover:not(.is-disabled):not(.is-active) {
+    color: var(--foreground);
+    background: color-mix(in oklab, var(--primary) 6%, white);
+  }
+
+  .groobey-shop-step.is-active {
+    color: var(--primary-foreground);
+    background: var(--primary);
+    box-shadow: var(--shadow-glow);
+  }
+
+  .groobey-shop-step.is-complete:not(.is-active) {
+    color: color-mix(in oklab, var(--groobey-lime-dark) 85%, #1a2818);
+  }
+
+  .groobey-shop-step.is-disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .groobey-shop-step-icon {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 1.65rem;
+    height: 1.65rem;
+    border-radius: 999px;
+    background: color-mix(in oklab, white 70%, transparent);
+  }
+
+  .groobey-shop-step.is-active .groobey-shop-step-icon {
+    background: color-mix(in oklab, white 22%, transparent);
+  }
+
+  .groobey-shop-step-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .groobey-shop-category-row {
+    display: flex;
+    gap: 0.55rem;
+    overflow-x: auto;
+    padding-bottom: 0.35rem;
+    margin-bottom: 1rem;
+    scrollbar-width: thin;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+    scroll-padding-inline: 0.25rem;
+  }
+
+  .groobey-shop-category-chip {
+    scroll-snap-align: start;
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 0.55rem;
+    width: min(13.5rem, 78vw);
+    padding: 0.45rem 0.65rem 0.45rem 0.45rem;
+    border: 1px solid color-mix(in oklab, var(--border) 85%, white);
+    border-radius: 1rem;
+    background: color-mix(in oklab, white 92%, transparent);
+    text-align: left;
+    transition:
+      border-color 0.2s ease,
+      box-shadow 0.2s ease,
+      transform 0.2s ease;
+    cursor: pointer;
+  }
+
+  .groobey-shop-category-chip:hover {
+    border-color: color-mix(in oklab, var(--primary) 28%, white);
+    transform: translateY(-1px);
+  }
+
+  .groobey-shop-category-chip.is-active {
+    border-color: color-mix(in oklab, var(--primary) 45%, white);
+    background: color-mix(in oklab, var(--primary) 10%, white);
+    box-shadow: 0 10px 28px -18px color-mix(in oklab, var(--groobey-lime) 55%, transparent);
+  }
+
+  .groobey-shop-category-chip-media {
+    overflow: hidden;
+    flex-shrink: 0;
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: 0.7rem;
+    background: linear-gradient(
+      145deg,
+      color-mix(in oklab, var(--primary) 12%, #f7faf3) 0%,
+      color-mix(in oklab, var(--primary) 4%, #eef3e8) 100%
+    );
+  }
+
+  .groobey-shop-category-chip-img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .groobey-shop-category-chip-placeholder {
+    display: flex;
+    width: 100%;
+    height: 100%;
+    align-items: center;
+    justify-content: center;
+    color: color-mix(in oklab, var(--primary) 70%, #3d4f38);
+  }
+
+  .groobey-shop-category-chip-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    min-width: 0;
+  }
+
+  .groobey-shop-category-chip-label {
+    font-size: 0.8125rem;
+    font-weight: 900;
+    line-height: 1.2;
+  }
+
+  .groobey-shop-category-chip-sub {
+    overflow: hidden;
+    font-size: 0.625rem;
+    font-weight: 600;
+    line-height: 1.3;
+    color: var(--muted-foreground);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .groobey-shop-catalog-head {
+    margin-bottom: 0.85rem;
+  }
+
+  .groobey-shop-catalog-head--browse {
+    display: none;
+  }
+
+  @media (min-width: 900px) {
+    .groobey-shop-catalog-head--browse {
+      display: block;
+      margin-bottom: 1rem;
+    }
+  }
+
+  .groobey-shop-catalog-title {
+    font-size: 1.125rem;
+    font-weight: 900;
+  }
+
+  @media (min-width: 900px) {
+    .groobey-shop-catalog-title {
+      font-size: 1.25rem;
+    }
+  }
+
+  .groobey-shop-catalog-sub {
+    margin-top: 0.15rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--muted-foreground);
+  }
+
+  .groobey-shop-product-grid,
+  .groobey-shop-catalog-skeleton.groobey-shop-product-catalog {
+    gap: 0;
+  }
+
+  @media (min-width: 900px) {
+    .groobey-shop-catalog-skeleton.groobey-shop-product-catalog {
+      gap: 0.85rem;
+    }
+
+    .groobey-shop-catalog-skeleton .groobey-shop-product--skeleton {
+      min-height: 9.5rem;
+      border: 1px solid color-mix(in oklab, var(--border) 80%, transparent);
+      border-radius: 1rem;
+    }
+  }
+
+  .groobey-shop-product-catalog,
+  .groobey-shop-product-list {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .groobey-shop-product-catalog .groobey-shop-product,
+  .groobey-shop-product-list .groobey-shop-product {
+    flex-direction: row;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 0.65rem 0;
+    border: none;
+    border-bottom: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+    border-radius: 0;
+    box-shadow: none;
+    transform: none;
+    background: transparent;
+  }
+
+  .groobey-shop-product-catalog .groobey-shop-product:last-child,
+  .groobey-shop-product-list .groobey-shop-product:last-child {
+    border-bottom: none;
+  }
+
+  .groobey-shop-product-catalog .groobey-shop-product.is-in-cart .groobey-shop-product-name,
+  .groobey-shop-product-list .groobey-shop-product.is-in-cart .groobey-shop-product-name {
+    color: var(--primary);
+  }
+
+  @media (min-width: 900px) {
+    .groobey-shop-product-catalog {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.85rem;
+      overflow: visible;
+    }
+
+    .groobey-shop-product-catalog .groobey-shop-product {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0.75rem;
+      padding: 1rem;
+      border: 1px solid color-mix(in oklab, var(--border) 88%, white);
+      border-radius: 1rem;
+      background: transparent;
+    }
+
+    .groobey-shop-product-catalog .groobey-shop-product:hover {
+      border-color: color-mix(in oklab, var(--primary) 22%, white);
+    }
+
+    .groobey-shop-product-catalog .groobey-shop-product.is-in-cart {
+      border-color: color-mix(in oklab, var(--primary) 38%, white);
+    }
+
+    .groobey-shop-product-catalog .groobey-shop-product-actions {
+      margin-top: auto;
+    }
+  }
+
+  @media (min-width: 1200px) {
+    .groobey-shop-product-catalog {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+
+  .groobey-shop-product-thumb {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: 0.65rem;
+    background: color-mix(in oklab, var(--primary) 12%, white);
+    font-size: 1rem;
+    font-weight: 900;
+    color: color-mix(in oklab, var(--primary) 75%, #2d3f28);
+  }
+
+  .groobey-shop-product {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 0.85rem;
+    padding: 1rem;
+    border: 1px solid color-mix(in oklab, var(--border) 88%, white);
+    border-radius: 1.125rem;
+    background: color-mix(in oklab, white 94%, transparent);
+    box-shadow: var(--shadow-soft);
+    transition:
+      border-color 0.2s ease,
+      box-shadow 0.2s ease,
+      transform 0.2s ease,
+      background 0.15s ease;
+  }
+
+  .groobey-shop-product-catalog .groobey-shop-product-body,
+  .groobey-shop-product-list .groobey-shop-product-body {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .groobey-shop-product-catalog .groobey-shop-product-actions,
+  .groobey-shop-product-list .groobey-shop-product-actions {
+    flex-shrink: 0;
+    justify-content: flex-end;
+  }
+
+  .groobey-shop-product:hover {
+    border-color: color-mix(in oklab, var(--primary) 22%, white);
+    transform: translateY(-2px);
+  }
+
+  .groobey-shop-product.is-in-cart {
+    border-color: color-mix(in oklab, var(--primary) 38%, white);
+    box-shadow:
+      var(--shadow-soft),
+      0 0 0 1px color-mix(in oklab, var(--groobey-lime) 25%, transparent);
+  }
+
+  .groobey-shop-add-pill {
+    min-width: 4.5rem;
+    padding: 0.45rem 0.9rem;
+    border: none;
+    border-radius: 0.55rem;
+    background: var(--primary);
+    font-size: 0.75rem;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    color: var(--primary-foreground);
+    box-shadow: var(--shadow-glow);
+    cursor: pointer;
+    transition:
+      background 0.15s ease,
+      border-color 0.15s ease;
+  }
+
+  .groobey-shop-add-pill:hover {
+    filter: brightness(1.05);
+  }
+
+  .groobey-shop-qty-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0;
+    border: 1.5px solid var(--primary);
+    border-radius: 0.55rem;
+    background: var(--primary);
+    color: var(--primary-foreground);
+  }
+
+  .groobey-shop-qty-pill--sm {
+    border-radius: 0.5rem;
+  }
+
+  .groobey-shop-qty-pill-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    border: none;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+  }
+
+  .groobey-shop-qty-pill--sm .groobey-shop-qty-pill-btn {
+    width: 1.55rem;
+    height: 1.55rem;
+  }
+
+  .groobey-shop-qty-pill-value {
+    min-width: 1.35rem;
+    text-align: center;
+    font-size: 0.8125rem;
+    font-weight: 900;
+  }
+
+  .groobey-shop-product--skeleton {
+    min-height: 8.5rem;
+    background: linear-gradient(
+      110deg,
+      color-mix(in oklab, var(--muted) 40%, white) 8%,
+      color-mix(in oklab, var(--muted) 18%, white) 18%,
+      color-mix(in oklab, var(--muted) 40%, white) 33%
+    );
+    background-size: 200% 100%;
+    animation: groobey-shop-shimmer 1.4s ease-in-out infinite;
+  }
+
+  @keyframes groobey-shop-shimmer {
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
+  }
+
+  .groobey-shop-product-name {
+    font-size: 0.9375rem;
+    font-weight: 900;
+    line-height: 1.25;
+  }
+
+  .groobey-shop-product-price {
+    margin-top: 0.35rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--muted-foreground);
+  }
+
+  .groobey-shop-product-amount {
+    font-size: 0.9375rem;
+    font-weight: 900;
+    color: var(--foreground);
+  }
+
+  .groobey-shop-product-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  .groobey-shop-qty-control {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.2rem;
+    border: 1px solid color-mix(in oklab, var(--border) 90%, white);
+    border-radius: 0.75rem;
+    background: color-mix(in oklab, white 80%, transparent);
+  }
+
+  .groobey-shop-qty-control--compact {
+    flex-shrink: 0;
+  }
+
+  .groobey-shop-qty-btn {
+    width: 2rem;
+    height: 2rem;
+    border-radius: 0.55rem;
+  }
+
+  .groobey-shop-qty-value {
+    min-width: 1.5rem;
+    text-align: center;
+    font-size: 0.875rem;
+    font-weight: 900;
+  }
+
+  .groobey-shop-add-btn {
+    border-radius: 0.75rem;
+  }
+
+  .groobey-shop-line-total {
+    font-size: 0.875rem;
+    font-weight: 800;
+    color: var(--primary);
+  }
+
+  .groobey-shop-empty {
+    padding: 2.5rem 1.25rem;
+    border: 1px dashed color-mix(in oklab, var(--border) 90%, transparent);
+    border-radius: 1.25rem;
+    background: transparent;
+    text-align: center;
+  }
+
+  .groobey-shop-empty-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 3.5rem;
+    height: 3.5rem;
+    margin-bottom: 0.75rem;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--muted-foreground);
+  }
+
+  .groobey-shop-empty-title {
+    font-size: 1rem;
+    font-weight: 900;
+  }
+
+  .groobey-shop-empty-text {
+    margin-top: 0.35rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--muted-foreground);
+  }
+
+  .groobey-shop-cart-float {
+    display: none;
+  }
+
+  .groobey-shop-cart-float-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    max-width: min(100%, 22rem);
+    padding: 0.75rem 1.1rem 0.75rem 0.85rem;
+    border: none;
+    border-radius: 999px;
+    background: var(--primary);
+    color: var(--primary-foreground);
+    font-size: 0.875rem;
+    font-weight: 800;
+    box-shadow: var(--shadow-glow);
+    pointer-events: auto;
+    cursor: pointer;
+    transition: transform 0.15s ease;
+  }
+
+  .groobey-shop-cart-float-btn:hover {
+    transform: translateY(-2px);
+  }
+
+  .groobey-shop-cart-float-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.35rem;
+    height: 1.35rem;
+    padding-inline: 0.25rem;
+    border-radius: 999px;
+    background: color-mix(in oklab, white 22%, transparent);
+    font-size: 0.75rem;
+    font-weight: 900;
+  }
+
+  .groobey-shop-cart-float-text {
+    flex: 1;
+    min-width: 0;
+    text-align: left;
+  }
+
+  .groobey-shop-cart-float-arrow {
+    flex-shrink: 0;
+    opacity: 0.9;
+  }
+
+  .groobey-shop-two-col {
+    display: grid;
+    gap: 1rem;
+    align-items: start;
+  }
+
+  @media (max-width: 899px) {
+    .groobey-shop-two-col > .groobey-shop-summary {
+      display: none;
+    }
+
+    .groobey-shop-page:has(.groobey-shop-cart-bar) .groobey-shop-cart-actions-checkout {
+      display: none;
+    }
+  }
+
+  @media (min-width: 900px) {
+    .groobey-shop-two-col {
+      grid-template-columns: minmax(0, 1fr) minmax(17rem, 22rem);
+      gap: 1.5rem;
+    }
+
+    .groobey-shop-two-col--checkout {
+      grid-template-columns: minmax(0, 1.1fr) minmax(17rem, 21rem);
+    }
+  }
+
+  .groobey-shop-panel {
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    overflow: visible;
+  }
+
+  .groobey-shop-panel-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0 0 0.65rem;
+    border-bottom: none;
+    background: transparent;
+  }
+
+  .groobey-shop-panel-title {
+    font-size: 0.9375rem;
+    font-weight: 900;
+  }
+
+  .groobey-shop-panel-body {
+    padding: 0;
+  }
+
+  .groobey-shop-cart-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .groobey-shop-cart-line {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.7rem 0.75rem;
+    border: 1px solid color-mix(in oklab, var(--border) 82%, white);
+    border-radius: 0.9rem;
+    background: color-mix(in oklab, white 80%, transparent);
+  }
+
+  .groobey-shop-cart-line-info {
+    min-width: 0;
+  }
+
+  .groobey-shop-cart-line-name {
+    font-size: 0.875rem;
+    font-weight: 800;
+    line-height: 1.25;
+  }
+
+  .groobey-shop-cart-line-meta {
+    margin-top: 0.15rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--muted-foreground);
+  }
+
+  .groobey-shop-cart-actions,
+  .groobey-shop-checkout-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem;
+    margin-top: 1rem;
+  }
+
+  .groobey-shop-items-card + .groobey-shop-cart-actions,
+  .groobey-shop-items-card + .groobey-shop-checkout-actions {
+    margin-top: 0.85rem;
+  }
+
+  .groobey-shop-cart-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--muted-foreground);
+  }
+
+  .groobey-shop-summary {
+    position: sticky;
+    top: 5.5rem;
+    padding: 1rem;
+    border: 1px solid color-mix(in oklab, var(--border) 88%, white);
+    border-radius: 1rem;
+    background: color-mix(in oklab, white 55%, transparent);
+    box-shadow: 0 12px 36px -24px color-mix(in oklab, black 18%, transparent);
+  }
+
+  @media (min-width: 900px) {
+    .groobey-shop-summary {
+      top: 6rem;
+      padding: 1.35rem 1.25rem;
+      border-radius: 1.125rem;
+    }
+  }
+
+  .groobey-shop-summary-items {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid color-mix(in oklab, var(--border) 78%, transparent);
+  }
+
+  .groobey-shop-summary-items--scroll {
+    max-height: min(50dvh, 22rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-right: 0.2rem;
+    scrollbar-width: thin;
+  }
+
+  .groobey-shop-summary--compact .groobey-shop-summary-rows {
+    margin-top: 0.75rem;
+  }
+
+  .groobey-shop-summary-title {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 1rem;
+    font-weight: 900;
+  }
+
+  @media (min-width: 900px) {
+    .groobey-shop-summary-title {
+      font-size: 1.125rem;
+    }
+  }
+
+  .groobey-shop-summary .groobey-shop-line-items {
+    margin: 0.65rem 0 0;
+  }
+
+  .groobey-shop-summary-note {
+    margin-top: 0.55rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    line-height: 1.4;
+    color: var(--muted-foreground);
+  }
+
+  .groobey-shop-line-items {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .groobey-shop-line-item {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 0.65rem 0;
+    border-bottom: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+  }
+
+  .groobey-shop-line-item:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+  }
+
+  .groobey-shop-line-item-body {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .groobey-shop-line-item-name {
+    font-size: 0.875rem;
+    font-weight: 800;
+    line-height: 1.3;
+  }
+
+  @media (min-width: 900px) {
+    .groobey-shop-line-item-name {
+      font-size: 0.96875rem;
+    }
+  }
+
+  .groobey-shop-line-item-meta {
+    margin-top: 0.12rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--muted-foreground);
+  }
+
+  .groobey-shop-line-item-end {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.25rem;
+    flex-shrink: 0;
+  }
+
+  .groobey-shop-line-item-qty {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    color: var(--muted-foreground);
+  }
+
+  .groobey-shop-line-item-total {
+    font-size: 0.875rem;
+    font-weight: 900;
+    color: var(--foreground);
+  }
+
+  @media (min-width: 900px) {
+    .groobey-shop-line-item-total {
+      font-size: 0.96875rem;
+    }
+  }
+
+  .groobey-shop-delivery-picker {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-bottom: 0.25rem;
+  }
+
+  .groobey-shop-delivery-picker-lead {
+    margin: 0;
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: var(--foreground);
+  }
+
+  .groobey-shop-delivery-mode {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+  }
+
+  .groobey-shop-delivery-mode-option {
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.65rem;
+    padding: 0.85rem 0.9rem;
+    border: 1.5px solid color-mix(in oklab, var(--border) 88%, white);
+    border-radius: 0.9rem;
+    background: color-mix(in oklab, white 50%, transparent);
+    cursor: pointer;
+    transition:
+      border-color 0.15s ease,
+      box-shadow 0.15s ease;
+  }
+
+  .groobey-shop-delivery-mode-option.is-active {
+    border-color: color-mix(in oklab, var(--primary) 45%, white);
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--primary) 18%, transparent);
+  }
+
+  .groobey-shop-delivery-mode-option input[type="radio"] {
+    flex-shrink: 0;
+    margin-top: 0.2rem;
+    accent-color: var(--primary);
+  }
+
+  .groobey-shop-delivery-mode-body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 0;
+  }
+
+  .groobey-shop-delivery-mode-title {
+    font-size: 0.875rem;
+    font-weight: 900;
+    line-height: 1.25;
+  }
+
+  .groobey-shop-delivery-mode-sub {
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.35;
+    color: var(--muted-foreground);
+  }
+
+  .groobey-shop-delivery-mode-address {
+    margin-top: 0.15rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    line-height: 1.4;
+    color: var(--foreground);
+  }
+
+  .groobey-shop-delivery-mode-edit {
+    flex-shrink: 0;
+    align-self: flex-start;
+    font-size: 0.75rem;
+    font-weight: 800;
+    color: var(--primary);
+  }
+
+  .groobey-shop-delivery-alt-fields {
+    display: grid;
+    gap: 0.65rem;
+    padding: 0.85rem 0.9rem;
+    border: 1px dashed color-mix(in oklab, var(--border) 85%, transparent);
+    border-radius: 0.85rem;
+    background: color-mix(in oklab, white 40%, transparent);
+  }
+
+  @media (min-width: 900px) {
+    .groobey-shop-delivery-mode-option {
+      padding: 1rem 1.1rem;
+    }
+
+    .groobey-shop-delivery-mode-title {
+      font-size: 0.9375rem;
+    }
+  }
+
+  .groobey-shop-delivery-card {
+    padding: 0 0 0.75rem;
+    border: none;
+    border-bottom: 1px solid color-mix(in oklab, var(--border) 72%, transparent);
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .groobey-shop-delivery-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.45rem;
+  }
+
+  .groobey-shop-delivery-card-label {
+    font-size: 0.6875rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted-foreground);
+  }
+
+  .groobey-shop-delivery-card-edit {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 800;
+    color: var(--primary);
+  }
+
+  .groobey-shop-delivery-card-name {
+    font-size: 0.9375rem;
+    font-weight: 900;
+  }
+
+  .groobey-shop-delivery-card-line {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.4rem;
+    margin-top: 0.2rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    line-height: 1.45;
+    color: var(--muted-foreground);
+  }
+
+  .groobey-shop-delivery-card-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
+    margin-top: 0.35rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--muted-foreground);
+  }
+
+  .groobey-shop-delivery-card-meta span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+  }
+
+  .groobey-shop-checkout-items-label {
+    font-size: 0.6875rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted-foreground);
+  }
+
+  .groobey-shop-items-card {
+    overflow: hidden;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .groobey-shop-items-card-label {
+    padding: 0.55rem 0;
+    border-bottom: 1px solid color-mix(in oklab, var(--border) 75%, transparent);
+    background: transparent;
+    font-size: 0.6875rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted-foreground);
+  }
+
+  .groobey-shop-items-card-body {
+    padding: 0 0.85rem;
+  }
+
+  .groobey-shop-items-card .groobey-shop-line-item {
+    padding: 0.7rem 0;
+  }
+
+  .groobey-shop-items-card .groobey-shop-line-item:last-child {
+    padding-bottom: 0.7rem;
+  }
+
+  .groobey-shop-cart-bar {
+    position: sticky;
+    top: calc(var(--groobey-nav-offset) + 0.2rem);
+    z-index: 42;
+    margin: 0 0 0.85rem;
+    padding: 0.65rem 0.8rem;
+    border: 1px solid color-mix(in oklab, var(--primary) 26%, var(--border));
+    border-radius: 0.9rem;
+    background: color-mix(in oklab, var(--background) 97%, white);
+    box-shadow: 0 10px 30px -18px color-mix(in oklab, black 20%, transparent);
+    backdrop-filter: blur(10px);
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+  }
+
+  @media (min-width: 900px) {
+    .groobey-shop-cart-bar {
+      top: calc(var(--groobey-nav-offset) + 0.35rem);
+      margin-bottom: 1rem;
+      padding: 0.75rem 1rem;
+      border-radius: 1rem;
+    }
+
+    .groobey-shop-cart-bar-amount {
+      font-size: 1.3125rem;
+    }
+
+    .groobey-shop-cart-bar-btn {
+      min-width: 10.5rem;
+      padding: 0.78rem 1.35rem;
+      font-size: 0.9375rem;
+    }
+  }
+
+  .groobey-shop-cart-bar--bump {
+    animation: groobey-shop-cart-bar-bump 0.38s ease;
+  }
+
+  @keyframes groobey-shop-cart-bar-bump {
+    0% {
+      transform: scale(1);
+    }
+    35% {
+      transform: scale(1.02);
+      box-shadow: 0 14px 36px -14px color-mix(in oklab, var(--primary) 35%, transparent);
+    }
+    100% {
+      transform: scale(1);
+    }
+  }
+
+  .groobey-shop-cart-fly-target--hit {
+    animation: groobey-shop-cart-target-pulse 0.38s ease;
+  }
+
+  @keyframes groobey-shop-cart-target-pulse {
+    0% {
+      transform: scale(1);
+    }
+    45% {
+      transform: scale(1.04);
+    }
+    100% {
+      transform: scale(1);
+    }
+  }
+
+  .groobey-shop-fly-particle {
+    position: fixed;
+    z-index: 9999;
+    width: 0.85rem;
+    height: 0.85rem;
+    border-radius: 999px;
+    background: var(--primary);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary) 28%, transparent);
+    pointer-events: none;
+    transform: translate(-50%, -50%);
+    opacity: 1;
+    transition:
+      transform 0.42s cubic-bezier(0.22, 0.61, 0.36, 1),
+      opacity 0.42s ease;
+  }
+
+  .groobey-shop-cart-bar-inner {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    width: 100%;
+  }
+
+  .groobey-shop-cart-bar-meta {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 0.12rem;
+    min-width: 0;
+  }
+
+  .groobey-shop-cart-bar-count {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: var(--muted-foreground);
+  }
+
+  .groobey-shop-cart-bar-amount {
+    font-size: 1.1875rem;
+    font-weight: 900;
+    line-height: 1.1;
+    color: var(--foreground);
+  }
+
+  .groobey-shop-cart-bar-btn {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    min-width: 8.25rem;
+    padding: 0.72rem 1rem;
+    border: none;
+    border-radius: 0.7rem;
+    background: var(--primary);
+    color: var(--primary-foreground);
+    font-size: 0.875rem;
+    font-weight: 800;
+    box-shadow: none;
+    cursor: pointer;
+    transition: opacity 0.15s ease;
+  }
+
+  .groobey-shop-cart-bar-btn:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+  }
+
+  .groobey-shop-email-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+    padding: 0.9rem 0;
+    border: none;
+    border-bottom: 1px solid color-mix(in oklab, var(--border) 75%, transparent);
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .groobey-shop-email-notice-icon {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--muted-foreground);
+  }
+
+  .groobey-shop-email-notice-body {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .groobey-shop-email-notice-title {
+    font-size: 0.9375rem;
+    font-weight: 900;
+    line-height: 1.3;
+  }
+
+  .groobey-shop-email-notice-text {
+    margin-top: 0.25rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    line-height: 1.45;
+    color: var(--muted-foreground);
+  }
+
+  .groobey-shop-email-notice-from {
+    margin-top: 0.4rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--foreground);
+  }
+
+  .groobey-shop-email-notice-close {
+    flex-shrink: 0;
+    width: 1.75rem;
+    height: 1.75rem;
+    border: none;
+    border-radius: 999px;
+    background: color-mix(in oklab, white 60%, transparent);
+    font-size: 1.25rem;
+    line-height: 1;
+    color: var(--muted-foreground);
+    cursor: pointer;
+  }
+
+  .groobey-shop-email-notice-bill {
+    margin-top: 0.65rem;
+    padding: 0.5rem 0;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    font-size: 0.8125rem;
+    font-weight: 800;
+    color: var(--primary);
+    cursor: pointer;
+  }
+
+  .groobey-shop-cart-compact-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .groobey-shop-cart-compact--scroll {
+    max-height: min(50vh, 18rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .groobey-shop-cart-stage {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    min-height: 0;
+  }
+
+  .groobey-shop-cart-items-panel {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+    border: 1px solid color-mix(in oklab, var(--border) 90%, white);
+    border-radius: 1rem;
+    background: color-mix(in oklab, white 62%, transparent);
+    box-shadow: inset 0 1px 0 color-mix(in oklab, white 80%, transparent);
+  }
+
+  .groobey-shop-cart-items-panel-head {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.75rem 0.95rem;
+    border-bottom: 1px solid color-mix(in oklab, var(--border) 80%, transparent);
+    background: color-mix(in oklab, white 50%, transparent);
+  }
+
+  .groobey-shop-cart-items-panel-title {
+    margin: 0;
+    font-size: 0.875rem;
+    font-weight: 900;
+    letter-spacing: 0.01em;
+  }
+
+  .groobey-shop-cart-items-panel-count {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    color: var(--muted-foreground);
+    white-space: nowrap;
+  }
+
+  .groobey-shop-cart-items-panel-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: min(46dvh, 19.5rem);
+    padding: 0 0.95rem;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, var(--border) 70%, transparent) transparent;
+  }
+
+  .groobey-shop-cart-items-panel--many .groobey-shop-cart-items-panel-body {
+    max-height: min(54dvh, 23.5rem);
+  }
+
+  .groobey-shop-cart-items-panel-hint {
+    flex-shrink: 0;
+    margin: 0;
+    padding: 0.45rem 0.95rem 0.6rem;
+    border-top: 1px dashed color-mix(in oklab, var(--border) 75%, transparent);
+    font-size: 0.625rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-align: center;
+    text-transform: uppercase;
+    color: var(--muted-foreground);
+  }
+
+  .groobey-shop-cart-items-panel .groobey-shop-line-item {
+    padding: 0.8rem 0;
+    border-bottom: 1px solid color-mix(in oklab, var(--border) 72%, transparent);
+  }
+
+  .groobey-shop-cart-items-panel .groobey-shop-line-item:last-child {
+    border-bottom: none;
+    padding-bottom: 0.85rem;
+  }
+
+  @media (min-width: 900px) {
+    .groobey-shop-cart-items-panel {
+      border-radius: 1.125rem;
+    }
+
+    .groobey-shop-cart-items-panel-head {
+      padding: 0.9rem 1.15rem;
+    }
+
+    .groobey-shop-cart-items-panel-title {
+      font-size: 1rem;
+    }
+
+    .groobey-shop-cart-items-panel-body {
+      max-height: min(62dvh, 30rem);
+      padding: 0 1.15rem;
+    }
+
+    .groobey-shop-cart-items-panel--many .groobey-shop-cart-items-panel-body {
+      max-height: min(68dvh, 34rem);
+    }
+
+    .groobey-shop-cart-items-panel .groobey-shop-line-item {
+      padding: 0.95rem 0;
+    }
+  }
+
+  .groobey-shop-checkout-items-mobile {
+    display: block;
+    margin-bottom: 1rem;
+  }
+
+  @media (min-width: 900px) {
+    .groobey-shop-checkout-items-mobile {
+      display: none;
+    }
+  }
+
+  .groobey-shop-checkout-strip {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.65rem 0;
+    border-bottom: 1px solid color-mix(in oklab, var(--border) 72%, transparent);
+  }
+
+  .groobey-shop-checkout-strip-value {
+    margin: 0;
+    font-size: 0.9375rem;
+    font-weight: 900;
+  }
+
+  .groobey-shop-checkout-strip-edit {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0;
+    border: none;
+    background: transparent;
+    font-size: 0.8125rem;
+    font-weight: 800;
+    color: var(--primary);
+    cursor: pointer;
+  }
+
+  .groobey-shop-cart-compact {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    border: none;
+    border-radius: 0;
+    overflow: visible;
+    background: transparent;
+  }
+
+  .groobey-shop-cart-compact-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.55rem 0.7rem;
+    border-bottom: 1px solid color-mix(in oklab, var(--border) 72%, transparent);
+  }
+
+  .groobey-shop-cart-compact-row:last-child {
+    border-bottom: none;
+  }
+
+  .groobey-shop-cart-compact-main {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .groobey-shop-cart-compact-name {
+    display: block;
+    overflow: hidden;
+    font-size: 0.8125rem;
+    font-weight: 800;
+    line-height: 1.25;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .groobey-shop-cart-compact-meta {
+    display: block;
+    margin-top: 0.1rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: var(--muted-foreground);
+  }
+
+  .groobey-shop-cart-compact-end {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 0.45rem;
+  }
+
+  .groobey-shop-cart-compact-qty {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--muted-foreground);
+  }
+
+  .groobey-shop-cart-compact-total {
+    min-width: 2.75rem;
+    font-size: 0.8125rem;
+    font-weight: 900;
+    text-align: right;
+  }
+
+  .groobey-shop-cart-compact-more {
+    align-self: flex-start;
+    padding: 0.35rem 0.5rem;
+    border: none;
+    background: transparent;
+    font-size: 0.75rem;
+    font-weight: 800;
+    color: var(--primary);
+    cursor: pointer;
+  }
+
+  @media (max-width: 899px) {
+    .groobey-shop-page:has(.groobey-shop-cart-bar) .groobey-shop-summary-cta,
+    .groobey-shop-page:has(.groobey-shop-cart-bar) .groobey-shop-checkout-actions {
+      display: none;
+    }
+
+    .groobey-shop-page:has(.groobey-shop-cart-bar) .groobey-shop-checkout-strip {
+      display: none;
+    }
+  }
+
+  .groobey-shop-profile-prompt {
+    margin-bottom: 0.85rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    line-height: 1.55;
+    color: var(--muted-foreground);
+  }
+
+  .groobey-shop-order-item-lines {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    margin: 0.35rem 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .groobey-shop-order-item-lines li {
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.35;
+    color: var(--muted-foreground);
+  }
+
+  .groobey-shop-summary-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    margin: 0.85rem 0 0;
+  }
+
+  .groobey-shop-summary-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--muted-foreground);
+  }
+
+  .groobey-shop-summary-row dd {
+    margin: 0;
+    font-weight: 800;
+    color: var(--foreground);
+  }
+
+  .groobey-shop-summary-row--total {
+    margin-top: 0.35rem;
+    padding-top: 0.55rem;
+    border-top: 1px dashed color-mix(in oklab, var(--border) 85%, transparent);
+    font-size: 0.9375rem;
+    font-weight: 800;
+    color: var(--foreground);
+  }
+
+  .groobey-shop-summary-row--total dd {
+    font-size: 1.125rem;
+    font-weight: 900;
+    color: var(--primary);
+  }
+
+  @media (min-width: 900px) {
+    .groobey-shop-summary-row--total dd {
+      font-size: 1.375rem;
+    }
+  }
+
+  .groobey-shop-checkout-form {
+    display: grid;
+    gap: 0.75rem;
+  }
+
+  .groobey-shop-order-preview {
+    padding: 0.75rem 0.85rem;
+    border: 1px solid color-mix(in oklab, var(--border) 85%, white);
+    border-radius: 0.85rem;
+    background: color-mix(in oklab, var(--muted) 35%, white);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    line-height: 1.5;
+  }
+
+  .groobey-shop-orders {
+    margin-top: 1.5rem;
+  }
+
+  .groobey-shop-order-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .groobey-shop-order-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem 0.75rem;
+    padding: 0.75rem 0.85rem;
+    border: 1px solid color-mix(in oklab, var(--border) 82%, white);
+    border-radius: 0.9rem;
+    background: color-mix(in oklab, white 82%, transparent);
+  }
+
+  .groobey-shop-order-row-main {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.45rem;
+  }
+
+  .groobey-shop-order-bill {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.8125rem;
+    font-weight: 800;
+    color: var(--primary);
+  }
+
+  .groobey-shop-order-row-meta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.1rem;
+    text-align: right;
+  }
+
+  .groobey-shop-order-total {
+    font-size: 0.875rem;
+    font-weight: 900;
+  }
+
+  .groobey-shop-order-date {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: var(--muted-foreground);
+  }
+
+  .groobey-shop-order-status {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.625rem;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+  }
+
+  .groobey-shop-order-status--pending {
+    background: color-mix(in oklab, #f59e0b 18%, white);
+    color: #92400e;
+  }
+
+  .groobey-shop-order-status--confirmed,
+  .groobey-shop-order-status--packed {
+    background: color-mix(in oklab, #3b82f6 16%, white);
+    color: #1e40af;
+  }
+
+  .groobey-shop-order-status--delivery {
+    background: color-mix(in oklab, var(--groobey-lime) 28%, white);
+    color: color-mix(in oklab, var(--groobey-lime-dark) 80%, #1a2818);
+  }
+
+  .groobey-shop-order-status--delivered {
+    background: color-mix(in oklab, #22c55e 18%, white);
+    color: #166534;
+  }
+
+  .groobey-shop-order-status--cancelled {
+    background: color-mix(in oklab, #94a3b8 22%, white);
+    color: #475569;
+  }
+
+  .groobey-shop-hero-top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.65rem;
+  }
+
+  .groobey-shop-profile-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.25rem 0.35rem;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    font-size: 0.75rem;
+    font-weight: 800;
+    color: var(--primary);
+  }
+
+  .groobey-shop-profile-link:hover {
+    opacity: 0.85;
+  }
+
+  .groobey-shop-auth-prompt {
+    padding: 1.5rem 1rem;
+    text-align: center;
+  }
+
+  .groobey-shop-auth-prompt-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 3.5rem;
+    height: 3.5rem;
+    margin-bottom: 0.75rem;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--muted-foreground);
+  }
+
+  .groobey-shop-auth-prompt-title {
+    font-size: 1.125rem;
+    font-weight: 900;
+  }
+
+  .groobey-shop-auth-prompt-lead {
+    margin-top: 0.45rem;
+    max-width: 26rem;
+    margin-inline: auto;
+    font-size: 0.875rem;
+    font-weight: 600;
+    line-height: 1.55;
+    color: var(--muted-foreground);
+  }
+
+  .groobey-shop-auth-prompt-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.55rem;
+    margin-top: 1.1rem;
+  }
+
+  .groobey-shop-auth-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    min-width: 9.5rem;
+    padding: 0.7rem 1rem;
+    border-radius: 0.85rem;
+    font-size: 0.875rem;
+    font-weight: 800;
+    transition:
+      transform 0.15s ease,
+      box-shadow 0.15s ease;
+  }
+
+  .groobey-shop-auth-btn:hover {
+    transform: translateY(-1px);
+  }
+
+  .groobey-shop-auth-btn--primary {
+    background: var(--primary);
+    color: var(--primary-foreground);
+    box-shadow: var(--shadow-glow);
+  }
+
+  .groobey-shop-auth-btn--secondary {
+    border: 1px solid color-mix(in oklab, var(--border) 85%, white);
+    background: color-mix(in oklab, white 92%, transparent);
+    color: var(--foreground);
+  }
+
+  .groobey-shop-orders-hint {
+    margin-bottom: 0.75rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.45;
+    color: var(--muted-foreground);
+  }
+
+  .groobey-shop-order-row {
+    align-items: flex-start;
+  }
+
+  .groobey-shop-order-row-body {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .groobey-shop-order-items {
+    margin-top: 0.3rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    line-height: 1.4;
+    color: var(--muted-foreground);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .groobey-shop-order-bill-btn {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.45rem 0.65rem;
+    border: 1px solid color-mix(in oklab, var(--primary) 28%, white);
+    border-radius: 0.65rem;
+    background: color-mix(in oklab, var(--primary) 8%, white);
+    font-size: 0.6875rem;
+    font-weight: 800;
+    color: var(--primary);
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+
+  .groobey-shop-order-bill-btn:hover {
+    background: color-mix(in oklab, var(--primary) 14%, white);
+  }
+
+  .groobey-profile-wrap {
+    max-width: 40rem;
+  }
+
+  .groobey-profile-tabs {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    padding: 0 0 0.5rem;
+    border-bottom: 1px solid color-mix(in oklab, var(--border) 75%, transparent);
+    background: transparent;
+  }
+
+  .groobey-profile-tab {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    min-height: auto;
+    padding: 0.15rem 0;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    font-size: 0.875rem;
+    font-weight: 800;
+    color: var(--muted-foreground);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -0.5rem;
+  }
+
+  .groobey-profile-tab.is-active {
+    color: var(--primary);
+    border-bottom-color: var(--primary);
+    box-shadow: none;
+  }
+
+  .groobey-profile-form {
+    display: grid;
+    gap: 0.85rem;
+  }
+
+  .groobey-profile-history-hint {
+    margin: 0 0 0.85rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.45;
+    color: var(--muted-foreground);
+  }
+
+  .groobey-profile-history-loading {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--muted-foreground);
+  }
+
+  .groobey-profile-history-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 1.5rem 1rem;
+    text-align: center;
+    color: var(--muted-foreground);
+  }
+
+  .groobey-profile-history-empty-title {
+    margin: 0.65rem 0 0;
+    font-size: 0.9375rem;
+    font-weight: 800;
+    color: var(--foreground);
+  }
+
+  .groobey-profile-history-empty-text {
+    margin: 0.35rem 0 0;
+    max-width: 22rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    line-height: 1.5;
+  }
+
+  .groobey-profile-order-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .groobey-profile-order-card {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 0.75rem 0;
+    border: none;
+    border-bottom: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .groobey-profile-order-card-icon {
+    flex-shrink: 0;
+    color: var(--muted-foreground);
+  }
+
+  .groobey-profile-order-card-body {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .groobey-profile-order-card-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.45rem;
+  }
+
+  .groobey-profile-order-card-bill {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.8125rem;
+    font-weight: 800;
+    color: var(--primary);
+  }
+
+  .groobey-profile-order-card-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.35rem 0.75rem;
+    margin-top: 0.3rem;
+  }
+
+  .groobey-profile-order-card-date {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--muted-foreground);
+  }
+
+  .groobey-profile-order-card-total {
+    font-size: 0.875rem;
+    font-weight: 900;
+  }
+
+  .groobey-profile-order-card-bill-btn {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.35rem 0.5rem;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    font-size: 0.75rem;
+    font-weight: 800;
+    color: var(--primary);
+    cursor: pointer;
+    box-shadow: none;
+  }
+
+  .groobey-profile-order-card-bill-btn:hover {
+    text-decoration: underline;
+  }
+
+  .groobey-shop-profile-loading {
+    padding: 1rem 0;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--muted-foreground);
+  }
+
+  .groobey-auth-card {
+    backdrop-filter: blur(8px);
+  }
+
+  /* Site footer - retro card, mobile + desktop layouts */
+  .groobey-site-footer-gap {
+    margin-top: auto;
+    width: 100%;
+    padding:
+      0.75rem 0.75rem
+      max(1rem, calc(0.75rem + env(safe-area-inset-bottom, 0px)));
+  }
+
+  @media (min-width: 640px) {
+    .groobey-site-footer-gap {
+      padding:
+        0.85rem 1rem
+        max(1.15rem, calc(0.85rem + env(safe-area-inset-bottom, 0px)));
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .groobey-site-footer-gap {
+      padding:
+        1rem 1rem
+        max(1.35rem, calc(1rem + env(safe-area-inset-bottom, 0px)));
+    }
+  }
+
+  .groobey-site-footer {
+    width: 100%;
+    max-width: 80rem;
+    margin-inline: auto;
+    overflow: hidden;
+    border: 1px solid color-mix(in oklab, var(--groobey-lime) 45%, #3d4f38);
+    border-radius: 0.85rem;
+    background: linear-gradient(180deg, #2a3f26 0%, #243322 100%);
+    color: #f2f0e8;
+    box-shadow: 0 4px 20px color-mix(in oklab, #1a2818 30%, transparent);
+  }
+
+  @media (min-width: 1024px) {
+    .groobey-site-footer {
+      border-radius: 1rem;
+    }
+  }
+
+  .groobey-site-footer-inner {
+    width: 100%;
+    padding: 1rem 1rem 0.85rem;
+  }
+
+  @media (min-width: 640px) {
+    .groobey-site-footer-inner {
+      padding: 1.15rem 1.25rem 0.95rem;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .groobey-site-footer-inner {
+      padding: 1.5rem 1.75rem 1.15rem;
+    }
+  }
+
+  .groobey-site-footer-mobile {
+    display: block;
+  }
+
+  .groobey-site-footer-desktop {
+    display: none;
+  }
+
+  @media (min-width: 1024px) {
+    .groobey-site-footer-mobile {
+      display: none;
+    }
+
+    .groobey-site-footer-desktop {
+      display: block;
+    }
+  }
+
+  .groobey-site-footer-logo img {
+    height: 3.55rem !important;
+    width: auto !important;
+    max-width: 9rem !important;
+    object-fit: contain;
+  }
+
+  @media (min-width: 1024px) {
+    .groobey-site-footer-brand--desktop .groobey-site-footer-logo img {
+      height: 5.4rem !important;
+      max-width: 13.25rem !important;
+    }
+  }
+
+  .groobey-site-footer-brand {
+    display: inline-flex;
+    min-width: 0;
+    align-items: center;
+    gap: 0.75rem;
+    color: #f2f0e8;
+    transition: opacity 0.15s ease;
+  }
+
+  .groobey-site-footer-brand--column {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.85rem;
+  }
+
+  .groobey-site-footer-brand:hover {
+    opacity: 0.92;
+  }
+
+  .groobey-site-footer-brand-text {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  .groobey-site-footer-name {
+    font-size: 0.9375rem;
+    font-weight: 800;
+    line-height: 1.2;
+    letter-spacing: 0.01em;
+  }
+
+  @media (min-width: 1024px) {
+    .groobey-site-footer-name {
+      font-size: 1.0625rem;
+    }
+  }
+
+  .groobey-site-footer-tagline {
+    font-size: 0.75rem;
+    font-weight: 500;
+    line-height: 1.35;
+    color: #b8c4a8;
+  }
+
+  @media (min-width: 1024px) {
+    .groobey-site-footer-tagline {
+      font-size: 0.8125rem;
+    }
+  }
+
+  /* Shared inline bar - mobile get-in-touch + corporate row */
+  .groobey-site-footer-inline-bar {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.65rem;
+    margin-top: 0.85rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid color-mix(in oklab, var(--groobey-lime) 22%, #3d4f38);
+  }
+
+  .groobey-site-footer-inline-bar--contact {
+    justify-content: center;
+  }
+
+  .groobey-site-footer-inline-bar--contact .groobey-site-footer-contact-icons {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .groobey-site-footer-inline-links {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.15rem 0.35rem;
+  }
+
+  .groobey-site-footer-inline-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .groobey-site-footer-inline-sep {
+    color: #6b7d62;
+    font-size: 0.75rem;
+  }
+
+  .groobey-site-footer-inline-link {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: #b8c4a8;
+    white-space: nowrap;
+    transition: color 0.15s ease;
+  }
+
+  .groobey-site-footer-inline-link:hover {
+    color: var(--groobey-lime);
+  }
+
+  /* Mobile: 2-column link grid */
+  .groobey-site-footer-mobile-nav {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem 0.85rem;
+    margin-top: 1rem;
+    padding-top: 0.85rem;
+    border-top: 1px solid color-mix(in oklab, var(--groobey-lime) 20%, #3d4f38);
+  }
+
+  /* Mobile contact icon row */
+  .groobey-site-footer-contact-icons {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.35rem;
+  }
+
+  .groobey-site-footer-contact-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.85rem;
+    height: 1.85rem;
+    border-radius: 0.4rem;
+    color: #dce5d0;
+    transition:
+      color 0.15s ease,
+      background-color 0.15s ease;
+  }
+
+  .groobey-site-footer-contact-icon-btn:hover {
+    color: var(--groobey-lime);
+    background: color-mix(in oklab, var(--groobey-lime) 10%, transparent);
+  }
+
+  .groobey-site-footer-contact-icon-btn .groobey-site-footer-contact-icon {
+    width: 0.95rem;
+    height: 0.95rem;
+  }
+
+  /* Desktop: brand | nav | contact */
+  .groobey-site-footer-desktop-main {
+    display: grid;
+    grid-template-columns: minmax(12rem, 15rem) minmax(0, 1fr) minmax(14rem, 16.5rem);
+    align-items: start;
+    gap: 2rem 2.75rem;
+  }
+
+  .groobey-site-footer-brand--desktop .groobey-site-footer-name {
+    font-size: 1.1875rem;
+  }
+
+  .groobey-site-footer-brand--desktop .groobey-site-footer-tagline {
+    font-size: 0.875rem;
+    max-width: 16.5rem;
+  }
+
+  .groobey-site-footer-desktop-nav-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 0;
+  }
+
+  .groobey-site-footer-desktop-nav {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-rows: repeat(2, auto);
+    gap: 0.65rem 1.1rem;
+    width: 100%;
+    max-width: 26rem;
+    margin-inline: auto;
+    align-items: center;
+    justify-items: stretch;
+  }
+
+  .groobey-site-footer-desktop-nav .groobey-site-footer-nav-link,
+  .groobey-site-footer-desktop-nav .groobey-site-footer-nav-slot {
+    min-height: 2rem;
+  }
+
+  .groobey-site-footer-desktop-nav .groobey-site-footer-nav-link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.2rem 0.15rem;
+    font-size: 0.8125rem;
+    line-height: 1.25;
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  .groobey-site-footer-desktop-contact-col {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    min-width: 0;
+  }
+
+  .groobey-site-footer-contact-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    width: 100%;
+  }
+
+  .groobey-site-footer-nav-link {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    line-height: 1.35;
+    color: #dce5d0;
+    transition: color 0.15s ease;
+  }
+
+  @media (min-width: 1024px) {
+    .groobey-site-footer-nav-link {
+      font-size: 0.9375rem;
+    }
+
+    .groobey-site-footer-desktop-nav .groobey-site-footer-nav-link {
+      font-size: 0.8125rem;
+    }
+  }
+
+  @media (min-width: 1280px) {
+    .groobey-site-footer-desktop-nav {
+      max-width: 28rem;
+      gap: 0.7rem 1.25rem;
+    }
+
+    .groobey-site-footer-desktop-nav .groobey-site-footer-nav-link {
+      font-size: 0.875rem;
+    }
+  }
+
+  .groobey-site-footer-nav-link:hover {
+    color: var(--groobey-lime);
+  }
+
+  .groobey-site-footer-contact-link {
+    display: grid;
+    grid-template-columns: 1.125rem minmax(0, 1fr);
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.35rem 0;
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.35;
+    color: #dce5d0;
+    transition: color 0.15s ease;
+  }
+
+  @media (min-width: 1024px) {
+    .groobey-site-footer-contact-link {
+      font-size: 0.8125rem;
+      padding: 0.4rem 0;
+    }
+  }
+
+  .groobey-site-footer-contact-link:hover {
+    color: var(--groobey-lime);
+  }
+
+  .groobey-site-footer-contact-link span {
+    min-width: 0;
+    word-break: break-word;
+  }
+
+  .groobey-site-footer-contact-icon {
+    width: 1rem;
+    height: 1rem;
+    justify-self: center;
+    color: var(--groobey-lime);
+  }
+
+  .groobey-site-footer-corporate {
+    margin-top: 1rem;
+  }
+
+  @media (min-width: 1024px) {
+    .groobey-site-footer-corporate {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1.25rem;
+      margin-top: 1.5rem;
+      padding-top: 1rem;
+    }
+
+    .groobey-site-footer-corporate .groobey-site-footer-copy {
+      min-width: 0;
+      white-space: nowrap;
+    }
+
+    .groobey-site-footer-corporate .groobey-site-footer-legal {
+      flex-shrink: 0;
+      flex-wrap: nowrap;
+      white-space: nowrap;
+    }
+
+    .groobey-site-footer-inline-link {
+      font-size: 0.75rem;
+    }
+  }
+
+  .groobey-site-footer-copy {
+    flex-shrink: 0;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    color: #9aab8f;
+  }
+
+  @media (min-width: 640px) {
+    .groobey-site-footer-copy {
+      font-size: 0.75rem;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .groobey-site-footer-copy {
+      font-size: 0.8125rem;
+    }
+  }
+
+  .groobey-team-shell {
+    background:
+      radial-gradient(circle at 50% 0%, color-mix(in oklab, var(--primary) 8%, transparent), transparent 55%),
+      #0a0a0a;
   }
 
   .groobey-scrollbar {

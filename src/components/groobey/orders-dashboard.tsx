@@ -918,7 +918,6 @@ export function OrdersDashboard() {
       pendingBillMergeRef.current = { orderId: newId, billNumber: billNo };
       setOrders((prev) => [draft, ...prev.filter((o) => o.id !== newId)]);
       setFocusBillOrderId(newId);
-      printCustomerBill(draft);
     }
     void load();
   }

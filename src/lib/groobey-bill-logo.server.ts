@@ -2,7 +2,11 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { GROOBEY_LOGO_BILL_FILE, GROOBEY_LOGO_FILE } from "@/lib/groobey-brand";
+import {
+  GROOBEY_LOGO_BILL_FILE,
+  GROOBEY_LOGO_FILE,
+  GROOBEY_WEB_LOGO_FILE,
+} from "@/lib/groobey-brand";
 
 function candidateProjectRoots(): string[] {
   const roots: string[] = [];
@@ -47,7 +51,11 @@ function readPublicPng(fileName: string): Uint8Array | null {
 
 /** Hi-res PNG for bills (email + PDF). Falls back to UI logo if missing. */
 export function getGroobeyBillLogoPngBytes(): Uint8Array | null {
-  return readPublicPng(GROOBEY_LOGO_BILL_FILE) ?? readPublicPng(GROOBEY_LOGO_FILE);
+  return (
+    readPublicPng(GROOBEY_LOGO_BILL_FILE) ??
+    readPublicPng(GROOBEY_WEB_LOGO_FILE) ??
+    readPublicPng(GROOBEY_LOGO_FILE)
+  );
 }
 
 /** @deprecated Use getGroobeyBillLogoPngBytes for bills. */

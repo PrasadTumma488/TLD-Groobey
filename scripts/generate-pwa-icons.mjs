@@ -15,16 +15,32 @@ if (!fs.existsSync(logo)) {
 }
 
 const brandBg = { r: 10, g: 10, b: 10, alpha: 1 };
+const transparentBg = { r: 0, g: 0, b: 0, alpha: 0 };
 
-async function iconPng(size, outName, purpose = "any") {
+/** Trim transparent margins so the mark fills favicon canvases. */
+const trimmedLogo = await sharp(logo).trim().png().toBuffer();
+
+async function iconPng(size, outName, purpose = "any", options = {}) {
+  const { favicon = false } = options;
+  const source = favicon ? trimmedLogo : logo;
+  const bg = favicon ? transparentBg : brandBg;
+
+  if (favicon) {
+    await sharp(source)
+      .resize(size, size, { fit: "contain", background: bg })
+      .png()
+      .toFile(path.join(publicDir, outName));
+    return path.join(publicDir, outName);
+  }
+
   const pad = purpose === "maskable" ? Math.round(size * 0.12) : Math.round(size * 0.08);
   const inner = size - pad * 2;
-  const resized = await sharp(logo)
-    .resize(inner, inner, { fit: "contain", background: brandBg })
+  const resized = await sharp(source)
+    .resize(inner, inner, { fit: "contain", background: bg })
     .png()
     .toBuffer();
   await sharp({
-    create: { width: size, height: size, channels: 4, background: brandBg },
+    create: { width: size, height: size, channels: 4, background: bg },
   })
     .composite([{ input: resized, gravity: "centre" }])
     .png()
@@ -36,14 +52,18 @@ await iconPng(192, "pwa-192x192.png");
 await iconPng(512, "pwa-512x512.png");
 await iconPng(512, "pwa-512x512-maskable.png", "maskable");
 await iconPng(180, "apple-touch-icon.png");
-await iconPng(16, "favicon-16x16.png");
-await iconPng(32, "favicon-32x32.png");
-await iconPng(48, "favicon-48x48.png");
+await iconPng(16, "favicon-16x16.png", "any", { favicon: true });
+await iconPng(32, "favicon-32x32.png", "any", { favicon: true });
+await iconPng(48, "favicon-48x48.png", "any", { favicon: true });
+await iconPng(64, "favicon-64x64.png", "any", { favicon: true });
+await iconPng(128, "favicon-128x128.png", "any", { favicon: true });
 
 const fav16 = fs.readFileSync(path.join(publicDir, "favicon-16x16.png"));
 const fav32 = fs.readFileSync(path.join(publicDir, "favicon-32x32.png"));
 const fav48 = fs.readFileSync(path.join(publicDir, "favicon-48x48.png"));
-const ico = await toIco([fav16, fav32, fav48]);
+const fav64 = fs.readFileSync(path.join(publicDir, "favicon-64x64.png"));
+const fav128 = fs.readFileSync(path.join(publicDir, "favicon-128x128.png"));
+const ico = await toIco([fav16, fav32, fav48, fav64, fav128]);
 fs.writeFileSync(path.join(publicDir, "favicon.ico"), ico);
 
 const hash = createHash("md5").update(ico).digest("hex").slice(0, 8);

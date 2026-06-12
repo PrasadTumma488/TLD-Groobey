@@ -4,6 +4,7 @@ import { type FormEvent, useCallback, useMemo, useEffect, useRef, useState } fro
 
 import { CustomerOrderDeliveryQueue } from "@/components/groobey/customer-order-delivery-queue";
 import { GroobeyDashboardHeader } from "@/components/groobey/groobey-brand-logo";
+import { GroobeyMemberChrome } from "@/components/groobey/groobey-member-chrome";
 import { GroobeyNotificationBell } from "@/components/groobey/groobey-notification-bell";
 import { OrdersMonthScopeBanner } from "@/components/groobey/groobey-order-list-parts";
 import { StaffIdentityCard } from "@/components/groobey/staff-identity-card";
@@ -39,7 +40,6 @@ import { buildDeliveryLogNotes, buildDeliveryReportForScope, splitOrderLineAmoun
 import { upsertDeliveryAttendanceLog } from "@/lib/groobey-excel-exports";
 import { setGroobeyNotificationNavigate } from "@/lib/groobey-notification-nav";
 import { useGroobeyWorkspaceNotifications } from "@/lib/groobey-workspace-notifications";
-import { groobeySignOut } from "@/lib/groobey-auth-logout";
 import { sendCustomerBillEmail } from "@/lib/tldGroobey.functions";
 
 type AttendanceFilter = "today" | "month";
@@ -377,23 +377,18 @@ export function DeliveryDashboard() {
   if (!session?.user) return null;
 
   return (
-    <main className="groobey-shell groobey-page min-h-dvh min-w-0 overflow-x-hidden text-foreground">
+    <GroobeyMemberChrome className="pb-8">
       <GroobeyDashboardHeader
-        title="Delivery boy dashboard"
-        subtitle={`${monthLabel} · customer deliveries`}
+        title="Delivery"
+        subtitle={`${monthLabel} · your delivery queue`}
         actions={
-          <>
-            <GroobeyNotificationBell
-              items={notifications.items}
-              unreadCount={notifications.unreadCount}
-              onMarkAllRead={notifications.markAllRead}
-              onMarkRead={notifications.markRead}
-              onClearAll={notifications.clearAll}
-            />
-            <Button variant="calm" className="rounded-xl" onClick={() => void groobeySignOut()}>
-              Logout
-            </Button>
-          </>
+          <GroobeyNotificationBell
+            items={notifications.items}
+            unreadCount={notifications.unreadCount}
+            onMarkAllRead={notifications.markAllRead}
+            onMarkRead={notifications.markRead}
+            onClearAll={notifications.clearAll}
+          />
         }
       />
       <div className="groobey-dashboard-body mx-auto max-w-7xl space-y-5 px-4 py-4 sm:py-6">
@@ -503,6 +498,6 @@ export function DeliveryDashboard() {
           </div>
         </Panel>
       </div>
-    </main>
+    </GroobeyMemberChrome>
   );
 }

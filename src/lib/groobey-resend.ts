@@ -213,6 +213,8 @@ export function billEmailDeliveryPublicSnapshot(): {
   canReachCustomerInboxes: boolean;
   fromMode: "verified_domain" | "sandbox";
   fromMasked: string;
+  fromAddress: string;
+  fromHeader: string;
   fromDomain: string;
   recipientPolicy: string;
   resendFromEnvSet: boolean;
@@ -224,6 +226,8 @@ export function billEmailDeliveryPublicSnapshot(): {
     canReachCustomerInboxes: resendCanEmailExternalRecipients(),
     fromMode: resendUsesSandboxFrom(fromHeader) ? "sandbox" : "verified_domain",
     fromMasked: maskEmailForUi(addr),
+    fromAddress: addr,
+    fromHeader,
     fromDomain: getResendFromDomain(),
     recipientPolicy:
       "Bill emails go only to the address you enter for the customer. They are not redirected to your admin inbox.",

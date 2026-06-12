@@ -29,18 +29,22 @@ export function GroobeyBrandLogo({
     <img
       src={GROOBEY_WEB_LOGO_PATH}
       alt="TLD Groobey"
-      width={Math.round(sizePx[size] * 1.35)}
+      width={sizePx[size]}
       height={sizePx[size]}
       className={cn(
         "w-auto max-w-[min(100%,16rem)] shrink-0 object-contain",
-        sizeClass[size],
-        !withPlate && className,
+        !className && sizeClass[size],
       )}
       decoding="async"
     />
   );
 
-  if (!withPlate) return img;
+  if (!withPlate) {
+    if (className) {
+      return <span className={cn("inline-flex shrink-0 items-center", className)}>{img}</span>;
+    }
+    return <span className={cn("inline-flex shrink-0 items-center", sizeClass[size])}>{img}</span>;
+  }
 
   return (
     <span

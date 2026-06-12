@@ -72,20 +72,14 @@ function processEnvRecord(): Record<string, string | undefined> {
   return out;
 }
 
-function readMetaTag(name: string): string {
-  if (typeof document === "undefined") return "";
-  const el = document.querySelector(`meta[name="${name}"]`);
-  return el?.getAttribute("content")?.trim() || "";
+export function hasPublicSupabaseConfig(): boolean {
+  const { url, publishableKey } = getPublicSupabaseConfig();
+  return Boolean(url && publishableKey);
 }
 
 export function getPublicSupabaseConfig(): { url: string; publishableKey: string } {
   const fromWindow =
     typeof window !== "undefined" ? window.__GROOBEY_PUBLIC_ENV__ : undefined;
-
-  const fromMeta = {
-    VITE_SUPABASE_URL: readMetaTag("groobey-supabase-url"),
-    VITE_SUPABASE_PUBLISHABLE_KEY: readMetaTag("groobey-supabase-publishable-key"),
-  };
 
   const fromImportMeta: Record<string, string | undefined> = {
     VITE_SUPABASE_URL: String(import.meta.env.VITE_SUPABASE_URL ?? "").trim() || undefined,
@@ -98,7 +92,6 @@ export function getPublicSupabaseConfig(): { url: string; publishableKey: string
   const merged: Record<string, string | undefined> = {
     ...processEnvRecord(),
     ...fromImportMeta,
-    ...fromMeta,
   };
 
   if (fromWindow?.supabaseUrl?.trim()) {
@@ -109,19 +102,6 @@ export function getPublicSupabaseConfig(): { url: string; publishableKey: string
   }
 
   return resolvePublicSupabaseEnv(merged);
-}
-
-export function buildPublicEnvInlineScript(): string {
-  const { url, publishableKey } = resolvePublicSupabaseEnv(processEnvRecord());
-  const payload = {
-    supabaseUrl: url,
-    supabasePublishableKey: publishableKey,
-  };
-  return `window.__GROOBEY_PUBLIC_ENV__=${JSON.stringify(payload)};`;
-}
-
-export function publicSupabaseMetaTags(): { url: string; publishableKey: string } {
-  return resolvePublicSupabaseEnv(processEnvRecord());
 }
 
 export function missingPublicSupabaseConfigMessage(): string {

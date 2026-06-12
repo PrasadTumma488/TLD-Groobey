@@ -12,6 +12,7 @@ import {
   GROOBEY_LOGO_DISPLAY,
   GROOBEY_PRODUCT_NAME,
 } from "@/lib/groobey-brand";
+import { groobeyBillContactPlainLines } from "@/lib/groobey-bill-contact";
 import {
   formatInrForPdf,
   sanitizeTextForStandardPdfFont,
@@ -96,7 +97,6 @@ export async function buildGroobeyBillPdfBuffer(params: GroobeyBillPdfParams): P
   let y = PAGE_H - MARGIN;
   const contentW = PAGE_W - MARGIN * 2;
   const centerX = PAGE_W / 2;
-  const SILVER = rgb(192 / 255, 192 / 255, 192 / 255);
 
   const logoBytes = getGroobeyBillLogoPngBytes();
   if (logoBytes?.length) {
@@ -108,110 +108,99 @@ export async function buildGroobeyBillPdfBuffer(params: GroobeyBillPdfParams): P
         GROOBEY_LOGO_DISPLAY.billMaxWidthPx,
         (img.width / img.height) * logoH,
       );
-      const platePad = GROOBEY_LOGO_DISPLAY.billPlatePaddingPx;
-      const plateW = logoW + platePad * 2;
-      const plateH = logoH + platePad * 2;
-      const brandSize = 11;
-      const tagSize = 10;
-      const tagline =
-        params.billKind === "merchant" ?
-          "Grocery trade · Internal settlement"
-        : "Grocery · Your bill";
-      const taglinePdf = pdfText(tagline);
-      const brandLine = pdfText("TLD GROOBEY");
-      const headerPad = 16;
-      const headerInnerH = plateH + 10 + brandSize + 6 + tagSize;
-      const headerH = headerInnerH + headerPad * 2;
-      const headerTop = y;
-      const headerBottom = headerTop - headerH;
-
-      page.drawRectangle({
-        x: MARGIN,
-        y: headerBottom,
-        width: contentW,
-        height: headerH,
-        color: BLACK,
-        borderColor: LIME,
-        borderWidth: 2,
-      });
-
-      let innerY = headerTop - headerPad - plateH;
-      const plateX = centerX - plateW / 2;
-      page.drawRectangle({
-        x: plateX,
-        y: innerY,
-        width: plateW,
-        height: plateH,
-        color: rgb(1, 1, 1),
-        borderColor: LIME,
-        borderWidth: 1,
-      });
       page.drawImage(img, {
-        x: plateX + platePad,
-        y: innerY + platePad,
+        x: centerX - logoW / 2,
+        y: y - logoH,
         width: logoW,
         height: logoH,
       });
-
-      innerY -= 12;
-      const brandW = fontBold.widthOfTextAtSize(brandLine, brandSize);
-      page.drawText(brandLine, {
-        x: centerX - brandW / 2,
-        y: innerY - brandSize,
-        size: brandSize,
-        font: fontBold,
+      y -= logoH + 10;
+      page.drawLine({
+        start: { x: MARGIN, y },
+        end: { x: PAGE_W - MARGIN, y },
+        thickness: 2,
         color: LIME,
       });
-      innerY -= brandSize + 6;
-      const tagW = font.widthOfTextAtSize(taglinePdf, tagSize);
-      page.drawText(taglinePdf, {
-        x: centerX - tagW / 2,
-        y: innerY - tagSize,
-        size: tagSize,
-        font,
-        color: SILVER,
-      });
-      y = headerBottom - 20;
+      y -= 16;
+      if (params.billKind === "merchant") {
+        const tagline = pdfText("Grocery trade · Internal settlement");
+        const tagSize = 9;
+        const tagW = font.widthOfTextAtSize(tagline, tagSize);
+        page.drawText(tagline, {
+          x: centerX - tagW / 2,
+          y: y - tagSize,
+          size: tagSize,
+          font,
+          color: GRAY,
+        });
+        y -= tagSize + 10;
+      }
     } catch {
       y -= 8;
     }
   }
 
-  const titlePdf = pdfText(params.billTitle);
-  const titleW = fontBold.widthOfTextAtSize(titlePdf, 22);
-  const titleX =
-    params.billKind === "customer" ? (PAGE_W - titleW) / 2 : MARGIN;
-  page.drawText(titlePdf, {
-    x: titleX,
-    y: y - 4,
-    size: 22,
-    font: fontBold,
-    color: BLACK,
-  });
-  y -= 36;
-
-  const metaMaxW = PAGE_W - MARGIN * 2;
-  for (const row of params.meta.filter((m) => m.value.trim())) {
-    page.drawText(pdfText(`${row.label}:`), {
+  if (params.billKind !== "customer") {
+    const titlePdf = pdfText(params.billTitle);
+    page.drawText(titlePdf, {
       x: MARGIN,
-      y,
-      size: 10,
+      y: y - 4,
+      size: 18,
       font: fontBold,
       color: BLACK,
     });
-    y -= 12;
-    y = drawWrapped(page, pdfText(row.value), MARGIN, y, font, 10, metaMaxW) - 4;
+    y -= 28;
+  }
+
+  const metaRows: GroobeyBillMetaRow[] = [];
+  for (const row of params.meta.filter((m) => m.value.trim())) {
+    metaRows.push(row);
     if (row.subValue?.trim()) {
-      y = drawWrapped(
-        page,
-        pdfText(row.subValue.trim()),
-        MARGIN,
-        y - 2,
-        font,
-        9,
-        metaMaxW,
-        GRAY,
-      ) - 2;
+      metaRows.push({ label: "Date", value: row.subValue.trim() });
+    }
+  }
+
+  const metaMaxW = PAGE_W - MARGIN * 2;
+  if (params.billKind === "customer" && metaRows.length) {
+    const colW = metaMaxW / 2 - 8;
+    const leftX = MARGIN;
+    const rightX = MARGIN + colW + 16;
+    let rowY = y;
+    let col = 0;
+    for (const row of metaRows) {
+      const wide = row.label === "Address" || row.label === "Customer address";
+      const x = wide ? MARGIN : col === 0 ? leftX : rightX;
+      const w = wide ? metaMaxW : colW;
+      if (wide) {
+        if (col === 1) rowY -= 36;
+        col = 0;
+      }
+      page.drawText(pdfText(row.label), { x, y: rowY, size: 8, font: fontBold, color: GRAY });
+      const valueY = rowY - 11;
+      const nextY = drawWrapped(page, pdfText(row.value), x, valueY, font, 10, w, BLACK) - 2;
+      const cellH = valueY - nextY + 14;
+      if (wide) {
+        rowY = nextY - 6;
+      } else {
+        col += 1;
+        if (col === 2) {
+          rowY -= Math.max(cellH, 32);
+          col = 0;
+        }
+      }
+    }
+    y = col === 1 ? rowY - 32 : rowY - 8;
+  } else {
+    for (const row of metaRows) {
+      page.drawText(pdfText(`${row.label}:`), {
+        x: MARGIN,
+        y,
+        size: 10,
+        font: fontBold,
+        color: BLACK,
+      });
+      y -= 12;
+      y = drawWrapped(page, pdfText(row.value), MARGIN, y, font, 10, metaMaxW) - 4;
     }
   }
 
@@ -339,6 +328,22 @@ export async function buildGroobeyBillPdfBuffer(params: GroobeyBillPdfParams): P
       GRAY,
     );
     y -= 16;
+  }
+
+  if (params.billKind !== "merchant") {
+    const contactTitle = pdfText("Reach us anytime");
+    page.drawText(contactTitle, {
+      x: MARGIN,
+      y,
+      size: 9,
+      font: fontBold,
+      color: GRAY,
+    });
+    y -= 14;
+    for (const line of groobeyBillContactPlainLines()) {
+      y = drawWrapped(page, pdfText(line), MARGIN, y, font, 8, PAGE_W - MARGIN * 2, GRAY) - 3;
+    }
+    y -= 8;
   }
 
   const footer = pdfText(

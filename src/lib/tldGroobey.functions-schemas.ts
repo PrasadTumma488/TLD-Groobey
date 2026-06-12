@@ -1,6 +1,21 @@
 import { z } from "zod";
 
-export const roleSchema = z.enum(["main_admin", "admin", "merchant", "employee", "order_taker"]);
+export const roleSchema = z.enum([
+  "main_admin",
+  "admin",
+  "merchant",
+  "employee",
+  "order_taker",
+  "customer",
+]);
+
+export const registerCustomerSchema = z.object({
+  displayName: z.string().trim().min(2).max(80),
+  email: z.string().trim().email().max(255),
+  phone: z.string().trim().min(10).max(20),
+  defaultAddress: z.string().trim().min(5).max(500),
+  password: z.string().min(8).max(72),
+});
 
 export const createAccountSchema = z
   .object({
@@ -8,12 +23,16 @@ export const createAccountSchema = z
     displayName: z.string().trim().min(2).max(80),
     email: z.string().trim().email().max(255).optional().or(z.literal("")),
     phone: z.string().trim().min(8).max(20).optional().or(z.literal("")),
-    password: z.string().min(8).max(72),
+    password: z.union([z.string().min(8).max(72), z.literal("")]).optional(),
     role: roleSchema,
   })
   .refine((value) => (value.role === "merchant" ? Boolean(value.email && value.phone) : true), {
     message: "Shop Owner login requires both email and mobile number",
     path: ["email"],
+  })
+  .refine((value) => value.role !== "customer", {
+    message: "Customer accounts are created via the public sign-up page.",
+    path: ["role"],
   })
   .refine((value) => Boolean(value.email || value.phone), {
     message: "Email or mobile number is required",
@@ -28,6 +47,14 @@ export const createAccountSchema = z
       message: "Staff and Order Taker logins need a login email (same one used at sign-in).",
       path: ["email"],
     },
+  )
+  .refine(
+    (value) => {
+      if (value.role === "employee") return true;
+      const pwd = value.password?.trim() ?? "";
+      return pwd.length >= 8;
+    },
+    { message: "Password is required for this role (min 8 characters).", path: ["password"] },
   );
 
 export const shopDetailsSchema = z.object({
@@ -107,6 +134,8 @@ export const customerOrderBillEmailSchema = z.object({
 export const sendCustomerBillSchema = z
   .object({
     requesterToken: z.string().min(10),
+    /** When set, the authenticated customer must own this order (self-service confirmation email). */
+    orderId: z.string().uuid().optional(),
     customerEmail: z
       .string()
       .trim()

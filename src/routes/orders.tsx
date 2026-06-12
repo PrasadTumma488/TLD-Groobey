@@ -6,6 +6,7 @@ import { OrdersDashboard } from "@/components/groobey/orders-dashboard";
 import { supabase } from "@/integrations/supabase/client";
 import { parseRoleFromAuthClaims } from "@/lib/groobey-auth-role";
 import { resolvePrimaryDashboard } from "@/lib/groobey-dashboard-path";
+import { SHOW_ORDER_TAKER_PORTAL } from "@/lib/groobey-site-visibility";
 
 export const Route = createFileRoute("/orders")({
   component: OrdersRoute,
@@ -16,6 +17,11 @@ function OrdersRoute() {
   const [to, setTo] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!SHOW_ORDER_TAKER_PORTAL) {
+      setTo("/");
+      setUi("nav");
+      return;
+    }
     let cancelled = false;
     (async () => {
       try {

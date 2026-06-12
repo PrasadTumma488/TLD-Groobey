@@ -6,6 +6,7 @@ import {
   groobeyBillPrintFooterHtml,
   groobeyBillPrintHeaderHtml,
 } from "@/lib/groobey-brand";
+import { groobeyBillContactHtml } from "@/lib/groobey-bill-contact";
 import { formatInrHtml } from "@/lib/groobey-currency";
 
 export type GroobeyBillMetaRow = { label: string; value: string; subValue?: string };
@@ -67,54 +68,59 @@ export function groobeyBillDocumentStyles(kind: BillKind): string {
       margin: 0 auto;
     }
     .groobey-bill-header {
-      margin: 0 0 18px;
-      padding: 18px 20px 20px;
-      border-radius: 12px;
-      background: linear-gradient(135deg, ${GROOBEY_BRAND.blackSoft} 0%, #1a1a1a 100%);
-      border: 2px solid ${GROOBEY_BRAND.lime};
-    }
-    .groobey-bill-header--centered .groobey-bill-header-inner {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 14px;
+      margin: 0 0 16px;
+      padding: 8px 0 14px;
       text-align: center;
+      border-bottom: 1px solid ${GROOBEY_BRAND.lime};
     }
-    .groobey-bill-header--centered .groobey-bill-header-text {
-      text-align: center;
-    }
-    .groobey-bill-logo-plate {
-      flex-shrink: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 12px 14px;
-      border-radius: 10px;
-      background: ${GROOBEY_BRAND.white};
-      border: 1px solid ${GROOBEY_BRAND.limeDark};
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+    .groobey-bill-header--light {
+      background: transparent;
     }
     .groobey-bill-logo {
       height: ${GROOBEY_LOGO_DISPLAY.billHeightPx}px;
       width: auto;
       max-width: ${GROOBEY_LOGO_DISPLAY.billMaxWidthPx}px;
       object-fit: contain;
-      display: block;
+      display: inline-block;
       image-rendering: auto;
     }
-    .groobey-bill-header-brand {
-      margin: 0;
-      font-size: 13px;
-      font-weight: 800;
-      letter-spacing: 0.12em;
-      color: ${GROOBEY_BRAND.lime};
-    }
     .groobey-bill-header-tagline {
-      margin: 4px 0 0;
-      font-size: 14px;
-      font-weight: 600;
-      color: ${GROOBEY_BRAND.silver};
+      margin: 6px 0 0;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: ${GROOBEY_BRAND.silverDark};
+    }
+    .groobey-bill-meta-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px 16px;
+      margin: 0 0 14px;
+      padding: 0;
+    }
+    .groobey-bill-meta-cell--wide {
+      grid-column: 1 / -1;
+    }
+    .groobey-bill-meta-k {
+      display: block;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: #6b7280;
+    }
+    .groobey-bill-meta-v {
+      display: block;
+      margin-top: 2px;
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1.3;
+      color: ${GROOBEY_BRAND.black};
+      word-break: break-word;
+    }
+    .groobey-bill-meta-cell--customer .groobey-bill-meta-v {
+      font-size: 15px;
     }
     .groobey-bill-footer {
       margin-top: 24px;
@@ -134,15 +140,37 @@ export function groobeyBillDocumentStyles(kind: BillKind): string {
       font-size: 11px;
       color: ${GROOBEY_BRAND.silverDark};
     }
-    .groobey-bill-title {
-      margin: 18px 0 14px;
-      font-size: 28px;
+    .groobey-bill-contact {
+      margin: 16px 0 0;
+      padding: 12px 0 0;
+      border-top: 1px solid #e5e7eb;
+      text-align: left;
+    }
+    .groobey-bill-contact-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 14px;
+    }
+    .groobey-bill-contact-link {
+      font-size: 12px;
+      font-weight: 700;
+      color: #166534;
+      text-decoration: none;
+    }
+    .groobey-bill-meta--customer .groobey-bill-meta-value {
+      font-size: 17px;
       font-weight: 800;
-      letter-spacing: -0.02em;
+      color: ${GROOBEY_BRAND.black};
+    }
+    .groobey-bill-title {
+      margin: 0 0 12px;
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: -0.01em;
       color: ${GROOBEY_BRAND.black};
     }
     body.groobey-bill--customer .groobey-bill-title {
-      text-align: center;
+      display: none;
     }
     .groobey-bill-meta {
       margin: 0 0 18px;
@@ -303,10 +331,35 @@ export function groobeyBillMetaHtml(rows: GroobeyBillMetaRow[]): string {
         r.subValue?.trim() ?
           `<div class="groobey-bill-meta-sub">${esc(r.subValue.trim())}</div>`
         : "";
-      return `<li><strong>${esc(r.label)}:</strong> <span class="groobey-bill-meta-value">${esc(r.value)}</span>${sub}</li>`;
+      const customerRow = r.label === "Customer name" || r.label === "Customer";
+      return `<li class="${customerRow ? "groobey-bill-meta--customer" : ""}"><strong>${esc(r.label)}:</strong> <span class="groobey-bill-meta-value">${esc(r.value)}</span>${sub}</li>`;
     })
     .join("");
   return items ? `<ul class="groobey-bill-meta">${items}</ul>` : "";
+}
+
+/** Two-column compact meta strip for customer bills. */
+export function groobeyBillMetaCompactHtml(rows: GroobeyBillMetaRow[]): string {
+  const flat: GroobeyBillMetaRow[] = [];
+  for (const row of rows) {
+    if (!row.value.trim()) continue;
+    flat.push(row);
+    if (row.subValue?.trim()) {
+      flat.push({ label: "Date", value: row.subValue.trim() });
+    }
+  }
+  if (!flat.length) return "";
+  const cells = flat
+    .map((r) => {
+      const wide = r.label === "Address" || r.label === "Customer address";
+      const customer = r.label === "Customer name" || r.label === "Customer";
+      return `<div class="groobey-bill-meta-cell${wide ? " groobey-bill-meta-cell--wide" : ""}${customer ? " groobey-bill-meta-cell--customer" : ""}">
+        <span class="groobey-bill-meta-k">${esc(r.label)}</span>
+        <span class="groobey-bill-meta-v">${esc(r.value)}</span>
+      </div>`;
+    })
+    .join("");
+  return `<div class="groobey-bill-meta-grid">${cells}</div>`;
 }
 
 export function groobeyBillTableHtml(
@@ -469,13 +522,14 @@ function billBodyHtml(params: {
     ${groobeyBillPrintHeaderHtml({ logoSrc, kind })}
     ${showSettlement ? settlementBannerHtml() : ""}
     <h1 class="groobey-bill-title">${esc(billTitle)}</h1>
-    ${groobeyBillMetaHtml(meta)}
+    ${kind === "customer" ? groobeyBillMetaCompactHtml(meta) : groobeyBillMetaHtml(meta)}
     ${marginNoteHtml}
     ${notesHtml}
     ${groobeyBillTableHtml(columns, rows)}
     ${footerTotalsHtml}
     <p class="groobey-bill-total">Total: ${formatInrHtml(totalInr)}</p>
     ${groobeyBillThankYouHtml(kind)}
+    ${kind === "customer" ? groobeyBillContactHtml() : ""}
     ${groobeyBillPrintFooterHtml({ kind })}
   `;
 }

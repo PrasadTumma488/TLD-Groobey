@@ -2,8 +2,9 @@ import { defineEventHandler } from "h3";
 
 import { resolvePublicSupabaseEnv } from "@/lib/groobey-public-env";
 
-/** Runtime public config for the browser when build-time VITE_* vars were empty. */
-export default defineEventHandler(() => {
+/** Runtime public config for the browser (not embedded in HTML). Publishable key is client-safe with RLS. */
+export default defineEventHandler((event) => {
+  event.node.res.setHeader("Cache-Control", "private, no-store");
   const record: Record<string, string | undefined> = {};
   for (const [key, value] of Object.entries(process.env)) {
     if (typeof value === "string" && value.trim()) record[key] = value.trim();

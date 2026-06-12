@@ -13,6 +13,7 @@ import {
   updateMyProfileSchema,
   updateStaffSchema,
   markDeliveryOrderStatusSchema,
+  registerCustomerSchema,
 } from "@/lib/tldGroobey.functions-schemas";
 
 type HandlerCtx = { data: unknown };
@@ -87,3 +88,7 @@ export const sendPasswordResetEmail = createServerFn({ method: "POST" })
 export const markDeliveryOrderStatus = createServerFn({ method: "POST" })
   .inputValidator((input) => markDeliveryOrderStatusSchema.parse(input))
   .handler(async (ctx) => invokeHandler("markDeliveryOrderStatusHandler", ctx));
+
+export const registerCustomerAccount = createServerFn({ method: "POST" })
+  .inputValidator((input) => registerCustomerSchema.parse(input))
+  .handler(async (ctx) => invokeHandler("registerCustomerAccountHandler", ctx));

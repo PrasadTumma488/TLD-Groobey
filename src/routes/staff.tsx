@@ -4,8 +4,7 @@ import { useEffect, useState } from "react";
 import { GroobeyLoadingScreen } from "@/components/groobey/groobey-brand-logo";
 import { DeliveryDashboard } from "@/components/groobey/delivery-dashboard";
 import { supabase } from "@/integrations/supabase/client";
-import { parseRoleFromAuthClaims } from "@/lib/groobey-auth-role";
-import { resolvePrimaryDashboard } from "@/lib/groobey-dashboard-path";
+import { verifyDashboardAccess } from "@/lib/groobey-route-guard";
 
 export const Route = createFileRoute("/staff")({
   component: StaffRoute,
@@ -17,57 +16,22 @@ function StaffRoute() {
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        if (cancelled) return;
-        if (!session) {
-          setTo("/");
-          setUi("nav");
-          return;
-        }
-        const { data: prof } = await supabase
-          .from("profiles")
-          .select("is_active")
-          .eq("user_id", session.user.id)
-          .maybeSingle();
-        if (prof?.is_active === false) {
-          await supabase.auth.signOut();
-          setTo("/");
-          setUi("nav");
-          return;
-        }
-        const primary = await resolvePrimaryDashboard(
-          supabase,
-          session.user.id,
-          parseRoleFromAuthClaims(session.user) ?? session.user.user_metadata?.role,
-        );
-        if (!primary) {
-          setTo("/");
-          setUi("nav");
-          return;
-        }
-        if (primary !== "/staff") {
-          setTo(primary);
-          setUi("nav");
-          return;
-        }
+    void (async () => {
+      const result = await verifyDashboardAccess(supabase, "/staff");
+      if (cancelled) return;
+      if (result === "ok") {
         setUi("ok");
-      } catch {
-        if (cancelled) return;
-        setTo("/");
-        setUi("nav");
+        return;
       }
+      setTo(result === "login" ? "/login" : "/");
+      setUi("nav");
     })();
     return () => {
       cancelled = true;
     };
   }, []);
 
-  if (ui === "load") return <GroobeyLoadingScreen message="Loading staff dashboard…" />;
+  if (ui === "load") return <GroobeyLoadingScreen message="Loading delivery dashboard…" />;
   if (ui === "nav" && to) return <Navigate to={to} />;
-
   return <DeliveryDashboard />;
 }

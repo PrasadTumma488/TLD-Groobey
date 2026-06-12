@@ -1,8 +1,17 @@
 import { createClient } from "@supabase/supabase-js";
 import {
   getPublicSupabaseConfig,
+  hasPublicSupabaseConfig,
   missingPublicSupabaseConfigMessage,
 } from "@/lib/groobey-public-env";
+
+export { hasPublicSupabaseConfig };
+
+/** Resolve config at runtime (bundled env or API). Not placed in HTML view-source. */
+export async function ensurePublicSupabaseEnv(): Promise<boolean> {
+  if (hasPublicSupabaseConfig()) return true;
+  return hydratePublicSupabaseEnvFromApi();
+}
 import type { Database } from "./types";
 
 function browserLocalStorage(): Storage | undefined {

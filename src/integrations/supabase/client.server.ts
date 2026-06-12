@@ -4,15 +4,12 @@ import { createClient } from "@supabase/supabase-js";
 import {
   assertServiceRoleKeyIsNotPublishable,
   getServiceRoleKeyFromEnv,
+  getSupabaseUrlFromEnv,
 } from "@/lib/supabase-service-role-env";
 import type { Database } from "./types";
 
 function createSupabaseAdminClient() {
-  const urlRaw = Reflect.get(process.env, "SUPABASE_URL");
-  const viteUrl = Reflect.get(process.env, "VITE_SUPABASE_URL");
-  const SUPABASE_URL =
-    (typeof urlRaw === "string" ? urlRaw.trim() : "") ||
-    (typeof viteUrl === "string" ? viteUrl.trim() : "");
+  const SUPABASE_URL = getSupabaseUrlFromEnv();
   const SUPABASE_SERVICE_ROLE_KEY = getServiceRoleKeyFromEnv();
 
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -23,6 +20,7 @@ function createSupabaseAdminClient() {
       `Missing Supabase server variables: ${missing.join(", ")}. ` +
         "In the project root .env, set a non-empty value on one line, e.g. SUPABASE_SERVICE_ROLE_KEY=eyJ... (no quotes unless needed). " +
         "An empty line after = is treated as missing. Paste the service_role secret from Supabase Dashboard → Project Settings → API, then restart the dev server. " +
+        "Quick setup: npm run env:service-role -- YOUR_KEY_HERE. " +
         "For Cloudflare dev, ensure the same keys exist in dist/server/.dev.vars if your build copies .env there.",
     );
   }

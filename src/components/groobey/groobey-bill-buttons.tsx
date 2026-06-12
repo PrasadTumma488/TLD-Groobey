@@ -11,11 +11,14 @@ export function BillKindButtons({
   compact = false,
   layout,
   className,
+  customerOnly = false,
 }: {
   onPrint: (kind: BillKind) => void;
   compact?: boolean;
   layout?: BillButtonsLayout;
   className?: string;
+  /** When true, only the customer bill button is shown (no settlement copy). */
+  customerOnly?: boolean;
 }) {
   const resolvedLayout: BillButtonsLayout = layout ?? (compact ? "equal" : "wrap");
 
@@ -28,6 +31,27 @@ export function BillKindButtons({
   );
 
   const settlementLabel = compact ? "Settlement" : "Settlement (internal)";
+
+  if (customerOnly) {
+    return (
+      <div
+        role="group"
+        aria-label="Print customer bill"
+        className={cn("groobey-bill-kind-buttons min-w-0", className)}
+      >
+        <Button
+          type="button"
+          variant="groobey"
+          className={cn(btnClass, "border-2 border-emerald-700/30")}
+          onClick={() => onPrint("customer")}
+          aria-label="Print customer bill"
+        >
+          <Users className="size-3.5 shrink-0" aria-hidden />
+          <span className="truncate">Customer bill</span>
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div

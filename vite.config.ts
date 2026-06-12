@@ -17,6 +17,11 @@ const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 
 /** Env keys where a non-empty value from `.env` should override the process (local dev clarity). */
 const GROOBEY_DOTENV_OVERRIDE_KEYS = new Set([
+  "SUPABASE_URL",
+  "SUPABASE_SERVICE_ROLE_KEY",
+  "SUPABASE_PUBLISHABLE_KEY",
+  "PLATFORM_ADMIN_EMAILS",
+  "PLATFORM_ADMIN_USER_IDS",
   "RESEND_FROM_EMAIL",
   "RESEND_MAIL_FROM",
   "EMAIL_FROM",

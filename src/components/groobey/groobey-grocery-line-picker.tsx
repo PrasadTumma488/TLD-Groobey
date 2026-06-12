@@ -268,7 +268,6 @@ export function GroobeyGroceryLinePicker({
             type="search"
             value={productQuery}
             onChange={(e) => setProductQuery(e.target.value)}
-            onFocus={() => setSearchPanelOpen(true)}
             onClick={() => setSearchPanelOpen(true)}
             disabled={disabled || !products.length}
             className="h-10 w-full rounded-xl border border-input bg-card px-3 text-sm font-semibold outline-none ring-ring focus:ring-2 disabled:opacity-60"

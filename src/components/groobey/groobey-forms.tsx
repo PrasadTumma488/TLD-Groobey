@@ -28,6 +28,11 @@ import {
 } from "@/lib/groobey-grocery-cart";
 import { cn } from "@/lib/utils";
 import {
+  SHOW_ORDER_TAKER_PORTAL,
+  SHOW_SETTLEMENT_BILLS,
+  SHOW_SHOP_OWNER_PORTAL,
+} from "@/lib/groobey-site-visibility";
+import {
   isMissingSaleItemsProductUnitError,
   saleItemInsertWithoutPackUnit,
 } from "@/lib/groobey-sale-items-columns";
@@ -88,6 +93,41 @@ export function AccountForm({
   const [selectedRole, setSelectedRole] = useState<"" | "merchant" | "employee" | "order_taker">("");
   const roleChosen =
     selectedRole === "merchant" || selectedRole === "employee" || selectedRole === "order_taker";
+
+  const staffRoleOptions = useMemo(() => {
+    const options: { value: string; label: string }[] = [
+      { value: "__choose_role__", label: "Choose role" },
+    ];
+    if (SHOW_SHOP_OWNER_PORTAL) {
+      options.push({ value: "merchant", label: "Shop Owner" });
+    }
+    options.push({ value: "employee", label: "Delivery boy" });
+    if (SHOW_ORDER_TAKER_PORTAL) {
+      options.push({ value: "order_taker", label: "Order Taker" });
+    }
+    return options;
+  }, []);
+
+  const rolePickerHint =
+    SHOW_SHOP_OWNER_PORTAL && SHOW_ORDER_TAKER_PORTAL ?
+      "Shop owners and order takers get a login password here. Delivery boys only need an email - they create their own account at Register on the website."
+    : SHOW_SHOP_OWNER_PORTAL ?
+      "Shop owners get a login password here. Delivery boys only need an email - they create their own account at Register on the website."
+    : SHOW_ORDER_TAKER_PORTAL ?
+      "Order takers get a login password here. Delivery boys only need an email - they create their own account at Register on the website."
+    : "Delivery boys only need an email - they create their own account at Register on the website.";
+
+  const chooseRoleHint =
+    staffRoleOptions.length <= 2 ?
+      "Choose Delivery boy to show the assignment fields."
+    : SHOW_SHOP_OWNER_PORTAL && SHOW_ORDER_TAKER_PORTAL ?
+      "Choose Shop Owner, Delivery boy, or Order Taker to show the login fields."
+    : SHOW_SHOP_OWNER_PORTAL ?
+      "Choose Shop Owner or Delivery boy to show the login fields."
+    : SHOW_ORDER_TAKER_PORTAL ?
+      "Choose Delivery boy or Order Taker to show the login fields."
+    : "Choose Delivery boy to show the assignment fields.";
+
   useEffect(() => {
     setSelectedRole("");
   }, [resetNonce]);
@@ -95,8 +135,7 @@ export function AccountForm({
   return (
     <form className="groobey-workspace-form space-y-3" onSubmit={onCreate}>
         <p className="text-center text-xs font-semibold text-muted-foreground sm:text-left">
-          Select staff type first, then fill name, login, and password. New logins appear in the
-          matching directory tab.
+          {rolePickerHint}
         </p>
 
         <GroobeyWorkspaceFormCard>
@@ -111,18 +150,13 @@ export function AccountForm({
                     v === "__choose_role__" ? "" : (v as "merchant" | "employee" | "order_taker"),
                   )
                 }
-                options={[
-                  { value: "__choose_role__", label: "Choose role" },
-                  { value: "merchant", label: "Shop Owner" },
-                  { value: "employee", label: "Delivery boy" },
-                  { value: "order_taker", label: "Order Taker" },
-                ]}
+                options={staffRoleOptions}
               />
             </label>
 
             {!roleChosen ?
               <p className="rounded-xl border border-dashed border-border bg-muted/30 px-3 py-4 text-center text-xs font-semibold text-muted-foreground">
-                Choose Shop Owner, Delivery boy, or Order Taker to show the login fields.
+                {chooseRoleHint}
               </p>
             : <>
                 {selectedRole === "merchant" ?
@@ -134,8 +168,17 @@ export function AccountForm({
                   </div>
                 : null}
                 {selectedRole === "employee" ?
-                  <div className="border-t border-border/60 pt-4">
+                  <div className="space-y-3 border-t border-border/60 pt-4">
                     <Field name="displayName" label="Delivery boy name" icon={UserCog} required />
+                    <Field name="email" label="Their email (must match Register sign-up)" icon={Mail} required />
+                    <p className="rounded-xl bg-primary/10 px-3 py-2 text-xs font-semibold text-muted-foreground">
+                      No password here. They register at{" "}
+                      <span className="font-bold text-foreground">Sign up</span> on the customer site,
+                      then sign in to open the Delivery panel.
+                    </p>
+                    <Button variant="groobey" className="min-h-11 w-full rounded-xl">
+                      <Plus className="size-4 shrink-0" /> Assign delivery boy
+                    </Button>
                   </div>
                 : null}
                 {selectedRole === "order_taker" ?
@@ -143,29 +186,32 @@ export function AccountForm({
                     <Field name="displayName" label="Order taker name" icon={UserCog} required />
                   </div>
                 : null}
-                <div className="grid gap-3 border-t border-border/60 pt-4 sm:grid-cols-2">
-                  <Field
-                    name="email"
-                    label="Login email"
-                    icon={Mail}
-                    required={
-                      selectedRole === "merchant" ||
-                      selectedRole === "employee" ||
-                      selectedRole === "order_taker"
-                    }
-                  />
-                  <Field
-                    name="phone"
-                    label="Login mobile number"
-                    icon={Phone}
-                    required={selectedRole === "merchant"}
-                  />
-                </div>
-                <PasswordField name="newPassword" label="Temporary password" required />
-                <Button variant="groobey" className="min-h-11 w-full rounded-xl">
-                  <Plus className="size-4 shrink-0" /> Create{" "}
-                  {selectedRole ? staffRoleLabels[selectedRole] : "role"} login
-                </Button>
+                {selectedRole !== "employee" ?
+                  <>
+                    <div className="grid gap-3 border-t border-border/60 pt-4 sm:grid-cols-2">
+                      <Field
+                        name="email"
+                        label="Login email"
+                        icon={Mail}
+                        required={
+                          selectedRole === "merchant" ||
+                          selectedRole === "order_taker"
+                        }
+                      />
+                      <Field
+                        name="phone"
+                        label="Login mobile number"
+                        icon={Phone}
+                        required={selectedRole === "merchant"}
+                      />
+                    </div>
+                    <PasswordField name="newPassword" label="Temporary password" required />
+                    <Button variant="groobey" className="min-h-11 w-full rounded-xl">
+                      <Plus className="size-4 shrink-0" /> Create{" "}
+                      {selectedRole ? staffRoleLabels[selectedRole] : "role"} login
+                    </Button>
+                  </>
+                : null}
               </>
             }
           </div>
@@ -940,6 +986,7 @@ function SalesCards({
                 )}
                 <BillKindButtons
                   compact
+                  customerOnly={!SHOW_SETTLEMENT_BILLS}
                   onPrint={(kind) => onDownloadBill(sale.id, kind)}
                 />
                 {sale.status !== "pending" ?

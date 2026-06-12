@@ -146,3 +146,168 @@ CREATE INDEX IF NOT EXISTS idx_customer_orders_assigned_delivery
 
 -- === From 20260525120000_delivery_staff_order_status_rls.sql + 20260528120000_delivery_mark_delivered_rls.sql ===
 -- Run supabase/migrations/20260528120000_delivery_mark_delivered_rls.sql in SQL Editor (SELECT delivered + mark_assigned_order_status RPC).
+
+-- === From 20260608140000_register_customer_self_rpc.sql ===
+CREATE OR REPLACE FUNCTION public.register_customer_self(
+  p_display_name text,
+  p_email text,
+  p_phone text,
+  p_default_address text
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_uid uuid := auth.uid();
+  v_email text := lower(trim(p_email));
+  v_assignment record;
+BEGIN
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  IF trim(coalesce(p_display_name, '')) = '' THEN
+    RAISE EXCEPTION 'Display name is required';
+  END IF;
+
+  INSERT INTO public.profiles (
+    user_id,
+    display_name,
+    email,
+    phone,
+    default_address,
+    is_active
+  )
+  VALUES (
+    v_uid,
+    trim(p_display_name),
+    v_email,
+    nullif(trim(p_phone), ''),
+    nullif(trim(p_default_address), ''),
+    true
+  )
+  ON CONFLICT (user_id) DO UPDATE
+  SET
+    display_name = EXCLUDED.display_name,
+    email = EXCLUDED.email,
+    phone = EXCLUDED.phone,
+    default_address = EXCLUDED.default_address,
+    is_active = true;
+
+  INSERT INTO public.user_roles (user_id, role)
+  VALUES (v_uid, 'customer'::public.app_role)
+  ON CONFLICT (user_id, role) DO NOTHING;
+
+  FOR v_assignment IN
+    SELECT role, display_name
+    FROM public.staff_email_assignments
+    WHERE email = v_email
+  LOOP
+    INSERT INTO public.user_roles (user_id, role)
+    VALUES (v_uid, v_assignment.role)
+    ON CONFLICT (user_id, role) DO NOTHING;
+
+    IF v_assignment.display_name IS NOT NULL AND trim(v_assignment.display_name) <> '' THEN
+      UPDATE public.profiles
+      SET display_name = coalesce(nullif(trim(display_name), ''), trim(v_assignment.display_name))
+      WHERE user_id = v_uid;
+    END IF;
+  END LOOP;
+
+  DELETE FROM public.staff_email_assignments
+  WHERE email = v_email;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.register_customer_self(text, text, text, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.register_customer_self(text, text, text, text) TO authenticated;
+
+-- === From 20260602120000 + 20260602120001 (customer role + policies) ===
+ALTER TYPE public.app_role ADD VALUE IF NOT EXISTS 'customer';
+
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS default_address TEXT;
+
+DROP POLICY IF EXISTS "Only Platform Admin can update profiles" ON public.profiles;
+CREATE POLICY "Platform admin updates profiles"
+ON public.profiles FOR UPDATE TO authenticated
+USING (private.has_role(auth.uid(), 'main_admin'::public.app_role))
+WITH CHECK (private.has_role(auth.uid(), 'main_admin'::public.app_role));
+
+DROP POLICY IF EXISTS "Customers update own profile" ON public.profiles;
+CREATE POLICY "Customers update own profile"
+ON public.profiles FOR UPDATE TO authenticated
+USING (user_id = auth.uid() AND private.has_role(auth.uid(), 'customer'::public.app_role))
+WITH CHECK (user_id = auth.uid() AND private.has_role(auth.uid(), 'customer'::public.app_role));
+
+DROP POLICY IF EXISTS "Order takers create own orders" ON public.customer_orders;
+CREATE POLICY "Staff and customers create own orders"
+ON public.customer_orders FOR INSERT TO authenticated
+WITH CHECK (
+  created_by = auth.uid()
+  AND (
+    private.has_role(auth.uid(), 'order_taker'::public.app_role)
+    OR private.has_role(auth.uid(), 'customer'::public.app_role)
+    OR private.is_admin_or_main(auth.uid())
+  )
+);
+
+DROP POLICY IF EXISTS "Order takers view own orders and admins view all" ON public.customer_orders;
+CREATE POLICY "Creators and admins view customer orders"
+ON public.customer_orders FOR SELECT TO authenticated
+USING (
+  created_by = auth.uid()
+  OR private.is_admin_or_main(auth.uid())
+  OR private.has_role(auth.uid(), 'employee'::public.app_role)
+  OR private.has_role(auth.uid(), 'merchant'::public.app_role)
+);
+
+DROP POLICY IF EXISTS "Order takers update own orders and admins update all" ON public.customer_orders;
+CREATE POLICY "Creators and admins update customer orders"
+ON public.customer_orders FOR UPDATE TO authenticated
+USING (created_by = auth.uid() OR private.is_admin_or_main(auth.uid()))
+WITH CHECK (created_by = auth.uid() OR private.is_admin_or_main(auth.uid()));
+
+-- === From 20260603120000_staff_email_assignments.sql ===
+CREATE TABLE IF NOT EXISTS public.staff_email_assignments (
+  email text PRIMARY KEY,
+  role public.app_role NOT NULL,
+  display_name text,
+  assigned_by uuid REFERENCES auth.users (id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT staff_email_assignments_staff_role CHECK (
+    role IN ('employee'::public.app_role, 'order_taker'::public.app_role, 'merchant'::public.app_role)
+  )
+);
+ALTER TABLE public.staff_email_assignments ENABLE ROW LEVEL SECURITY;
+
+-- === From 20260608120000_profiles_shop_slug.sql ===
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS shop_slug text;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_profiles_shop_slug_unique
+  ON public.profiles (shop_slug) WHERE shop_slug IS NOT NULL;
+
+-- === From 20260608150000_guest_shop_catalog_and_order_retention.sql ===
+DROP POLICY IF EXISTS "Anyone can view active products" ON public.products;
+CREATE POLICY "Anyone can view active products"
+ON public.products FOR SELECT TO anon, authenticated USING (is_active = true);
+
+DROP POLICY IF EXISTS "Anyone can view active shops" ON public.shops;
+CREATE POLICY "Anyone can view active shops"
+ON public.shops FOR SELECT TO anon, authenticated USING (is_active = true);
+
+CREATE OR REPLACE FUNCTION public.purge_my_old_customer_orders(p_days int DEFAULT 15)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF auth.uid() IS NULL THEN RETURN; END IF;
+  IF p_days < 1 THEN p_days := 15; END IF;
+  UPDATE public.customer_orders
+  SET deleted_at = now()
+  WHERE created_by = auth.uid()
+    AND deleted_at IS NULL
+    AND created_at < (now() - make_interval(days => p_days));
+END;
+$$;
+REVOKE ALL ON FUNCTION public.purge_my_old_customer_orders(int) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.purge_my_old_customer_orders(int) TO authenticated;

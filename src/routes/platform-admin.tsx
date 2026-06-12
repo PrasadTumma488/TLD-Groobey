@@ -2,10 +2,10 @@ import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 
 import { GroobeyLoadingScreen } from "@/components/groobey/groobey-brand-logo";
+import { GroobeyMemberChrome } from "@/components/groobey/groobey-member-chrome";
 import { OwnerDashboard } from "@/components/groobey/owner-dashboard";
 import { supabase } from "@/integrations/supabase/client";
-import { parseRoleFromAuthClaims } from "@/lib/groobey-auth-role";
-import { resolvePrimaryDashboard } from "@/lib/groobey-dashboard-path";
+import { verifyDashboardAccess } from "@/lib/groobey-route-guard";
 
 export const Route = createFileRoute("/platform-admin")({
   component: PlatformAdminRoute,
@@ -17,56 +17,27 @@ function PlatformAdminRoute() {
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        if (cancelled) return;
-        if (!session) {
-          setTo("/");
-          setUi("nav");
-          return;
-        }
-        const { data: prof } = await supabase
-          .from("profiles")
-          .select("is_active")
-          .eq("user_id", session.user.id)
-          .maybeSingle();
-        if (prof?.is_active === false) {
-          await supabase.auth.signOut();
-          setTo("/");
-          setUi("nav");
-          return;
-        }
-        const primary = await resolvePrimaryDashboard(
-          supabase,
-          session.user.id,
-          parseRoleFromAuthClaims(session.user) ?? session.user.user_metadata?.role,
-        );
-        if (!primary || primary !== "/platform-admin") {
-          setTo(primary ?? "/");
-          setUi("nav");
-          return;
-        }
+    void (async () => {
+      const result = await verifyDashboardAccess(supabase, "/platform-admin");
+      if (cancelled) return;
+      if (result === "ok") {
         setUi("ok");
-      } catch {
-        if (cancelled) return;
-        setTo("/");
-        setUi("nav");
+        return;
       }
+      setTo(result === "login" ? "/login" : "/");
+      setUi("nav");
     })();
     return () => {
       cancelled = true;
     };
   }, []);
 
-  if (ui === "load") return <GroobeyLoadingScreen message="Loading platform admin dashboard…" />;
+  if (ui === "load") return <GroobeyLoadingScreen message="Loading admin dashboard…" />;
   if (ui === "nav" && to) return <Navigate to={to} />;
 
   return (
-    <main className="groobey-shell groobey-page min-h-dvh min-w-0 overflow-x-hidden bg-background text-foreground">
+    <GroobeyMemberChrome className="pb-8">
       <OwnerDashboard />
-    </main>
+    </GroobeyMemberChrome>
   );
 }
