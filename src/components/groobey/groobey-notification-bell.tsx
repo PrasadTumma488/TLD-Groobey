@@ -61,6 +61,7 @@ export function GroobeyNotificationBell({
   onClearAll,
   onNavigate,
   className,
+  compact = false,
 }: {
   items: WorkspaceNotification[];
   unreadCount: number;
@@ -69,6 +70,7 @@ export function GroobeyNotificationBell({
   onClearAll: () => void;
   onNavigate?: (item: WorkspaceNotification) => void;
   className?: string;
+  compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -111,7 +113,8 @@ export function GroobeyNotificationBell({
           variant="outline"
           size="icon"
           className={cn(
-            "relative size-10 shrink-0 rounded-full border-2 border-border bg-card shadow-sm",
+            "relative shrink-0 rounded-full border border-border bg-card shadow-sm",
+            compact ? "size-8" : "size-10 border-2",
             className,
           )}
           aria-label={
@@ -120,10 +123,15 @@ export function GroobeyNotificationBell({
             : "Open notifications menu"
           }
         >
-          <Bell className="size-4 shrink-0 text-foreground" aria-hidden />
+          <Bell className={cn("shrink-0 text-foreground", compact ? "size-3.5" : "size-4")} aria-hidden />
           {unreadCount > 0 ?
             <span
-              className="absolute -right-0.5 -top-0.5 flex min-h-[1.125rem] min-w-[1.125rem] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-black leading-none text-destructive-foreground ring-2 ring-card"
+              className={cn(
+                "absolute flex items-center justify-center rounded-full bg-destructive font-black leading-none text-destructive-foreground ring-2 ring-card",
+                compact ?
+                  "-right-0.5 -top-0.5 min-h-4 min-w-4 px-0.5 text-[9px]"
+                : "-right-0.5 -top-0.5 min-h-[1.125rem] min-w-[1.125rem] px-1 text-[10px]",
+              )}
               aria-hidden
             >
               {unreadCount > 9 ? "9+" : unreadCount}

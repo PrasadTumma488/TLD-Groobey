@@ -5,8 +5,10 @@ import { GroobeyLoadingScreen } from "@/components/groobey/groobey-brand-logo";
 import { DeliveryDashboard } from "@/components/groobey/delivery-dashboard";
 import { supabase } from "@/integrations/supabase/client";
 import { verifyDashboardAccess } from "@/lib/groobey-route-guard";
+import { groobeyNoIndexHead } from "@/lib/groobey-seo";
 
 export const Route = createFileRoute("/staff")({
+  head: () => groobeyNoIndexHead("Staff Dashboard"),
   component: StaffRoute,
 });
 

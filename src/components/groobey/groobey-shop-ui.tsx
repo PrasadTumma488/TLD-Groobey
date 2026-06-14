@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type MouseEvent, type RefObject } from "react";
 import {
   ArrowRight,
   ChevronLeft,
@@ -24,15 +24,22 @@ import {
 
 import type { HomeCategory } from "@/lib/groobey-home-categories";
 import { homeCategoryIcon } from "@/lib/groobey-home-category-icons";
+import { parseComboItems } from "@/lib/groobey-shop-browse";
 import type { OrderStatus } from "@/lib/groobey-order-pipeline";
 import { cn } from "@/lib/utils";
 
 import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
+import {
+  GroobeySheetDialogBody,
+  GroobeySheetDialogContent,
+  GroobeySheetDialogHeader,
+} from "@/components/groobey/groobey-sheet-dialog";
 import { Field } from "@/components/groobey/workspace-ui";
 
 export type ShopStep = "browse" | "cart" | "checkout";
 
-/** Horizontal category tiles with images (scroll on mobile, richer cards on desktop). */
+/** Circular category tiles — wrapped grid, no horizontal scroll. */
 export function ShopCategoryRail({
   categories,
   activeId,
@@ -42,8 +49,22 @@ export function ShopCategoryRail({
   activeId: string;
   onSelect: (id: string) => void;
 }) {
+  const railRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const rail = railRef.current;
+    if (!rail) return;
+    const active = rail.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
+    active?.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
+  }, [activeId]);
+
   return (
-    <div className="groobey-shop-category-rail" role="tablist" aria-label="Shop categories">
+    <div
+      ref={railRef}
+      className="groobey-shop-category-rail"
+      role="tablist"
+      aria-label="Shop categories"
+    >
       <button
         type="button"
         role="tab"
@@ -61,6 +82,7 @@ export function ShopCategoryRail({
       </button>
       {categories.map((category) => {
         const PlaceholderIcon = homeCategoryIcon(category.id);
+        const isCombos = category.id === "combos";
         return (
           <button
             key={category.id}
@@ -69,6 +91,7 @@ export function ShopCategoryRail({
             aria-selected={activeId === category.id}
             className={cn(
               "groobey-shop-category-tile",
+              isCombos && "groobey-shop-category-tile--combos",
               activeId === category.id && "is-active",
             )}
             onClick={() => onSelect(category.id)}
@@ -96,6 +119,18 @@ export function ShopCategoryRail({
   );
 }
 
+/** @deprecated use ShopCategoryRail */
+export const ShopCategoryGrid = ShopCategoryRail;
+
+
+/** @deprecated Combos are a category tile — no separate mode switch. */
+export function ShopBrowseModeSwitch(_props: {
+  mode: "items" | "combos";
+  onModeChange: (mode: "items" | "combos") => void;
+}) {
+  return null;
+}
+
 /** Search + image category rail. */
 export function ShopCatalogToolbar({
   categories,
@@ -104,6 +139,7 @@ export function ShopCatalogToolbar({
   searchQuery,
   onSearchChange,
   resultCount,
+  browseMode = "items",
 }: {
   categories: HomeCategory[];
   activeId: string;
@@ -111,6 +147,7 @@ export function ShopCatalogToolbar({
   searchQuery: string;
   onSearchChange: (query: string) => void;
   resultCount?: number;
+  browseMode?: "items" | "combos";
 }) {
   return (
     <div className="groobey-shop-catalog-toolbar">
@@ -120,7 +157,7 @@ export function ShopCatalogToolbar({
           type="search"
           value={searchQuery}
           onChange={(event) => onSearchChange(event.target.value)}
-          placeholder="Search products…"
+          placeholder={browseMode === "combos" ? "Search combos…" : "Search products…"}
           className="groobey-shop-search-input"
           autoComplete="off"
           enterKeyHint="search"
@@ -133,14 +170,80 @@ export function ShopCatalogToolbar({
       />
       {typeof resultCount === "number" ?
         <p className="groobey-shop-catalog-count" aria-live="polite">
-          {resultCount} item{resultCount === 1 ? "" : "s"}
+          {resultCount} {browseMode === "combos" ? "combo" : "item"}
+          {resultCount === 1 ? "" : "s"}
         </p>
       : null}
     </div>
   );
 }
 
-/** Back navigation for cart / checkout (replaces stepper). */
+/** Shop → Cart → Checkout progress (always visible while shopping). */
+export function ShopFlowStepper({
+  step,
+  cartCount,
+  onStepChange,
+}: {
+  step: ShopStep;
+  cartCount: number;
+  onStepChange: (step: ShopStep) => void;
+}) {
+  const steps: { id: ShopStep; label: string; icon: typeof ShoppingBag }[] = [
+    { id: "browse", label: "Shop", icon: ShoppingBag },
+    { id: "cart", label: "Cart", icon: ShoppingCart },
+    { id: "checkout", label: "Checkout", icon: Receipt },
+  ];
+  const stepIndex = steps.findIndex((item) => item.id === step);
+
+  return (
+    <nav className="groobey-shop-stepper" aria-label="Shop progress">
+      {steps.map((item, index) => {
+        const Icon = item.icon;
+        const isActive = step === item.id;
+        const isComplete = stepIndex > index;
+        const cartBlocked = item.id !== "browse" && cartCount === 0;
+        const disabled = cartBlocked && !isActive;
+        const showLine = index < steps.length - 1;
+
+        return (
+          <div key={item.id} className="groobey-shop-stepper-item">
+            <button
+              type="button"
+              className={cn(
+                "groobey-shop-step",
+                isActive && "is-active",
+                isComplete && "is-complete",
+                disabled && "is-disabled",
+              )}
+              disabled={disabled}
+              aria-current={isActive ? "step" : undefined}
+              onClick={() => {
+                if (disabled) return;
+                onStepChange(item.id);
+              }}
+            >
+              <span className="groobey-shop-step-icon">
+                <Icon className="size-3.5" aria-hidden />
+              </span>
+              <span className="groobey-shop-step-label">{item.label}</span>
+              {item.id === "cart" && cartCount > 0 ?
+                <span className="groobey-shop-step-badge">{cartCount}</span>
+              : null}
+            </button>
+            {showLine ?
+              <span
+                className={cn("groobey-shop-stepper-line", isComplete && "is-complete")}
+                aria-hidden
+              />
+            : null}
+          </div>
+        );
+      })}
+    </nav>
+  );
+}
+
+/** Back navigation for cart / checkout. */
 export function ShopFlowHeader({
   title,
   onBack,
@@ -178,6 +281,7 @@ export function ShopCategoryBar({
       onCategoryChange={onSelect}
       searchQuery=""
       onSearchChange={() => undefined}
+      browseMode="items"
     />
   );
 }
@@ -188,6 +292,238 @@ type ShopProduct = {
   price: number;
   unit: string;
 };
+
+export type ShopComboCardItem = {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  imageUrl: string | null;
+};
+
+function shopProductFlySource(event: MouseEvent<HTMLElement>): HTMLElement {
+  return event.currentTarget.closest<HTMLElement>(".groobey-shop-product, .groobey-shop-combo-card") ?? event.currentTarget;
+}
+
+export function ShopComboCard({
+  combo,
+  quantity,
+  onAdd,
+  onUpdateQty,
+  onOpenDetail,
+}: {
+  combo: ShopComboCardItem;
+  quantity: number;
+  onAdd: (sourceEl: HTMLElement) => void;
+  onUpdateQty: (delta: number, sourceEl?: HTMLElement) => void;
+  onOpenDetail?: () => void;
+}) {
+  const inCart = quantity > 0;
+  const previewItems = parseComboItems(combo.description).slice(0, 3);
+
+  return (
+    <article className={cn("groobey-shop-combo-card", inCart && "is-in-cart")}>
+      <button
+        type="button"
+        className="groobey-shop-combo-card-hit"
+        onClick={onOpenDetail}
+        aria-label={`View ${combo.name} details`}
+      >
+        <div className="groobey-shop-combo-card-media">
+          {combo.imageUrl ?
+            <img
+              src={combo.imageUrl}
+              alt=""
+              className="groobey-shop-combo-card-img"
+              loading="lazy"
+              decoding="async"
+            />
+          : <span className="groobey-shop-combo-card-placeholder" aria-hidden>
+              <ShoppingBag className="size-8 opacity-35" strokeWidth={1.5} />
+            </span>
+          }
+          <span className="groobey-shop-combo-card-tag">Combo</span>
+        </div>
+        <div className="groobey-shop-combo-card-body">
+          <h3 className="groobey-shop-combo-card-name">{combo.name}</h3>
+          {previewItems.length > 0 ?
+            <ul className="groobey-shop-combo-card-items">
+              {previewItems.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          : combo.description ?
+            <p className="groobey-shop-combo-card-desc">{combo.description}</p>
+          : null}
+          <p className="groobey-shop-combo-card-price">₹{combo.price}</p>
+          <span className="groobey-shop-combo-card-view">View pack details</span>
+        </div>
+      </button>
+      <div className="groobey-shop-combo-card-actions">
+          {inCart ?
+            <div className="groobey-shop-qty-pill">
+              <button
+                type="button"
+                className="groobey-shop-qty-pill-btn"
+                aria-label={`Decrease ${combo.name}`}
+                onClick={() => onUpdateQty(-1)}
+              >
+                <Minus className="size-3.5" />
+              </button>
+              <span className="groobey-shop-qty-pill-value">{quantity}</span>
+              <button
+                type="button"
+                className="groobey-shop-qty-pill-btn"
+                aria-label={`Increase ${combo.name}`}
+                onClick={(event) => onUpdateQty(1, shopProductFlySource(event))}
+              >
+                <Plus className="size-3.5" />
+              </button>
+            </div>
+          : <button
+              type="button"
+              className="groobey-shop-add-pill"
+              onClick={(event) => onAdd(shopProductFlySource(event))}
+            >
+              ADD COMBO
+            </button>
+          }
+      </div>
+    </article>
+  );
+}
+
+export function ShopComboDetailSheet({
+  combo,
+  quantity,
+  open,
+  onOpenChange,
+  onAdd,
+  onUpdateQty,
+}: {
+  combo: ShopComboCardItem | null;
+  quantity: number;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onAdd: (sourceEl: HTMLElement) => void;
+  onUpdateQty: (delta: number, sourceEl?: HTMLElement) => void;
+}) {
+  if (!combo) return null;
+  const items = parseComboItems(combo.description);
+  const inCart = quantity > 0;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <GroobeySheetDialogContent className="groobey-shop-combo-detail-sheet">
+        <GroobeySheetDialogHeader
+          title={combo.name}
+          description="Combo pack details"
+          onClose={() => onOpenChange(false)}
+        />
+        <GroobeySheetDialogBody>
+          <div className="groobey-shop-combo-detail">
+            <div className="groobey-shop-combo-detail-media">
+              {combo.imageUrl ?
+                <img src={combo.imageUrl} alt="" className="groobey-shop-combo-detail-img" />
+              : <span className="groobey-shop-combo-detail-placeholder">
+                  <ShoppingBag className="size-12 opacity-35" aria-hidden />
+                </span>
+              }
+            </div>
+            <p className="groobey-shop-combo-detail-price">₹{combo.price}</p>
+            <div className="groobey-shop-combo-detail-items">
+              <h4 className="groobey-shop-combo-detail-items-title">What&apos;s inside</h4>
+              {items.length > 0 ?
+                <ul className="groobey-shop-combo-detail-list">
+                  {items.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              : combo.description ?
+                <p className="groobey-shop-combo-detail-fallback">{combo.description}</p>
+              : <p className="groobey-shop-combo-detail-fallback">Ask the shop for pack contents.</p>
+              }
+            </div>
+          </div>
+        </GroobeySheetDialogBody>
+        <div className="groobey-shop-combo-detail-footer">
+          {inCart ?
+            <div className="groobey-shop-qty-pill groobey-shop-qty-pill--wide">
+              <button
+                type="button"
+                className="groobey-shop-qty-pill-btn"
+                aria-label={`Decrease ${combo.name}`}
+                onClick={() => onUpdateQty(-1)}
+              >
+                <Minus className="size-4" />
+              </button>
+              <span className="groobey-shop-qty-pill-value">{quantity}</span>
+              <button
+                type="button"
+                className="groobey-shop-qty-pill-btn"
+                aria-label={`Increase ${combo.name}`}
+                onClick={(event) => onUpdateQty(1, shopProductFlySource(event))}
+              >
+                <Plus className="size-4" />
+              </button>
+            </div>
+          : <button
+              type="button"
+              className="groobey-shop-add-pill groobey-shop-add-pill--wide"
+              onClick={(event) => {
+                onAdd(shopProductFlySource(event));
+                onOpenChange(false);
+              }}
+            >
+              ADD COMBO TO CART
+            </button>
+          }
+          <Button
+            type="button"
+            variant="outline"
+            className="min-h-11 w-full rounded-xl text-sm font-bold"
+            onClick={() => onOpenChange(false)}
+          >
+            Close
+          </Button>
+        </div>
+      </GroobeySheetDialogContent>
+    </Dialog>
+  );
+}
+
+export function ShopComboCatalogSkeleton() {
+  return (
+    <div className="groobey-shop-combo-catalog groobey-shop-catalog-skeleton" aria-busy="true" aria-label="Loading combos">
+      {Array.from({ length: 4 }, (_, i) => (
+        <div key={i} className="groobey-shop-combo-card groobey-shop-combo-card--skeleton" />
+      ))}
+    </div>
+  );
+}
+
+/** Toolbar + catalog placeholders while shop data loads. */
+export function ShopBrowseSkeleton({ combos = false }: { combos?: boolean }) {
+  return (
+    <div className="groobey-shop-browse-loading" aria-busy="true" aria-label="Loading shop">
+      <div className="groobey-shop-toolbar-skeleton">
+        <div className="groobey-shop-search-skeleton" />
+        <div className="groobey-shop-category-rail-skeleton">
+          {Array.from({ length: 8 }, (_, i) => (
+            <div key={i} className="groobey-shop-category-tile-skeleton" />
+          ))}
+        </div>
+      </div>
+      <div className="groobey-shop-head-skeleton">
+        <div className="groobey-shop-head-skeleton-title" />
+        <div className="groobey-shop-head-skeleton-sub" />
+      </div>
+      {combos ?
+        <ShopComboCatalogSkeleton />
+      : <ShopCatalogSkeleton />}
+    </div>
+  );
+}
 
 export function ShopProductCard({
   product,
@@ -227,7 +563,7 @@ export function ShopProductCard({
               type="button"
               className="groobey-shop-qty-pill-btn"
               aria-label={`Increase ${product.name}`}
-              onClick={(event) => onUpdateQty(1, event.currentTarget)}
+              onClick={(event) => onUpdateQty(1, shopProductFlySource(event))}
             >
               <Plus className="size-3.5" />
             </button>
@@ -235,7 +571,7 @@ export function ShopProductCard({
         : <button
             type="button"
             className="groobey-shop-add-pill"
-            onClick={(event) => onAdd(event.currentTarget)}
+            onClick={(event) => onAdd(shopProductFlySource(event))}
           >
             ADD
           </button>
@@ -875,9 +1211,9 @@ export function ProfileOrderHistoryCard({
 
   return (
     <li className="groobey-profile-order-card">
-      <Receipt className="groobey-profile-order-card-icon size-4 shrink-0" strokeWidth={2.25} aria-hidden />
-      <div className="groobey-profile-order-card-body">
+      <div className="groobey-profile-order-card-main">
         <div className="groobey-profile-order-card-head">
+          <Receipt className="groobey-profile-order-card-icon size-4 shrink-0" strokeWidth={2.25} aria-hidden />
           <span className="groobey-profile-order-card-bill">{billLabel}</span>
         </div>
         <div className="groobey-profile-order-card-meta">
@@ -891,9 +1227,9 @@ export function ProfileOrderHistoryCard({
         </div>
       </div>
       {onViewBill ?
-        <button type="button" className="groobey-profile-order-card-bill-btn" onClick={onViewBill}>
-          <FileText className="size-4" aria-hidden />
-          Bill
+        <button type="button" className="groobey-profile-order-view-bill-btn" onClick={onViewBill}>
+          <FileText className="size-4 shrink-0" aria-hidden />
+          View bill
         </button>
       : null}
     </li>

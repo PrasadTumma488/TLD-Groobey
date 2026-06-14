@@ -1,17 +1,15 @@
 import { useServerFn } from "@tanstack/react-start";
-import { Bike, CalendarDays, ClipboardList, Package } from "lucide-react";
+import { Bike, ClipboardList, Package } from "lucide-react";
 import { type FormEvent, useCallback, useMemo, useEffect, useRef, useState } from "react";
 
 import { CustomerOrderDeliveryQueue } from "@/components/groobey/customer-order-delivery-queue";
 import { GroobeyDashboardHeader } from "@/components/groobey/groobey-brand-logo";
 import { GroobeyMemberChrome } from "@/components/groobey/groobey-member-chrome";
 import { GroobeyNotificationBell } from "@/components/groobey/groobey-notification-bell";
-import { OrdersMonthScopeBanner } from "@/components/groobey/groobey-order-list-parts";
-import { StaffIdentityCard } from "@/components/groobey/staff-identity-card";
 import { Button } from "@/components/ui/button";
 import { DeliveryAttendanceReport } from "@/components/groobey/delivery-attendance-report";
 import { DeliveryBillLogForm } from "@/components/groobey/delivery-bill-log-form";
-import { GroobeyWorkspaceShell, Message, Panel, Stat } from "@/components/groobey/workspace-ui";
+import { Message, Panel, Stat } from "@/components/groobey/workspace-ui";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 import {
@@ -24,7 +22,7 @@ import {
 import { isMissingCustomerOrderDeliveryFieldsError } from "@/lib/groobey-delivery-order-fields";
 import { updateAssignedDeliveryOrderStatus } from "@/lib/groobey-delivery-order-status";
 import { ordersDeliveredOnDay } from "@/lib/groobey-order-pipeline";
-import { EM_DASH } from "@/lib/groobey-currency";
+import { EM_DASH, MIDDLE_DOT } from "@/lib/groobey-currency";
 import { GROOBEY_APP_NAME } from "@/lib/groobey-brand";
 import {
   customerOrderBillEmailOrderBill,
@@ -43,6 +41,7 @@ import { useGroobeyWorkspaceNotifications } from "@/lib/groobey-workspace-notifi
 import { sendCustomerBillEmail } from "@/lib/tldGroobey.functions";
 
 type AttendanceFilter = "today" | "month";
+type DeliveryPanel = "queue" | "log" | "report";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 type Shop = Database["public"]["Tables"]["shops"]["Row"];
@@ -62,7 +61,8 @@ export function DeliveryDashboard() {
       shop?: { name: string | null } | null;
     })[]
   >([]);
-  const [attendanceFilter, setAttendanceFilter] = useState<AttendanceFilter>("month");
+  const [attendanceFilter, setAttendanceFilter] = useState<AttendanceFilter>("today");
+  const [deliveryPanel, setDeliveryPanel] = useState<DeliveryPanel>("queue");
   const [loading, setLoading] = useState(true);
   const [submittingWork, setSubmittingWork] = useState(false);
   const [error, setError] = useState("");
@@ -205,11 +205,11 @@ export function DeliveryDashboard() {
   useEffect(() => {
     setGroobeyNotificationNavigate((action) => {
       if (action.focus === "queue" || action.orderId) {
-        queuePanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        setDeliveryPanel("queue");
       }
       if (action.focus === "attendance") {
+        setDeliveryPanel("report");
         setAttendanceFilter("month");
-        attendancePanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       }
     });
     return () => setGroobeyNotificationNavigate(null);
@@ -369,9 +369,7 @@ export function DeliveryDashboard() {
 
   function scrollToAttendance(filter: AttendanceFilter) {
     setAttendanceFilter(filter);
-    requestAnimationFrame(() => {
-      attendancePanelRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    });
+    setDeliveryPanel("report");
   }
 
   if (!session?.user) return null;
@@ -383,6 +381,7 @@ export function DeliveryDashboard() {
         subtitle={`${monthLabel} · your delivery queue`}
         actions={
           <GroobeyNotificationBell
+            compact
             items={notifications.items}
             unreadCount={notifications.unreadCount}
             onMarkAllRead={notifications.markAllRead}
@@ -391,72 +390,64 @@ export function DeliveryDashboard() {
           />
         }
       />
-      <div className="groobey-dashboard-body mx-auto max-w-7xl space-y-5 px-4 py-4 sm:py-6">
-        <OrdersMonthScopeBanner
-          monthKey={month}
-          monthLabel={monthLabel}
-          orderCount={monthDeliveredOrders.length}
-        />
-        <div className="merchant-shop-overview-split">
-          <StaffIdentityCard
-            title="Your delivery details"
+      <div className="groobey-dashboard-body mx-auto max-w-7xl space-y-3 px-4 py-3 sm:py-4">
+        <p className="groobey-delivery-summary text-[11px] font-semibold text-muted-foreground">
+          {deliveryBoyName}
+          {MIDDLE_DOT}
+          {profile?.groobey_code?.trim() || "-"}
+          {MIDDLE_DOT}
+          {monthLabel}
+        </p>
+        <section className="groobey-delivery-panel-switch grid grid-cols-3 gap-2">
+          <Stat
+            icon={Package}
+            label="Delivery queue"
+            value={String(customerOrders.length)}
+            pressed={deliveryPanel === "queue"}
+            onClick={() => setDeliveryPanel("queue")}
+          />
+          <Stat
             icon={Bike}
-            subtitle="Name and login are managed by Platform Admin - contact admin to update your details."
-            rows={[
-              { label: "Delivery boy name", value: deliveryBoyName },
-              {
-                label: "Email",
-                value: profile?.email?.trim() || session.user.email || "-",
-              },
-              { label: "Groobey ID", value: profile?.groobey_code?.trim() || "-" },
-              { label: "Mobile", value: profile?.phone?.trim() || "-" },
-              { label: "In queue now", value: String(customerOrders.length) },
-              { label: "Delivered today", value: String(todayDeliveredOrders.length) },
-              { label: "Delivered this month", value: String(monthDeliveredOrders.length) },
-            ]}
+            label="Log by Bill ID"
+            value={String(customerOrders.length)}
+            hint="Manual entry"
+            pressed={deliveryPanel === "log"}
+            onClick={() => setDeliveryPanel("log")}
           />
-          <section className="merchant-shop-stat-steps grid grid-cols-2 gap-3">
-            <Stat
-              icon={ClipboardList}
-              label="Today deliveries"
-              value={String(todayReportRows.length)}
-              pressed={attendanceFilter === "today"}
-              onClick={() => scrollToAttendance("today")}
-            />
-            <Stat
-              icon={CalendarDays}
-              label="Month deliveries"
-              value={String(monthReportRows.length)}
-              pressed={attendanceFilter === "month"}
-              onClick={() => scrollToAttendance("month")}
-            />
-          </section>
-        </div>
+          <Stat
+            icon={ClipboardList}
+            label="Delivered today"
+            value={String(todayDeliveredOrders.length)}
+            pressed={deliveryPanel === "report" && attendanceFilter === "today"}
+            onClick={() => scrollToAttendance("today")}
+          />
+        </section>
         <Message error={error} notice={notice} loading={loading} />
-        <Panel title="Customer orders to deliver" icon={Package}>
-          <div ref={queuePanelRef} className="scroll-mt-24">
-          <p className="mb-3 text-xs font-semibold text-muted-foreground">
-            Assigned to you only - not delivered yet. Mark Delivered once; the bill leaves this queue
-            and appears under Today&apos;s delivered bills until tomorrow.
-          </p>
-          <CustomerOrderDeliveryQueue
-            orders={customerOrders}
-            shops={shops}
-            onUpdated={() => void load()}
-            billPreviewOptions={orderBillPreviewOptions}
-            onStatusChanged={(order, status) => {
-              if (status === "delivered") {
-                const time = new Date().toTimeString().slice(0, 5);
-                void recordDeliveryLog(order, time, { skipStatusUpdate: true }).then((r) => {
-                  if (r.error) setError(r.error);
-                  else void load();
-                });
-              }
-            }}
-          />
-          </div>
-        </Panel>
-        <GroobeyWorkspaceShell>
+        {deliveryPanel === "queue" ?
+          <Panel title="Orders to deliver" icon={Package}>
+            <div ref={queuePanelRef}>
+              <p className="mb-2 text-[11px] font-semibold leading-snug text-muted-foreground">
+                Assigned to you — update status or mark delivered when done.
+              </p>
+              <CustomerOrderDeliveryQueue
+                orders={customerOrders}
+                shops={shops}
+                onUpdated={() => void load()}
+                billPreviewOptions={orderBillPreviewOptions}
+                onStatusChanged={(order, status) => {
+                  if (status === "delivered") {
+                    const time = new Date().toTimeString().slice(0, 5);
+                    void recordDeliveryLog(order, time, { skipStatusUpdate: true }).then((r) => {
+                      if (r.error) setError(r.error);
+                      else void load();
+                    });
+                  }
+                }}
+              />
+            </div>
+          </Panel>
+        : null}
+        {deliveryPanel === "log" ?
           <Panel title="Log delivery by Bill ID" icon={Bike}>
             <DeliveryBillLogForm
               orders={customerOrders}
@@ -465,38 +456,47 @@ export function DeliveryDashboard() {
               onSubmit={submitWorkUpdate}
             />
           </Panel>
-        </GroobeyWorkspaceShell>
-        {todayDeliveredOrders.length > 0 ?
-          <p className="rounded-xl border border-border bg-muted/30 px-3 py-2 text-xs font-semibold text-muted-foreground">
-            {todayDeliveredOrders.length} delivered today {EM_DASH} see the report below or Export
-            Excel for your records (12-hour times).
-          </p>
         : null}
-        <Panel
-          title={
-            attendanceFilter === "today" ? "Today's deliveries" : `${monthLabel} delivery report`
-          }
-          icon={ClipboardList}
-        >
-          <div ref={attendancePanelRef} className="scroll-mt-28">
-            <p className="mb-3 text-xs font-semibold text-muted-foreground">
-              One row per Bill ID. Order amount is items only; Delivery is the fee; Total is both. Times
-              are 12-hour AM/PM. Export Excel weekly for your records {EM_DASH} full month totals stay here
-              until the calendar month changes.
-            </p>
-            <DeliveryAttendanceReport
-              monthKey={month}
-              monthLabel={monthLabel}
-              workerName={profile?.display_name?.trim() || "Delivery"}
-              attendanceRows={attendanceRows}
-              deliveredOrders={
-                attendanceFilter === "today" ? deliveredOrders : monthDeliveredOrders
-              }
-              scope={attendanceFilter}
-              todayIso={today}
-            />
-          </div>
-        </Panel>
+        {deliveryPanel === "report" ?
+          <Panel
+            title={
+              attendanceFilter === "today" ? "Today's deliveries" : `${monthLabel} delivery report`
+            }
+            icon={ClipboardList}
+          >
+            <div className="mb-2 flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant={attendanceFilter === "today" ? "groobey" : "outline"}
+                className="groobey-dashboard-action-btn"
+                onClick={() => setAttendanceFilter("today")}
+              >
+                Today
+              </Button>
+              <Button
+                type="button"
+                variant={attendanceFilter === "month" ? "groobey" : "outline"}
+                className="groobey-dashboard-action-btn"
+                onClick={() => setAttendanceFilter("month")}
+              >
+                This month
+              </Button>
+            </div>
+            <div ref={attendancePanelRef}>
+              <DeliveryAttendanceReport
+                monthKey={month}
+                monthLabel={monthLabel}
+                workerName={profile?.display_name?.trim() || "Delivery"}
+                attendanceRows={attendanceRows}
+                deliveredOrders={
+                  attendanceFilter === "today" ? deliveredOrders : monthDeliveredOrders
+                }
+                scope={attendanceFilter}
+                todayIso={today}
+              />
+            </div>
+          </Panel>
+        : null}
       </div>
     </GroobeyMemberChrome>
   );

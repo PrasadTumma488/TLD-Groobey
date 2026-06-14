@@ -7,8 +7,10 @@ import { MerchantDashboard } from "@/components/groobey/merchant-dashboard";
 import { supabase } from "@/integrations/supabase/client";
 import { parseRoleFromAuthClaims } from "@/lib/groobey-auth-role";
 import { resolvePrimaryDashboard } from "@/lib/groobey-dashboard-path";
+import { groobeyNoIndexHead } from "@/lib/groobey-seo";
 
 export const Route = createFileRoute("/shop-owner")({
+  head: () => groobeyNoIndexHead("Shop Owner"),
   component: ShopOwnerRoute,
 });
 

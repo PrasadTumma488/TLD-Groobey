@@ -114,7 +114,7 @@ export function CustomerProfileOrderHistory() {
   return (
     <div className="groobey-profile-history">
       <p className="groobey-profile-history-hint">
-        Last {CUSTOMER_ORDER_HISTORY_DAYS} days · tap Bill to view or download
+        Last {CUSTOMER_ORDER_HISTORY_DAYS} days · use View bill to open or download your receipt
       </p>
       <ul className="groobey-profile-order-list">
         {orders.map((order) => (

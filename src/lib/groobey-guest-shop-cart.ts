@@ -8,6 +8,7 @@ export type GuestShopCartState = {
   lines: GroceryCartLine[];
   step?: ShopStep;
   category?: string;
+  browseView?: string;
   savedAt: number;
 };
 
@@ -36,12 +37,14 @@ export function saveGuestShopCart(state: {
   lines: GroceryCartLine[];
   step?: ShopStep;
   category?: string;
+  browseView?: string;
 }) {
   if (!canUseStorage()) return;
   const payload: GuestShopCartState = {
     lines: state.lines,
     step: state.step,
     category: state.category,
+    browseView: state.browseView,
     savedAt: Date.now(),
   };
   try {
@@ -61,25 +64,45 @@ export function clearGuestShopCart() {
 }
 
 /** Build /login or /signup URL that returns to shop with cart + checkout preserved. */
-export function shopAuthReturnPath(options?: { checkout?: boolean; category?: string }) {
+export function shopAuthReturnPath(options?: {
+  checkout?: boolean;
+  category?: string;
+  browseView?: string;
+}) {
   const params = new URLSearchParams();
-  if (options?.category) params.set("category", options.category);
+  const category =
+    options?.category === "combos" || options?.browseView === "combos" ?
+      "combos"
+    : options?.category;
+  if (category) params.set("category", category);
   if (options?.checkout) params.set("checkout", "1");
   const query = params.toString();
   return query ? `/shop?${query}` : "/shop";
 }
 
-export function shopLoginHref(options?: { checkout?: boolean; category?: string }) {
+export function shopLoginHref(options?: {
+  checkout?: boolean;
+  category?: string;
+  browseView?: string;
+}) {
   const returnTo = shopAuthReturnPath(options);
   return `/login?redirect=${encodeURIComponent(returnTo)}`;
 }
 
-export function shopSignupHref(options?: { checkout?: boolean; category?: string }) {
+export function shopSignupHref(options?: {
+  checkout?: boolean;
+  category?: string;
+  browseView?: string;
+}) {
   const returnTo = shopAuthReturnPath(options);
   return `/signup?redirect=${encodeURIComponent(returnTo)}`;
 }
 
-export function shopProfileEditHref(options?: { checkout?: boolean; category?: string }) {
+export function shopProfileEditHref(options?: {
+  checkout?: boolean;
+  category?: string;
+  browseView?: string;
+}) {
   const returnTo = shopAuthReturnPath(options);
   return `/profile?redirect=${encodeURIComponent(returnTo)}`;
 }

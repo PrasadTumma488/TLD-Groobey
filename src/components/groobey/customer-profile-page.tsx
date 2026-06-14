@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Clock3, Loader2, MapPin, Save, UserRound } from "lucide-react";
+import { ChevronLeft, Clock3, Loader2, MapPin, Save, UserRound } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 
 import { CustomerProfileOrderHistory } from "@/components/groobey/customer-profile-order-history";
@@ -128,14 +128,14 @@ export function CustomerProfilePage({
   return (
     <GroobeyMemberChrome className="groobey-shop-page pb-10">
       <div className="groobey-shop-wrap groobey-profile-wrap">
-        <header className="groobey-shop-topbar">
-          <div>
+        <header className="groobey-profile-header">
+          <div className="groobey-profile-header-main">
             <h1 className="groobey-shop-topbar-title">{displayName}</h1>
-            <p className="groobey-shop-topbar-sub">
-              <Link to="/shop" className="font-bold text-primary hover:underline">
-                Back to shop
-              </Link>
-            </p>
+            <p className="groobey-profile-header-label">Your account</p>
+            <Link to="/shop" className="groobey-profile-back-btn">
+              <ChevronLeft className="size-5 shrink-0" aria-hidden />
+              <span>Back to shop</span>
+            </Link>
           </div>
           {shopSlug ?
             <p className="groobey-shop-hero-link">

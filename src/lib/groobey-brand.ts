@@ -11,9 +11,12 @@ export const GROOBEY_BRAND = {
   settlementBorder: "#ea580c",
 } as const;
 
+import { GROOBEY_WEB_LOGO_VERSION } from "@/lib/groobey-favicon-version";
+
 /** Full TLD Groobey mark for website UI only (login, dashboards, PWA icons). */
-export const GROOBEY_WEB_LOGO_PATH = "/tld-groobey-web-logo.png";
 export const GROOBEY_WEB_LOGO_FILE = "tld-groobey-web-logo.png";
+/** Cache-busted so deploys pick up a replaced transparent PNG (avoids stale black-background asset). */
+export const GROOBEY_WEB_LOGO_PATH = `/${GROOBEY_WEB_LOGO_FILE}?v=${GROOBEY_WEB_LOGO_VERSION}`;
 
 /** Legacy bill pipeline source - not used in website UI. */
 export const GROOBEY_LOGO_PATH = "/groobey-logo.png";
@@ -25,12 +28,13 @@ export const GROOBEY_LOGO_BILL_FILE = "groobey-logo-bill.png";
 /** Shared logo sizing for bills, PDF, and email (keep in sync). */
 export const GROOBEY_LOGO_DISPLAY = {
   /** CSS / PDF display height (never upscale beyond bill asset). */
-  billHeightPx: 72,
-  billMaxWidthPx: 180,
+  billHeightPx: 52,
+  billMaxWidthPx: 140,
   /** Generated asset height (4× display for print/zoom). */
   billAssetHeightPx: 288,
   billPlatePaddingPx: 12,
   /** Website logo display heights (portrait TLD + Groobey wordmark). */
+  uiXs: 36,
   uiSm: 50,
   uiMd: 64,
   uiLg: 84,
@@ -83,12 +87,13 @@ export function groobeyCustomerThankYouPlainText(): string {
   return groobeyBillThankYouPlainText("customer");
 }
 
-/** Logo URL for bill preview / print (hi-res asset, same origin). */
+/** Logo URL for bill preview / print (same transparent web mark as navbar + footer). */
 export function groobeyBillLogoUrlForPrint(): string {
+  const path = GROOBEY_WEB_LOGO_PATH;
   if (typeof window !== "undefined" && window.location?.origin) {
-    return `${window.location.origin}${GROOBEY_LOGO_BILL_PATH}`;
+    return `${window.location.origin}${path}`;
   }
-  return GROOBEY_LOGO_BILL_PATH;
+  return path;
 }
 
 export function groobeyBillPrintHeaderHtml(options?: {
@@ -100,8 +105,10 @@ export function groobeyBillPrintHeaderHtml(options?: {
     options?.kind === "merchant" ?
       "Grocery trade · Internal settlement"
     : "";
-  return `<header class="groobey-bill-header groobey-bill-header--light">
-    <img src="${logo}" alt="${GROOBEY_APP_NAME}" class="groobey-bill-logo" decoding="sync" />
+  return `<header class="groobey-bill-header groobey-bill-header--branded">
+    <div class="groobey-bill-logo-band">
+      <img src="${logo}" alt="${GROOBEY_APP_NAME}" class="groobey-bill-logo" decoding="sync" />
+    </div>
     ${tagline ? `<p class="groobey-bill-header-tagline">${tagline}</p>` : ""}
   </header>`;
 }

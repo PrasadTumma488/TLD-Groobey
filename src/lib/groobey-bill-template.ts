@@ -68,10 +68,22 @@ export function groobeyBillDocumentStyles(kind: BillKind): string {
       margin: 0 auto;
     }
     .groobey-bill-header {
-      margin: 0 0 16px;
-      padding: 8px 0 14px;
+      margin: 0 0 14px;
+      padding: 0;
       text-align: center;
-      border-bottom: 1px solid ${GROOBEY_BRAND.lime};
+      border-bottom: none;
+    }
+    .groobey-bill-header--branded {
+      background: transparent;
+    }
+    .groobey-bill-logo-band {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 0 10px;
+      padding: 10px 14px;
+      border-radius: 10px;
+      background: ${GROOBEY_BRAND.black};
     }
     .groobey-bill-header--light {
       background: transparent;
@@ -83,6 +95,7 @@ export function groobeyBillDocumentStyles(kind: BillKind): string {
       object-fit: contain;
       display: inline-block;
       image-rendering: auto;
+      background: transparent;
     }
     .groobey-bill-header-tagline {
       margin: 6px 0 0;
@@ -146,13 +159,38 @@ export function groobeyBillDocumentStyles(kind: BillKind): string {
       border-top: 1px solid #e5e7eb;
       text-align: left;
     }
-    .groobey-bill-contact-grid {
+    .groobey-bill-contact-title {
+      margin: 0 0 8px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #6b7280;
+    }
+    .groobey-bill-contact-list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+    .groobey-bill-contact-item {
       display: flex;
-      flex-wrap: wrap;
-      gap: 8px 14px;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 6px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .groobey-bill-contact-icon {
+      display: inline-flex;
+      flex-shrink: 0;
+      width: 18px;
+      height: 18px;
+      align-items: center;
+      justify-content: center;
+      color: #166534;
     }
     .groobey-bill-contact-link {
-      font-size: 12px;
+      font-size: 13px;
       font-weight: 700;
       color: #166534;
       text-decoration: none;
@@ -243,13 +281,11 @@ export function groobeyBillDocumentStyles(kind: BillKind): string {
     body.groobey-bill--merchant table.groobey-bill-table th:nth-child(n+4),
     body.groobey-bill--merchant table.groobey-bill-table td:nth-child(n+4) { width: 14.5%; }`
       : `body.groobey-bill--customer table.groobey-bill-table th:nth-child(1),
-    body.groobey-bill--customer table.groobey-bill-table td:nth-child(1) { width: 34%; }
+    body.groobey-bill--customer table.groobey-bill-table td:nth-child(1) { width: 42%; }
     body.groobey-bill--customer table.groobey-bill-table th:nth-child(2),
-    body.groobey-bill--customer table.groobey-bill-table td:nth-child(2) { width: 10%; }
-    body.groobey-bill--customer table.groobey-bill-table th:nth-child(3),
-    body.groobey-bill--customer table.groobey-bill-table td:nth-child(3) { width: 10%; }
-    body.groobey-bill--customer table.groobey-bill-table th:nth-child(n+4),
-    body.groobey-bill--customer table.groobey-bill-table td:nth-child(n+4) { width: 18%; }`
+    body.groobey-bill--customer table.groobey-bill-table td:nth-child(2) { width: 12%; }
+    body.groobey-bill--customer table.groobey-bill-table th:nth-child(n+3),
+    body.groobey-bill--customer table.groobey-bill-table td:nth-child(n+3) { width: 23%; }`
     }
     table.groobey-bill-table thead tr {
       background: ${GROOBEY_BRAND.lime};
@@ -472,7 +508,6 @@ export function groobeyBillTitleForKind(
 const CUSTOMER_COLUMNS: GroobeyBillTableColumn[] = [
   { id: "item", label: "Item", align: "left" },
   { id: "qty", label: "Qty", align: "right" },
-  { id: "kgs", label: "KGS", align: "right" },
   { id: "rate", label: "Cost", align: "right" },
   { id: "amount", label: "Amount", align: "right" },
 ];
@@ -522,7 +557,7 @@ function billBodyHtml(params: {
     ${groobeyBillPrintHeaderHtml({ logoSrc, kind })}
     ${showSettlement ? settlementBannerHtml() : ""}
     <h1 class="groobey-bill-title">${esc(billTitle)}</h1>
-    ${kind === "customer" ? groobeyBillMetaCompactHtml(meta) : groobeyBillMetaHtml(meta)}
+    ${kind === "customer" ? groobeyBillMetaHtml(meta) : groobeyBillMetaHtml(meta)}
     ${marginNoteHtml}
     ${notesHtml}
     ${groobeyBillTableHtml(columns, rows)}

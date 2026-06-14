@@ -32,6 +32,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { GROOBEY_APP_NAME } from "@/lib/groobey-brand";
 import {
   ADMIN_CUSTOMER_ORDERS_FOCUS,
+  isAdminPlatformTab,
+  normalizeAdminPlatformTab,
+  SHOW_ATTENDANCE,
   SHOW_SETTLEMENT_BILLS,
 } from "@/lib/groobey-site-visibility";
 import { GroceryOrderItemsList } from "@/components/groobey/grocery-order-items-list";
@@ -45,11 +48,14 @@ import {
   mergePackSizeOptions,
 } from "@/lib/groobey-pack-sizes";
 import { filterProductsByQuery } from "@/lib/groobey-product-catalog";
+import { filterProductsByHomeCategory } from "@/lib/groobey-home-category-filter";
+import { SHOP_COMBOS_CATEGORY_ID } from "@/lib/groobey-shop-browse";
 import { isTransientDatabaseError, retryTransient } from "@/lib/groobey-retry";
 import { setGroobeyNotificationNavigate } from "@/lib/groobey-notification-nav";
 import { groobeySignOut } from "@/lib/groobey-auth-logout";
 import { useGroobeyWorkspaceNotifications } from "@/lib/groobey-workspace-notifications";
 import { backfillMySaleBillIds, salesMissingBillId } from "@/lib/groobey-bill-backfill";
+import { formatGroobeyDateTime } from "@/lib/groobey-datetime";
 import { BULLET, EM_DASH, formatInr, MIDDLE_DOT } from "@/lib/groobey-currency";
 import { saleDisplayId, saleDisplayTime } from "@/lib/groobey-sale-display-id";
 import { salesForPeriodAnalytics, salesForPipeline } from "@/lib/groobey-sales";
@@ -92,6 +98,8 @@ import {
   supabaseErrorMessage,
 } from "@/lib/groobey-delivery-order-fields";
 import { GroobeyDashboardHeader } from "./groobey-brand-logo";
+import { AdminCustomerInbox, type AdminCustomerRow } from "./groobey-admin-customer-inbox";
+import { AdminCombosPanel, AdminCatalogCategoryRail } from "./groobey-admin-combos-panel";
 import { GroobeyNotificationBell } from "./groobey-notification-bell";
 import { GroobeyServiceRoleSetupPanel } from "./groobey-service-role-setup-panel";
 import { BillKindButtons } from "./groobey-bill-buttons";
@@ -172,6 +180,10 @@ const orderStatusLabel: Record<OrderStatus, string> = {
 };
 
 const DELIVERY_BOY_UNASSIGNED = "__unassigned__";
+
+function customerOrderKey(order: Pick<CustomerOrder, "customer_phone" | "customer_name" | "id">): string {
+  return (order.customer_phone || order.customer_name || order.id).trim().toLowerCase();
+}
 
 const orderStatusClass: Record<OrderStatus, string> = {
   pending: "bg-amber-100 text-amber-800",
@@ -274,6 +286,7 @@ export function OwnerDashboard() {
     "all" | "pending" | "verified" | "rejected"
   >("all");
   const [activeTab, setActiveTab] = useState("overview");
+  const [ordersCustomerFilter, setOrdersCustomerFilter] = useState<string | null>(null);
   const [serverSetup, setServerSetup] = useState<{ hasServiceRoleKey: boolean } | null>(null);
   const [loading, setLoading] = useState(true);
   const [staffLoading, setStaffLoading] = useState(false);
@@ -296,6 +309,7 @@ export function OwnerDashboard() {
   const [savingProfile, setSavingProfile] = useState(false);
   const [editingOwnProfile, setEditingOwnProfile] = useState(false);
   const [productSearch, setProductSearch] = useState("");
+  const [catalogCategory, setCatalogCategory] = useState("all");
   const [addName, setAddName] = useState("");
   const [addUnit, setAddUnit] = useState(DEFAULT_GROCERY_PACK);
   const [addPrice, setAddPrice] = useState("");
@@ -316,6 +330,7 @@ export function OwnerDashboard() {
   const customerOrderShopIdReady = useRef(true);
   const customerOrderDeliveryFieldsReady = useRef(true);
   const [assigningDeliveryOrderId, setAssigningDeliveryOrderId] = useState<string | null>(null);
+  const [selectedCustomer, setSelectedCustomer] = useState<AdminCustomerRow | null>(null);
   const [signingOut, setSigningOut] = useState(false);
   const hasSyncedGroobeyCodes = useRef(false);
   const hasEnsuredOwnGroobeyCode = useRef(false);
@@ -600,7 +615,7 @@ export function OwnerDashboard() {
   useEffect(() => {
     setGroobeyNotificationNavigate((action) => {
       if (action.dashboard !== "admin") return;
-      if (action.tab) setActiveTab(action.tab);
+      if (action.tab) setActiveTab(normalizeAdminPlatformTab(action.tab));
       window.requestAnimationFrame(() => {
         document.querySelector(".groobey-dashboard-body")?.scrollIntoView({
           behavior: "smooth",
@@ -610,6 +625,11 @@ export function OwnerDashboard() {
     });
     return () => setGroobeyNotificationNavigate(null);
   }, []);
+
+  useEffect(() => {
+    if (!ADMIN_CUSTOMER_ORDERS_FOCUS) return;
+    if (!isAdminPlatformTab(activeTab)) setActiveTab("overview");
+  }, [activeTab]);
 
   useEffect(() => {
     void loadStaff();
@@ -1694,10 +1714,13 @@ export function OwnerDashboard() {
     [products],
   );
 
-  const filteredProducts = useMemo(
-    () => filterProductsByQuery(products, productSearch),
-    [products, productSearch],
-  );
+  const filteredProducts = useMemo(() => {
+    let list = filterProductsByQuery(products, productSearch);
+    if (catalogCategory !== "all" && catalogCategory !== SHOP_COMBOS_CATEGORY_ID) {
+      list = filterProductsByHomeCategory(list, catalogCategory);
+    }
+    return list;
+  }, [products, productSearch, catalogCategory]);
 
   const sortedFilteredProducts = useMemo(() => {
     return [...filteredProducts].sort((a, b) => {
@@ -1726,28 +1749,50 @@ export function OwnerDashboard() {
   const customerDirectory = useMemo(() => {
     const map = new Map<
       string,
-      { name: string; phone: string; address: string; count: number; lastOrder: string }
+      {
+        key: string;
+        name: string;
+        phone: string;
+        address: string;
+        count: number;
+        pending: number;
+        active: number;
+        lastOrder: string;
+      }
     >();
     for (const order of pipelineCustomerOrders) {
-      const key = (order.customer_phone || order.customer_name || order.id).trim().toLowerCase();
+      const key = customerOrderKey(order);
       const existing = map.get(key);
+      const isPending = order.status === "pending";
+      const isActive = isOrderPipelineActive(order.status);
       if (existing) {
         existing.count += 1;
+        if (isPending) existing.pending += 1;
+        if (isActive) existing.active += 1;
         if ((order.created_at || "") > existing.lastOrder) {
           existing.lastOrder = order.created_at || "";
         }
       } else {
         map.set(key, {
+          key,
           name: order.customer_name?.trim() || "Customer",
           phone: order.customer_phone?.trim() || EM_DASH,
           address: order.delivery_address?.trim() || EM_DASH,
           count: 1,
+          pending: isPending ? 1 : 0,
+          active: isActive ? 1 : 0,
           lastOrder: order.created_at || "",
         });
       }
     }
     return [...map.values()].sort((a, b) => b.lastOrder.localeCompare(a.lastOrder));
   }, [pipelineCustomerOrders]);
+  const selectedCustomerOrders = useMemo(() => {
+    if (!selectedCustomer) return [];
+    return pipelineCustomerOrders
+      .filter((order) => customerOrderKey(order) === selectedCustomer.key)
+      .sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
+  }, [pipelineCustomerOrders, selectedCustomer]);
   const pendingOrderTakerOrders = useMemo(
     () => pipelineCustomerOrders.filter((o) => o.status === "pending"),
     [pipelineCustomerOrders],
@@ -1767,6 +1812,30 @@ export function OwnerDashboard() {
     () => ordersCompletedOnDay(pipelineCustomerOrders, today),
     [pipelineCustomerOrders, today],
   );
+  const orderMatchesCustomerFilter = useCallback(
+    (order: CustomerOrder) =>
+      !ordersCustomerFilter || customerOrderKey(order) === ordersCustomerFilter,
+    [ordersCustomerFilter],
+  );
+  const filteredActiveOrderTakerOrders = useMemo(
+    () => activeOrderTakerOrders.filter(orderMatchesCustomerFilter),
+    [activeOrderTakerOrders, orderMatchesCustomerFilter],
+  );
+  const filteredUnassignedHandoffOrders = useMemo(
+    () => unassignedHandoffOrders.filter(orderMatchesCustomerFilter),
+    [unassignedHandoffOrders, orderMatchesCustomerFilter],
+  );
+  const filteredCompletedOrderTakerOrdersToday = useMemo(
+    () => completedOrderTakerOrdersToday.filter(orderMatchesCustomerFilter),
+    [completedOrderTakerOrdersToday, orderMatchesCustomerFilter],
+  );
+  const ordersCustomerFilterLabel = useMemo(() => {
+    if (!ordersCustomerFilter) return null;
+    return customerDirectory.find((c) => c.key === ordersCustomerFilter)?.name ?? "Customer";
+  }, [ordersCustomerFilter, customerDirectory]);
+  const salesActiveOrders = filteredActiveOrderTakerOrders;
+  const salesUnassignedOrders = filteredUnassignedHandoffOrders;
+  const salesCompletedToday = filteredCompletedOrderTakerOrdersToday;
   const outForDeliveryOrderTakerOrders = useMemo(
     () => pipelineCustomerOrders.filter((o) => o.status === "out_for_delivery"),
     [pipelineCustomerOrders],
@@ -1899,6 +1968,106 @@ export function OwnerDashboard() {
     return map;
   }, [shops]);
   const isProfileView = activeTab === "profile";
+
+  function openCustomerOrders(customerKey: string) {
+    setOrdersCustomerFilter(customerKey);
+    setActiveTab("sales");
+  }
+
+  function openCustomerDetail(customer: AdminCustomerRow) {
+    setSelectedCustomer(customer);
+  }
+
+  function closeCustomerDetail() {
+    setSelectedCustomer(null);
+  }
+
+  function renderCustomerDetailDialogContent() {
+    if (!selectedCustomer) return null;
+    const customer = selectedCustomer;
+    const last = customer.lastOrder ? formatGroobeyDateTime(customer.lastOrder) : EM_DASH;
+    return (
+      <div className="space-y-4">
+        <div className="groobey-admin-customer-detail-hero">
+          <span className="groobey-admin-inbox-avatar size-10 text-sm" aria-hidden>
+            {(customer.name[0] || "C").toUpperCase()}
+          </span>
+          <div className="min-w-0">
+            <p className="text-base font-black leading-tight">{customer.name}</p>
+            <p className="mt-0.5 text-xs font-semibold text-muted-foreground">
+              {customer.count} order{customer.count === 1 ? "" : "s"}
+              {customer.pending > 0 ? ` ${MIDDLE_DOT} ${customer.pending} pending` : ""}
+              {customer.active > 0 ? ` ${MIDDLE_DOT} ${customer.active} active` : ""}
+            </p>
+          </div>
+        </div>
+        <div className="groobey-admin-customer-detail-grid">
+          <div className="groobey-admin-customer-detail-field">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Phone</p>
+            <p className="mt-0.5 text-sm font-semibold">{customer.phone}</p>
+          </div>
+          <div className="groobey-admin-customer-detail-field">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Last order</p>
+            <p className="mt-0.5 text-sm font-semibold">{last}</p>
+          </div>
+          <div className="groobey-admin-customer-detail-field sm:col-span-2">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Address</p>
+            <p className="mt-0.5 text-sm font-semibold leading-snug">{customer.address || EM_DASH}</p>
+          </div>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          className="h-9 rounded-xl text-xs font-bold"
+          onClick={() => {
+            openCustomerOrders(customer.key);
+            closeCustomerDetail();
+          }}
+        >
+          Open in Orders tab
+        </Button>
+        <div className="space-y-2">
+          <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+            Orders & bills
+          </p>
+          {selectedCustomerOrders.length === 0 ?
+            <p className="text-sm font-semibold text-muted-foreground">No orders for this shopper yet.</p>
+          : selectedCustomerOrders.map((order) => {
+              const retail = Math.round(Number(order.total_amount || 0));
+              const status = order.status as OrderStatus;
+              return (
+                <div key={order.id} className="groobey-admin-customer-order-card">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <OrderBillLabeledHighlight
+                        label="Bill ID"
+                        value={order.bill_number || EM_DASH}
+                        pillClassName={orderBillIdHighlightClass}
+                      />
+                      <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                        <OrderStatusPill status={status} />
+                        <span className="text-[11px] font-semibold text-muted-foreground">
+                          {formatGroobeyDateTime(order.created_at)}
+                        </span>
+                      </div>
+                    </div>
+                    <span className="text-sm font-black tabular-nums">{formatInr(retail)}</span>
+                  </div>
+                  <BillKindButtons
+                    compact
+                    layout="equal"
+                    className="w-full"
+                    customerOnly={customerBillOnly}
+                    onPrint={(kind) => exportCustomerOrderBill(order.id, kind)}
+                  />
+                </div>
+              );
+            })
+          }
+        </div>
+      </div>
+    );
+  }
 
   function directoryShellClass(wide = false) {
     return cn("groobey-centered-workspace", wide && "groobey-centered-workspace--wide");
@@ -2340,6 +2509,7 @@ export function OwnerDashboard() {
         actions={
           <>
             <GroobeyNotificationBell
+              compact
               items={adminNotifications.items}
               unreadCount={adminNotifications.unreadCount}
               onMarkAllRead={adminNotifications.markAllRead}
@@ -2348,21 +2518,21 @@ export function OwnerDashboard() {
             />
             <Button
               variant={activeTab === "profile" ? "outline" : "groobey"}
-              className="min-h-10 flex-1 rounded-xl px-2.5 text-xs sm:min-h-11 sm:flex-none sm:px-4 sm:text-sm"
+              className="groobey-dashboard-action-btn"
               onClick={() => setActiveTab("overview")}
             >
               Dashboard
             </Button>
             <Button
               variant={activeTab === "profile" ? "groobey" : "outline"}
-              className="min-h-10 flex-1 rounded-xl px-2.5 text-xs sm:min-h-11 sm:flex-none sm:px-4 sm:text-sm"
+              className="groobey-dashboard-action-btn"
               onClick={() => setActiveTab("profile")}
             >
               Profile
             </Button>
             <Button
               variant="outline"
-              className="inline-flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-xl px-2.5 text-xs sm:min-h-11 sm:flex-none sm:px-4 sm:text-sm"
+              className="groobey-dashboard-action-btn groobey-dashboard-action-btn--muted"
               disabled={signingOut}
               onClick={() => {
                 if (signingOut) return;
@@ -2372,20 +2542,20 @@ export function OwnerDashboard() {
             >
               {signingOut ?
                 <>
-                  <Loader2 className="mr-1.5 size-4 shrink-0 animate-spin" aria-hidden />
-                  Logging out
+                  <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden />
+                  <span className="hidden sm:inline">Logging out</span>
                 </>
               : "Logout"}
             </Button>
           </>
         }
       />
-      <div className="groobey-dashboard-body mx-auto flex min-w-0 max-w-7xl flex-col gap-5 px-4 py-4 sm:gap-6 sm:px-6 sm:py-6 lg:px-10">
+      <div className="groobey-dashboard-body owner-admin-dashboard-body mx-auto flex min-w-0 flex-col gap-5 px-4 py-4 sm:gap-6 sm:px-6 sm:py-6 lg:px-10">
 
       {serverSetup && !serverSetup.hasServiceRoleKey ? <GroobeyServiceRoleSetupPanel /> : null}
 
-      {!isProfileView ? (
-        <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      {!isProfileView && activeTab === "overview" ?
+        <section className="owner-admin-quick-stats">
           <Stat
             icon={PackagePlus}
             label="Products"
@@ -2412,14 +2582,23 @@ export function OwnerDashboard() {
             value={String(ADMIN_CUSTOMER_ORDERS_FOCUS ? pipelineCustomerOrders.length : sales.length)}
             onClick={() => setActiveTab("sales")}
           />
-          <Stat
-            icon={ClipboardList}
-            label="Attendance rows"
-            value={String(attendance.length)}
-            onClick={() => setActiveTab("attendance")}
-          />
+          {SHOW_ATTENDANCE ?
+            <Stat
+              icon={ClipboardList}
+              label="Attendance rows"
+              value={String(attendance.length)}
+              onClick={() => setActiveTab("attendance")}
+            />
+          : ADMIN_CUSTOMER_ORDERS_FOCUS ?
+            <Stat
+              icon={UsersRound}
+              label="Delivery team"
+              value={String(deliveryStaffRows.length)}
+              onClick={() => setActiveTab("staff")}
+            />
+          : null}
         </section>
-      ) : null}
+      : null}
 
       <Message
         error=""
@@ -2472,10 +2651,12 @@ export function OwnerDashboard() {
               <ReceiptText className="size-4 shrink-0 opacity-90" aria-hidden />
               <span>{ADMIN_CUSTOMER_ORDERS_FOCUS ? "Orders" : "Sales"}</span>
             </TabsTrigger>
-            <TabsTrigger value="attendance" className="owner-admin-tab-trigger">
-              <ClipboardList className="size-4 shrink-0 opacity-90" aria-hidden />
-              <span>Attendance</span>
-            </TabsTrigger>
+            {SHOW_ATTENDANCE ?
+              <TabsTrigger value="attendance" className="owner-admin-tab-trigger">
+                <ClipboardList className="size-4 shrink-0 opacity-90" aria-hidden />
+                <span>Attendance</span>
+              </TabsTrigger>
+            : null}
           </TabsList>
         ) : null}
 
@@ -2483,17 +2664,17 @@ export function OwnerDashboard() {
           <InlineFeedback {...alertsFor("profile")} />
           <Panel title="Platform Admin profile" icon={UsersRound}>
             <div className="grid gap-4">
-              <div className="min-w-0 rounded-2xl border border-border bg-gradient-to-r from-primary/20 via-card to-card p-4 shadow-soft">
+              <div className="min-w-0 rounded-2xl border border-border bg-gradient-to-r from-primary/15 via-card to-card p-3.5 shadow-soft sm:p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <div className="flex size-12 items-center justify-center rounded-xl bg-primary text-lg font-black text-primary-foreground">
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <div className="flex size-10 items-center justify-center rounded-lg bg-primary text-base font-black text-primary-foreground">
                       {(profileDisplayName[0] || "P").toUpperCase()}
                     </div>
                     <div className="min-w-0">
-                      <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
                         Platform Admin
                       </p>
-                      <p className="break-words text-lg font-black text-foreground sm:text-xl">
+                      <p className="break-words text-base font-black text-foreground sm:text-lg">
                         {profileDisplayName}
                       </p>
                     </div>
@@ -2603,23 +2784,25 @@ export function OwnerDashboard() {
               Jump to work that needs a decision or follow-up.
             </p>
             <div className="owner-admin-needs-attention-actions mt-4">
-              <Button
-                type="button"
-                variant="outline"
-                className="h-auto min-h-12 w-full justify-start gap-2 rounded-xl border-2 px-4 py-3 text-left text-sm font-semibold leading-snug shadow-sm hover:bg-card"
-                onClick={() => {
-                  setAttendanceFilter("pending");
-                  setActiveTab("attendance");
-                }}
-              >
-                <ClipboardList className="size-5 shrink-0 text-primary" aria-hidden />
-                <span>
-                  Pending attendance
-                  <span className="mt-0.5 block text-xs font-bold text-primary tabular-nums">
-                    {pendingAttendance.length}
+              {SHOW_ATTENDANCE ?
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-auto min-h-12 w-full justify-start gap-2 rounded-xl border-2 px-4 py-3 text-left text-sm font-semibold leading-snug shadow-sm hover:bg-card"
+                  onClick={() => {
+                    setAttendanceFilter("pending");
+                    setActiveTab("attendance");
+                  }}
+                >
+                  <ClipboardList className="size-5 shrink-0 text-primary" aria-hidden />
+                  <span>
+                    Pending attendance
+                    <span className="mt-0.5 block text-xs font-bold text-primary tabular-nums">
+                      {pendingAttendance.length}
+                    </span>
                   </span>
-                </span>
-              </Button>
+                </Button>
+              : null}
               <Button
                 type="button"
                 variant="outline"
@@ -2675,171 +2858,81 @@ export function OwnerDashboard() {
               }
             </div>
           </section>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div className="owner-admin-quick-stats">
             <Stat
               icon={ReceiptText}
-              label={ADMIN_CUSTOMER_ORDERS_FOCUS ? "Pending orders" : "Pending sales"}
-              value={String(ADMIN_CUSTOMER_ORDERS_FOCUS ? pendingOrderTakerOrders.length : pendingSales.length)}
+              label="Pending orders"
+              value={String(pendingOrderTakerOrders.length)}
               onClick={() => setActiveTab("sales")}
             />
             <Stat
-              icon={ClipboardList}
-              label="Pending attendance"
-              value={String(pendingAttendance.length)}
-              onClick={() => {
-                setAttendanceFilter("pending");
-                setActiveTab("attendance");
-              }}
+              icon={ShoppingBasket}
+              label="Active pipeline"
+              value={String(activeOrderTakerOrders.length)}
+              onClick={() => setActiveTab("sales")}
             />
-            {ADMIN_CUSTOMER_ORDERS_FOCUS ?
-              <Stat
-                icon={UsersRound}
-                label="Customers"
-                value={String(customerDirectory.length)}
-                onClick={() => setActiveTab("customers")}
-              />
-            : <Stat
-                icon={Store}
-                label="Active shops"
-                value={String(shops.filter((s) => s.is_active).length)}
-                onClick={() => setActiveTab("shop-owners")}
-              />
-            }
-            {ADMIN_CUSTOMER_ORDERS_FOCUS ?
-              <Stat
-                icon={ShoppingBasket}
-                label="Orders today"
-                value={String(completedOrderTakerOrdersToday.length + activeOrderTakerOrders.length)}
-                onClick={() => setActiveTab("sales")}
-              />
-            : <Stat
-                icon={Percent}
-                label="Groobey margin (all shops)"
-                value={`${globalTradeMargin}%`}
-                hint={`Set on Sales tab ${EM_DASH} off retail on trade / settlement bills.`}
-                onClick={() => setActiveTab("sales")}
-              />
-            }
-          </div>
-          <div className="grid gap-4 lg:grid-cols-2">
-            <Panel title="Quick approvals - attendance" icon={Bike}>
-              <VerifyList
-                title="Pending attendance"
-                records={pendingAttendance.map((a) => ({
-                  id: a.id,
-                  label: `${a.work_date} · ${a.status} · ${formatPersonWithGroobeyId({
-                    userId: a.worker_id,
-                    displayName: staffNameByUserId.get(a.worker_id),
-                    groobeyByUserId,
-                  })}`,
-                }))}
-                onApprove={(id) => void updateAttendanceVerification(id, "verified")}
-                onReject={(id) => void updateAttendanceVerification(id, "rejected")}
-                emptyText="No pending attendance."
-              />
-            </Panel>
-            <Panel title="Daily and monthly analytics" icon={LayoutDashboard}>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-xl border border-border bg-card/70 p-3">
-                  <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                    Sales today
-                  </p>
-                  <p className="mt-1 text-2xl font-black text-primary">{todaySales.length}</p>
-                </div>
-                <div className="rounded-xl border border-border bg-card/70 p-3">
-                  <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                    Sales this month
-                  </p>
-                  <p className="mt-1 text-2xl font-black text-primary">{monthSales.length}</p>
-                </div>
-                <div className="rounded-xl border border-border bg-card/70 p-3">
-                  <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                    Staff updates today
-                  </p>
-                  <p className="mt-1 text-2xl font-black text-primary">{todayAttendance.length}</p>
-                </div>
-                <div className="rounded-xl border border-border bg-card/70 p-3">
-                  <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                    Staff updates this month
-                  </p>
-                  <p className="mt-1 text-2xl font-black text-primary">{monthAttendance.length}</p>
-                </div>
-              </div>
-            </Panel>
+            <Stat
+              icon={UsersRound}
+              label="Customers"
+              value={String(customerDirectory.length)}
+              onClick={() => setActiveTab("customers")}
+            />
+            <Stat
+              icon={UsersRound}
+              label="Delivery team"
+              value={String(deliveryStaffRows.length)}
+              onClick={() => setActiveTab("staff")}
+            />
           </div>
         </TabsContent>
 
         {ADMIN_CUSTOMER_ORDERS_FOCUS ?
-          <TabsContent value="customers" className="space-y-4">
+          <TabsContent value="customers" className="space-y-3">
             <InlineFeedback {...alertsFor("customers")} />
-            <Panel title="Online customers" icon={UsersRound}>
-              <p className="mb-3 text-xs font-semibold text-muted-foreground">
-                Shoppers who placed orders on the website. Open Orders to manage delivery and print
-                customer bills.
-              </p>
-              {customerDirectory.length === 0 ?
-                <EmptyState
-                  icon={UsersRound}
-                  title="No customer orders yet"
-                  text="Orders from the online shop will appear here."
-                />
-              : <div className="space-y-2">
-                  {customerDirectory.map((customer) => (
-                    <div
-                      key={`${customer.phone}-${customer.name}`}
-                      className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-border bg-card/70 p-3"
-                    >
-                      <div className="min-w-0">
-                        <p className="font-semibold text-foreground">{customer.name}</p>
-                        <p className="text-xs text-muted-foreground">{customer.phone}</p>
-                        <p className="mt-1 line-clamp-2 text-xs font-medium text-muted-foreground">
-                          {customer.address}
-                        </p>
-                      </div>
-                      <div className="shrink-0 text-right">
-                        <p className="text-lg font-black text-primary tabular-nums">{customer.count}</p>
-                        <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
-                          order{customer.count === 1 ? "" : "s"}
-                        </p>
-                        <p className="mt-1 text-[11px] font-semibold text-muted-foreground">
-                          Last {customer.lastOrder.slice(0, 10) || EM_DASH}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              }
+            <Panel title="Customer directory" icon={UsersRound}>
+              <AdminCustomerInbox
+                customers={customerDirectory}
+                onOpenCustomer={openCustomerDetail}
+              />
             </Panel>
           </TabsContent>
         : null}
 
-        <TabsContent value="create-logins" className="space-y-6">
-          <InlineFeedback {...alertsFor("create-logins")} />
-          <div className={directoryShellClass()}>
-            <Panel title="Create shop owner, staff, or order taker login" icon={UsersRound}>
-              <AccountForm onCreate={handleCreateStaff} resetNonce={staffFormResetNonce} />
-            </Panel>
-          </div>
-        </TabsContent>
+        {!ADMIN_CUSTOMER_ORDERS_FOCUS ?
+          <>
+            <TabsContent value="create-logins" className="space-y-6">
+              <InlineFeedback {...alertsFor("create-logins")} />
+              <div className={directoryShellClass()}>
+                <Panel title="Create shop owner, staff, or order taker login" icon={UsersRound}>
+                  <AccountForm onCreate={handleCreateStaff} resetNonce={staffFormResetNonce} />
+                </Panel>
+              </div>
+            </TabsContent>
 
-        <TabsContent value="shop-owners" className="space-y-6">
-          <InlineFeedback {...alertsFor("shop-owners")} />
-          <div className={directoryShellClass(true)}>
-            <Panel title="Shop Owners Directory" icon={UsersRound}>
-              {renderStaffTable(merchantStaffRows, "No shop owner logins yet.", true)}
-            </Panel>
-            {!staffLoading && merchantStaffRows.length === 0 ? (
-              <EmptyState icon={UsersRound} title="No shop owners yet" text="Use Create Logins tab to add shop owner logins." />
-            ) : null}
-          </div>
-        </TabsContent>
+            <TabsContent value="shop-owners" className="space-y-6">
+              <InlineFeedback {...alertsFor("shop-owners")} />
+              <div className={directoryShellClass(true)}>
+                <Panel title="Shop Owners Directory" icon={UsersRound}>
+                  {renderStaffTable(merchantStaffRows, "No shop owner logins yet.", true)}
+                </Panel>
+                {!staffLoading && merchantStaffRows.length === 0 ? (
+                  <EmptyState icon={UsersRound} title="No shop owners yet" text="Use Create Logins tab to add shop owner logins." />
+                ) : null}
+              </div>
+            </TabsContent>
+          </>
+        : null}
 
         <TabsContent value="staff" className="space-y-6">
           <InlineFeedback {...alertsFor("staff")} />
           {ADMIN_CUSTOMER_ORDERS_FOCUS ?
             <div className={directoryShellClass()}>
               <Panel title="Assign delivery boy" icon={UsersRound}>
-                <AccountForm onCreate={handleCreateStaff} resetNonce={staffFormResetNonce} />
+                <AccountForm
+                  onCreate={handleCreateStaff}
+                  resetNonce={staffFormResetNonce}
+                  deliveryOnly
+                />
               </Panel>
             </div>
           : null}
@@ -2861,25 +2954,39 @@ export function OwnerDashboard() {
           </div>
         </TabsContent>
 
-        <TabsContent value="orders-team" className="space-y-6">
-          <InlineFeedback {...alertsFor("orders-team")} />
-          <div className={directoryShellClass()}>
-            <Panel title="Order Taker Directory" icon={UsersRound}>
-              {renderStaffTable(orderTakerRows, "No order taker logins yet.")}
-            </Panel>
-            {!staffLoading && orderTakerRows.length === 0 ? (
-              <EmptyState icon={UsersRound} title="No order takers yet" text="Use Create Logins tab to add order taker users." />
-            ) : null}
-          </div>
-        </TabsContent>
+        {!ADMIN_CUSTOMER_ORDERS_FOCUS ?
+          <TabsContent value="orders-team" className="space-y-6">
+            <InlineFeedback {...alertsFor("orders-team")} />
+            <div className={directoryShellClass()}>
+              <Panel title="Order Taker Directory" icon={UsersRound}>
+                {renderStaffTable(orderTakerRows, "No order taker logins yet.")}
+              </Panel>
+              {!staffLoading && orderTakerRows.length === 0 ? (
+                <EmptyState icon={UsersRound} title="No order takers yet" text="Use Create Logins tab to add order taker users." />
+              ) : null}
+            </div>
+          </TabsContent>
+        : null}
 
-        <TabsContent value="attendance" className="space-y-4">
-          <InlineFeedback {...alertsFor("attendance")} />
-          {renderAttendancePanel()}
-        </TabsContent>
+        {SHOW_ATTENDANCE ?
+          <TabsContent value="attendance" className="space-y-4">
+            <InlineFeedback {...alertsFor("attendance")} />
+            {renderAttendancePanel()}
+          </TabsContent>
+        : null}
 
-        <TabsContent value="catalog" className="space-y-6">
+        <TabsContent value="catalog" className="groobey-admin-catalog-tab space-y-6">
           <InlineFeedback {...alertsFor("catalog")} />
+          <AdminCatalogCategoryRail activeId={catalogCategory} onSelect={setCatalogCategory} />
+          {catalogCategory === SHOP_COMBOS_CATEGORY_ID ?
+            <AdminCombosPanel
+              embedded
+              sessionUserId={session?.user.id}
+              requesterToken={session?.access_token}
+              onNotice={(message) => setNotice(message)}
+              onError={(message) => setError(message)}
+            />
+          : <>
           <div className="rounded-xl border border-border bg-muted/40 p-3 text-sm font-semibold text-muted-foreground">
             Upload your <strong>TLD GROOBY</strong> Excel (S.No, CATEGORY, PRODUCT, any gram/kg price
             columns, MRP), or add items one by one. You can add columns like 50G, 1.5KG, up to 10KG - each
@@ -3005,6 +3112,7 @@ export function OwnerDashboard() {
             </Panel>
           )}
           </div>
+          <div className="groobey-admin-catalog-grocery-panel">
           <Panel title="Grocery catalog" icon={ShoppingBasket}>
             <label className="mb-3 grid gap-1 text-sm font-semibold">
               Search
@@ -3021,11 +3129,7 @@ export function OwnerDashboard() {
                 ? `${filteredProducts.length} match${filteredProducts.length === 1 ? "" : "es"} (of ${products.length})`
                 : `${products.length} items`}
             </p>
-            <div
-              className={`space-y-2 pr-1 groobey-scrollbar ${
-                sortedFilteredProducts.length > 8 ? "max-h-[min(60dvh,28rem)] overflow-y-auto groobey-scrollbar" : ""
-              }`}
-            >
+            <div className="groobey-admin-grocery-list groobey-scrollbar">
               {sortedFilteredProducts.map((item) => (
                 <ProductRow
                   key={item.id}
@@ -3048,10 +3152,27 @@ export function OwnerDashboard() {
               )}
             </div>
           </Panel>
+          </div>
+          </>}
         </TabsContent>
 
-        <TabsContent value="sales" className="space-y-4">
+        <TabsContent value="sales" className="space-y-3">
           <InlineFeedback {...alertsFor("sales")} />
+          {ordersCustomerFilter && ordersCustomerFilterLabel ?
+            <div className="groobey-admin-filter-chip">
+              <span>
+                Showing orders for <strong>{ordersCustomerFilterLabel}</strong>
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                className="groobey-dashboard-action-btn"
+                onClick={() => setOrdersCustomerFilter(null)}
+              >
+                Show all
+              </Button>
+            </div>
+          : null}
           {!ADMIN_CUSTOMER_ORDERS_FOCUS ?
             <TradeMarginPanel
               title="Groobey margin (all active shops)"
@@ -3073,25 +3194,25 @@ export function OwnerDashboard() {
             <p className="mb-3 text-xs font-semibold text-muted-foreground">
               Pending {EM_DASH} Confirmed {EM_DASH} Packed {EM_DASH} Out for delivery only. Assign a
               delivery boy before handoff
-              {unassignedHandoffOrders.length ?
-                ` (${unassignedHandoffOrders.length} need assignment now)`
+              {salesUnassignedOrders.length ?
+                ` (${salesUnassignedOrders.length} need assignment now)`
               : ""}
               .
               {ADMIN_CUSTOMER_ORDERS_FOCUS ?
                 " Print customer bill only."
               : " Same Bill ID for customer and settlement copies."}
-              {completedOrderTakerOrdersToday.length ?
-                ` ${completedOrderTakerOrdersToday.length} completed today - see panel below.`
+              {salesCompletedToday.length ?
+                ` ${salesCompletedToday.length} completed today - see panel below.`
               : ""}
             </p>
-            {unassignedHandoffOrders.length ?
+            {salesUnassignedOrders.length ?
               <p className="mb-3 rounded-xl border border-amber-300/80 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-950">
                 Assign delivery boy on highlighted rows before the order leaves your desk.
               </p>
             : null}
 
             <div className="space-y-3 lg:hidden">
-              {activeOrderTakerOrders.map((order) => {
+              {salesActiveOrders.map((order) => {
                 const retail = Math.round(Number(order.total_amount || 0));
                 const trade = Math.round(Number(order.merchant_settlement_amount ?? retail));
                 const margin = retail - trade;
@@ -3119,18 +3240,20 @@ export function OwnerDashboard() {
                     <div className="flex flex-wrap items-start justify-between gap-2 gap-y-1">
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-black leading-tight">{order.customer_name}</p>
-                        <OrderBillLabeledHighlight
-                          className="mt-1.5"
-                          label="Shop"
-                          value={shop?.name ?? EM_DASH}
-                          pillClassName={orderBillShopHighlightClass}
-                        />
+                        {!ADMIN_CUSTOMER_ORDERS_FOCUS ?
+                          <OrderBillLabeledHighlight
+                            className="mt-1.5"
+                            label="Shop"
+                            value={shop?.name ?? EM_DASH}
+                            pillClassName={orderBillShopHighlightClass}
+                          />
+                        : null}
                         <div className="mt-2 flex flex-wrap items-center gap-2">
                           <OrderStatusPill status={status} />
                           <span className="text-[11px] font-semibold text-muted-foreground">
                             {ADMIN_CUSTOMER_ORDERS_FOCUS ?
-                              `${order.customer_phone || EM_DASH}${MIDDLE_DOT} ${order.created_at?.slice(0, 16) ?? EM_DASH}`
-                            : `${takerName}${MIDDLE_DOT} ${order.created_at?.slice(0, 16) ?? EM_DASH}`}
+                              `${order.customer_phone || EM_DASH}${MIDDLE_DOT} ${formatGroobeyDateTime(order.created_at)}`
+                            : `${takerName}${MIDDLE_DOT} ${formatGroobeyDateTime(order.created_at)}`}
                           </span>
                         </div>
                       </div>
@@ -3204,11 +3327,11 @@ export function OwnerDashboard() {
 
             <div className="mb-3 hidden flex-wrap items-center gap-2 lg:flex">
               <span className="rounded-full border border-border bg-card/90 px-3 py-1 text-xs font-bold text-foreground">
-                {activeOrderTakerOrders.length} active bill
-                {activeOrderTakerOrders.length === 1 ? "" : "s"}
+                {salesActiveOrders.length} active bill
+                {salesActiveOrders.length === 1 ? "" : "s"}
               </span>
               <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-800">
-                {completedOrderTakerOrdersToday.length} completed today
+                {salesCompletedToday.length} completed today
               </span>
             </div>
             <div className="owner-admin-bills-table-wrap owner-admin-bills-table-wrap--order-takers hidden lg:block">
@@ -3217,15 +3340,15 @@ export function OwnerDashboard() {
                   <thead>
                     <tr>
                       <th className="text-left">Customer</th>
-                      <th className="text-left">Order</th>
-                      <th className="text-left">Totals</th>
+                      <th className="text-left">{ADMIN_CUSTOMER_ORDERS_FOCUS ? "Order" : "Bill"}</th>
+                      <th className="text-left">{ADMIN_CUSTOMER_ORDERS_FOCUS ? "Total" : "Totals"}</th>
                       <th className="owner-admin-bills-col-delivery text-left">Delivery</th>
                       <th className="owner-admin-bills-col-print text-left">Print</th>
                       <th className="text-left">Remove</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {activeOrderTakerOrders.map((order) => {
+                    {salesActiveOrders.map((order) => {
                       const retail = Math.round(Number(order.total_amount || 0));
                       const trade = Math.round(Number(order.merchant_settlement_amount ?? retail));
                       const margin = retail - trade;
@@ -3244,33 +3367,58 @@ export function OwnerDashboard() {
                         >
                           <td className="max-w-[10rem]">
                             <span className="block truncate font-bold">{order.customer_name}</span>
+                            {ADMIN_CUSTOMER_ORDERS_FOCUS ?
+                              <span className="mt-0.5 block truncate text-xs font-semibold text-muted-foreground">
+                                {order.customer_phone || EM_DASH}
+                              </span>
+                            : null}
                           </td>
                           <td className="min-w-0 max-w-[14rem]">
-                            <p className="truncate text-sm font-semibold text-foreground">{takerName}</p>
-                            <OrderBillLabeledHighlight
-                              className="mt-1"
-                              label="Shop"
-                              value={shop?.name ?? EM_DASH}
-                              pillClassName={orderBillShopHighlightClass}
-                            />
-                            <p className="mt-1 truncate text-xs font-semibold text-muted-foreground">
-                              {order.created_at?.slice(0, 16) ?? EM_DASH}
-                            </p>
-                            <p className="mt-1">
-                              <OrderStatusPill status={status} />
-                            </p>
-                            <OrderBillLabeledHighlight
-                              className="mt-1"
-                              label="Bill ID"
-                              value={order.bill_number || EM_DASH}
-                              pillClassName={orderBillIdHighlightClass}
-                            />
+                            {ADMIN_CUSTOMER_ORDERS_FOCUS ?
+                              <>
+                                <p className="truncate text-xs font-semibold text-muted-foreground">
+                                  {formatGroobeyDateTime(order.created_at)}
+                                </p>
+                                <p className="mt-1">
+                                  <OrderStatusPill status={status} />
+                                </p>
+                                <OrderBillLabeledHighlight
+                                  className="mt-1"
+                                  label="Bill ID"
+                                  value={order.bill_number || EM_DASH}
+                                  pillClassName={orderBillIdHighlightClass}
+                                />
+                              </>
+                            : <>
+                                <p className="truncate text-sm font-semibold text-foreground">{takerName}</p>
+                                <OrderBillLabeledHighlight
+                                  className="mt-1"
+                                  label="Shop"
+                                  value={shop?.name ?? EM_DASH}
+                                  pillClassName={orderBillShopHighlightClass}
+                                />
+                                <p className="mt-1 truncate text-xs font-semibold text-muted-foreground">
+                                  {formatGroobeyDateTime(order.created_at)}
+                                </p>
+                                <p className="mt-1">
+                                  <OrderStatusPill status={status} />
+                                </p>
+                                <OrderBillLabeledHighlight
+                                  className="mt-1"
+                                  label="Bill ID"
+                                  value={order.bill_number || EM_DASH}
+                                  pillClassName={orderBillIdHighlightClass}
+                                />
+                              </>
+                            }
                           </td>
                           <td className="owner-admin-bills-cell-nowrap">
                             <span className="text-sm font-bold tabular-nums">{formatInr(retail)}</span>
-                            <span className="block text-[11px] font-semibold tabular-nums text-muted-foreground">
-                              {formatInr(trade)} trade {MIDDLE_DOT} {formatInr(margin)} mrg
-                            </span>
+                            {!ADMIN_CUSTOMER_ORDERS_FOCUS ?
+                              <span className="block text-[11px] font-semibold tabular-nums text-muted-foreground">
+                                {formatInr(trade)} trade {MIDDLE_DOT} {formatInr(margin)} mrg
+                              </span>
+                            : null}
                           </td>
                           <td className="owner-admin-bills-col-delivery">
                             <GroobeySelect
@@ -3317,7 +3465,7 @@ export function OwnerDashboard() {
                   </tbody>
                 </table>
               </div>
-              {activeOrderTakerOrders.length === 0 ?
+              {salesActiveOrders.length === 0 ?
                 <EmptyState
                   icon={ClipboardList}
                   title={ADMIN_CUSTOMER_ORDERS_FOCUS ? "No active customer orders" : "No active order bills"}
@@ -3329,7 +3477,7 @@ export function OwnerDashboard() {
                 />
               : null}
             </div>
-            {activeOrderTakerOrders.length === 0 ?
+            {salesActiveOrders.length === 0 ?
               <div className="lg:hidden">
                 <EmptyState
                   icon={ClipboardList}
@@ -3344,19 +3492,19 @@ export function OwnerDashboard() {
             : null}
             </div>
           </Panel>
-          <Panel title={`Completed today (${completedOrderTakerOrdersToday.length})`} icon={ClipboardList}>
+          <Panel title={`Completed today (${salesCompletedToday.length})`} icon={ClipboardList}>
               <p className="mb-3 text-xs font-semibold text-muted-foreground">
                 End of day: skim this list and Remove any mistakes. Clears automatically tomorrow morning.
                 {!ADMIN_CUSTOMER_ORDERS_FOCUS ?
                   " Monthly settlement export above keeps every bill for the month."
                 : null}
               </p>
-              {completedOrderTakerOrdersToday.length === 0 ?
+              {salesCompletedToday.length === 0 ?
                 <p className="text-sm font-semibold text-muted-foreground">
                   No completed bills yet today. Finished orders will appear here until tomorrow.
                 </p>
               : <ul className="space-y-2">
-                {completedOrderTakerOrdersToday.map((order) => {
+                {salesCompletedToday.map((order) => {
                   const shop = order.shop_id ? shops.find((s) => s.id === order.shop_id) : undefined;
                   const status = order.status as OrderStatus;
                   return (
@@ -3370,8 +3518,16 @@ export function OwnerDashboard() {
                           {order.bill_number || EM_DASH}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {shop?.name ?? EM_DASH} {MIDDLE_DOT}{" "}
-                          <OrderStatusPill status={status} />
+                          {ADMIN_CUSTOMER_ORDERS_FOCUS ?
+                            <>
+                              {order.customer_phone || EM_DASH} {MIDDLE_DOT}{" "}
+                              <OrderStatusPill status={status} />
+                            </>
+                          : <>
+                              {shop?.name ?? EM_DASH} {MIDDLE_DOT}{" "}
+                              <OrderStatusPill status={status} />
+                            </>
+                          }
                         </p>
                       </div>
                       <div className="flex flex-wrap gap-2">
@@ -3446,7 +3602,7 @@ export function OwnerDashboard() {
                         <p className="mt-0.5 text-[11px] font-semibold text-muted-foreground">
                           {saleDisplayTime(sale)}
                           {MIDDLE_DOT} {sale.destination_type}
-                          {MIDDLE_DOT} {sale.created_at?.slice(0, 16)}
+                          {MIDDLE_DOT} {formatGroobeyDateTime(sale.created_at)}
                         </p>
                       </div>
                       <span className="shrink-0 rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-bold capitalize">
@@ -3533,7 +3689,7 @@ export function OwnerDashboard() {
                             </span>
                           </td>
                           <td className="whitespace-nowrap text-sm font-semibold tabular-nums text-muted-foreground">
-                            {sale.created_at?.slice(0, 16)}
+                            {formatGroobeyDateTime(sale.created_at)}
                           </td>
                           <td className="whitespace-nowrap">
                             <div className="text-sm font-bold">{formatInr(Math.round(retailT))} retail</div>
@@ -3583,6 +3739,25 @@ export function OwnerDashboard() {
             </>
           : null}
         </TabsContent>
+
+        <Dialog
+          open={selectedCustomer != null}
+          onOpenChange={(open) => !open && closeCustomerDetail()}
+        >
+          <GroobeySheetDialogContent>
+            {selectedCustomer ?
+              <>
+                <GroobeySheetDialogHeader
+                  title={selectedCustomer.name}
+                  description={`${selectedCustomer.phone}${MIDDLE_DOT} ${selectedCustomer.count} order${selectedCustomer.count === 1 ? "" : "s"}`}
+                  onClose={closeCustomerDetail}
+                />
+                <GroobeySheetDialogBody>{renderCustomerDetailDialogContent()}</GroobeySheetDialogBody>
+                <GroobeySheetDialogFooter onClose={closeCustomerDetail} />
+              </>
+            : null}
+          </GroobeySheetDialogContent>
+        </Dialog>
 
         <Dialog open={selectedStaff != null} onOpenChange={(open) => !open && closeStaffDetail()}>
           <GroobeySheetDialogContent>

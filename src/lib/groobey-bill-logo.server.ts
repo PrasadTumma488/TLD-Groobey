@@ -49,11 +49,11 @@ function readPublicPng(fileName: string): Uint8Array | null {
   return null;
 }
 
-/** Hi-res PNG for bills (email + PDF). Falls back to UI logo if missing. */
+/** Hi-res PNG for bills (email + PDF). Prefer the same transparent web logo as navbar/footer. */
 export function getGroobeyBillLogoPngBytes(): Uint8Array | null {
   return (
-    readPublicPng(GROOBEY_LOGO_BILL_FILE) ??
     readPublicPng(GROOBEY_WEB_LOGO_FILE) ??
+    readPublicPng(GROOBEY_LOGO_BILL_FILE) ??
     readPublicPng(GROOBEY_LOGO_FILE)
   );
 }

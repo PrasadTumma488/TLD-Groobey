@@ -11,6 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { isValidCustomerMobile } from "@/lib/groobey-delivery-order-fields";
 import { safeInternalRedirect } from "@/lib/groobey-guest-shop-cart";
 import { SHOW_CUSTOMER_PORTAL } from "@/lib/groobey-site-visibility";
+import { groobeyPageHead } from "@/lib/groobey-seo";
 import { registerCustomerAccount } from "@/lib/tldGroobey.functions";
 
 type SignupSearch = {
@@ -18,6 +19,12 @@ type SignupSearch = {
 };
 
 export const Route = createFileRoute("/signup")({
+  head: () =>
+    groobeyPageHead({
+      title: "Create Account",
+      description: "Register for TLD Groobey to order fresh groceries online with doorstep delivery.",
+      path: "/signup",
+    }),
   validateSearch: (search: Record<string, unknown>): SignupSearch => ({
     redirect: typeof search.redirect === "string" ? search.redirect : undefined,
   }),
@@ -106,7 +113,7 @@ function SignupPage() {
         <div className="rounded-2xl border border-border/80 bg-card p-6 shadow-[var(--shadow-soft)] sm:p-8">
           <GroobeyAuthBrand
             title="Create your account"
-            subtitle="Everyone starts here - customers, delivery staff, and admins. Use your assigned email if admin invited you."
+            subtitle="Customers shop here. Delivery staff: use the email your admin assigned, then sign in."
           />
           <form className="mt-6 space-y-3" onSubmit={handleSignup}>
             <Field name="displayName" label="Your name" icon={UserRound} required />

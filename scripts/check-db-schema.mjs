@@ -57,6 +57,10 @@ const checks = {
   "profiles.default_address": () => columnExists("profiles", "default_address"),
   "profiles.shop_slug": () => columnExists("profiles", "shop_slug"),
   staff_email_assignments: () => tableExists("staff_email_assignments"),
+  "customer_orders.bill_number": () => columnExists("customer_orders", "bill_number"),
+  "customer_orders.assigned_delivery_user_id": () =>
+    columnExists("customer_orders", "assigned_delivery_user_id"),
+  "customer_orders.delivery_charge": () => columnExists("customer_orders", "delivery_charge"),
   register_customer_self: () =>
     rpcExists("register_customer_self", {
       p_display_name: "x",
@@ -65,6 +69,17 @@ const checks = {
       p_default_address: "",
     }),
   purge_my_old_customer_orders: () => rpcExists("purge_my_old_customer_orders", { p_days: 15 }),
+  shop_combos: () => tableExists("shop_combos"),
+  next_groobey_customer_order_bill_number: () => rpcExists("next_groobey_customer_order_bill_number"),
+  mark_assigned_order_status: () =>
+    rpcExists("mark_assigned_order_status", {
+      p_order_id: "00000000-0000-0000-0000-000000000000",
+      p_status: "delivered",
+    }),
+  archive_customer_order: () =>
+    rpcExists("archive_customer_order", {
+      p_order_id: "00000000-0000-0000-0000-000000000000",
+    }),
 };
 
 const results = {};
@@ -76,6 +91,8 @@ console.log(JSON.stringify(results, null, 2));
 const missing = Object.entries(results).filter(([, ok]) => !ok).map(([k]) => k);
 if (missing.length) {
   console.error("\nMissing on remote:", missing.join(", "));
+  console.error("Run: npm run env:db-password -- YOUR_DATABASE_PASSWORD");
+  console.error("Then: npm run db:push");
   process.exit(2);
 }
-console.log("\nRemote schema looks up to date for customer shop features.");
+console.log("\nRemote schema looks up to date for customer, delivery, and admin workflows.");

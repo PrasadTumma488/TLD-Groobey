@@ -2,6 +2,7 @@ import { cn } from "@/lib/utils";
 import { GROOBEY_LOGO_DISPLAY, GROOBEY_WEB_LOGO_PATH } from "@/lib/groobey-brand";
 
 const sizeClass = {
+  xs: "h-9",
   sm: "h-12",
   md: "h-16",
   lg: "h-[5.25rem]",
@@ -9,6 +10,7 @@ const sizeClass = {
 } as const;
 
 const sizePx = {
+  xs: GROOBEY_LOGO_DISPLAY.uiXs,
   sm: GROOBEY_LOGO_DISPLAY.uiSm,
   md: GROOBEY_LOGO_DISPLAY.uiMd,
   lg: GROOBEY_LOGO_DISPLAY.uiLg,
@@ -19,11 +21,14 @@ export function GroobeyBrandLogo({
   className,
   size = "md",
   withPlate = false,
+  compactPlate = false,
 }: {
   className?: string;
   size?: keyof typeof sizeClass;
   /** Subtle frame so the black logo field reads on light cards. */
   withPlate?: boolean;
+  /** Tighter black plate for dashboard headers. */
+  compactPlate?: boolean;
 }) {
   const img = (
     <img
@@ -32,10 +37,12 @@ export function GroobeyBrandLogo({
       width={sizePx[size]}
       height={sizePx[size]}
       className={cn(
-        "w-auto max-w-[min(100%,16rem)] shrink-0 object-contain",
+        "groobey-brand-logo-img w-auto max-w-[min(100%,16rem)] shrink-0 object-contain",
         !className && sizeClass[size],
       )}
       decoding="async"
+      loading={size === "xl" || size === "lg" ? "eager" : "lazy"}
+      fetchPriority={size === "xl" || size === "lg" ? "high" : "auto"}
     />
   );
 
@@ -49,7 +56,10 @@ export function GroobeyBrandLogo({
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center justify-center rounded-xl border border-primary/40 bg-[#0a0a0a] p-2 shadow-[0_8px_24px_-8px_rgba(154,205,50,0.45)]",
+        "inline-flex shrink-0 items-center justify-center bg-[#0a0a0a]",
+        compactPlate ?
+          "rounded-lg border border-primary/35 p-1 shadow-[0_4px_14px_-8px_rgba(154,205,50,0.45)]"
+        : "rounded-xl border border-primary/40 p-2 shadow-[0_8px_24px_-8px_rgba(154,205,50,0.45)]",
         className,
       )}
     >
@@ -87,28 +97,80 @@ export function GroobeyDashboardHeader({
   title,
   subtitle,
   actions,
+  compact = true,
+  showLogo = false,
 }: {
   title: string;
   subtitle?: string;
   actions?: React.ReactNode;
+  /** Tighter title and action row for workspace dashboards. */
+  compact?: boolean;
+  /** Dashboard headers use text only — no TLD logo image. */
+  showLogo?: boolean;
 }) {
+  const logoSize = compact ? "xs" : "md";
+  const mobileLogoSize = compact ? "xs" : "sm";
+
   return (
-    <header className="groobey-header-safe sticky top-0 z-20 border-b-2 border-primary/25 bg-card/92 px-4 pb-3 shadow-soft backdrop-blur-xl">
-      <div className="mx-auto flex max-w-7xl flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-        <div className="flex min-w-0 flex-1 items-center gap-2.5 sm:gap-4">
-          <GroobeyBrandLogo size="md" withPlate className="hidden sm:inline-flex" />
-          <GroobeyBrandLogo size="sm" withPlate className="sm:hidden" />
-          <div className="min-w-0 border-l-2 border-primary/30 pl-2.5 sm:pl-4">
-            <h1 className="truncate text-base font-black tracking-tight sm:text-2xl">{title}</h1>
+    <header
+      className={cn(
+        "groobey-header-safe sticky top-0 z-20 border-b border-border/60 bg-transparent",
+        compact ? "groobey-dashboard-header--compact px-3 pb-2 pt-1" : "border-b-2 border-primary/25 px-4 pb-3",
+      )}
+    >
+      <div
+        className={cn(
+          "mx-auto flex w-full max-w-7xl gap-2",
+          compact ?
+            "flex-row items-center justify-between"
+          : "flex-col sm:flex-row sm:items-center sm:justify-between sm:gap-3",
+        )}
+      >
+        <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-2.5">
+          {showLogo ?
+            <>
+              <GroobeyBrandLogo
+                size={logoSize}
+                withPlate
+                compactPlate={compact}
+                className="hidden shrink-0 sm:inline-flex"
+              />
+              <GroobeyBrandLogo
+                size={mobileLogoSize}
+                withPlate
+                compactPlate={compact}
+                className="shrink-0 sm:hidden"
+              />
+            </>
+          : null}
+          <div
+            className={cn(
+              "min-w-0",
+              showLogo && "border-l border-primary/25 pl-2 sm:pl-2.5",
+            )}
+          >
+            <h1
+              className={cn(
+                "truncate font-black tracking-tight text-foreground",
+                compact ? "text-sm leading-tight sm:text-base" : "text-base sm:text-2xl",
+              )}
+            >
+              {title}
+            </h1>
             {subtitle ?
-              <p className="truncate text-[11px] font-semibold text-muted-foreground sm:text-xs">
+              <p
+                className={cn(
+                  "truncate font-semibold text-muted-foreground",
+                  compact ? "text-[10px] leading-snug sm:text-[11px]" : "text-[11px] sm:text-xs",
+                )}
+              >
                 {subtitle}
               </p>
             : null}
           </div>
         </div>
         {actions ?
-          <div className="flex w-full shrink-0 flex-wrap items-stretch justify-end gap-1.5 sm:w-auto sm:items-center sm:gap-2">
+          <div className="groobey-dashboard-header-actions flex shrink-0 items-center justify-end gap-1 sm:gap-1.5">
             {actions}
           </div>
         : null}

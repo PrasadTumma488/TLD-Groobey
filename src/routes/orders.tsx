@@ -7,8 +7,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { parseRoleFromAuthClaims } from "@/lib/groobey-auth-role";
 import { resolvePrimaryDashboard } from "@/lib/groobey-dashboard-path";
 import { SHOW_ORDER_TAKER_PORTAL } from "@/lib/groobey-site-visibility";
+import { groobeyNoIndexHead } from "@/lib/groobey-seo";
 
 export const Route = createFileRoute("/orders")({
+  head: () => groobeyNoIndexHead("Orders"),
   component: OrdersRoute,
 });
 

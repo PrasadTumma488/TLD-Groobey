@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { CustomerLoginFooter, GroobeyLoginCard } from "@/components/groobey/groobey-login-card";
 import { GroobeyPublicLayout } from "@/components/groobey/groobey-public-layout";
 import { groobeySignOut } from "@/lib/groobey-auth-logout";
+import { groobeyPageHead } from "@/lib/groobey-seo";
 import { SHOW_CUSTOMER_PORTAL } from "@/lib/groobey-site-visibility";
 
 type LoginSearch = {
@@ -10,6 +11,12 @@ type LoginSearch = {
 };
 
 export const Route = createFileRoute("/login")({
+  head: () =>
+    groobeyPageHead({
+      title: "Sign In",
+      description: "Sign in to your TLD Groobey account to shop groceries and track orders.",
+      path: "/login",
+    }),
   validateSearch: (search: Record<string, unknown>): LoginSearch => ({
     redirect: typeof search.redirect === "string" ? search.redirect : undefined,
   }),

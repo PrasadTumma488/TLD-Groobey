@@ -86,11 +86,16 @@ const DELIVERY_MINUTE_SLOTS = ["00", "10", "20", "30", "40", "50"] as const;
 export function AccountForm({
   onCreate,
   resetNonce = 0,
+  deliveryOnly = false,
 }: {
   onCreate: (event: FormEvent<HTMLFormElement>) => void;
   resetNonce?: number;
+  /** Platform admin delivery tab — skip role picker and assign delivery boy only. */
+  deliveryOnly?: boolean;
 }) {
-  const [selectedRole, setSelectedRole] = useState<"" | "merchant" | "employee" | "order_taker">("");
+  const [selectedRole, setSelectedRole] = useState<"" | "merchant" | "employee" | "order_taker">(
+    deliveryOnly ? "employee" : "",
+  );
   const roleChosen =
     selectedRole === "merchant" || selectedRole === "employee" || selectedRole === "order_taker";
 
@@ -129,32 +134,36 @@ export function AccountForm({
     : "Choose Delivery boy to show the assignment fields.";
 
   useEffect(() => {
-    setSelectedRole("");
-  }, [resetNonce]);
+    setSelectedRole(deliveryOnly ? "employee" : "");
+  }, [resetNonce, deliveryOnly]);
 
   return (
     <form className="groobey-workspace-form space-y-3" onSubmit={onCreate}>
         <p className="text-center text-xs font-semibold text-muted-foreground sm:text-left">
-          {rolePickerHint}
+          {deliveryOnly ?
+            "Enter the delivery boy name and email. They register at Sign up on the website with the same email, then sign in to open their delivery dashboard."
+          : rolePickerHint}
         </p>
 
         <GroobeyWorkspaceFormCard>
           <div className="grid gap-4">
-            <label className="grid gap-1.5 text-sm font-semibold text-foreground">
-              Login role
-              <input type="hidden" name="role" value={selectedRole} />
-              <GroobeySelect
-                value={selectedRole || "__choose_role__"}
-                onValueChange={(v) =>
-                  setSelectedRole(
-                    v === "__choose_role__" ? "" : (v as "merchant" | "employee" | "order_taker"),
-                  )
-                }
-                options={staffRoleOptions}
-              />
-            </label>
+            {!deliveryOnly ?
+              <label className="grid gap-1.5 text-sm font-semibold text-foreground">
+                Login role
+                <input type="hidden" name="role" value={selectedRole} />
+                <GroobeySelect
+                  value={selectedRole || "__choose_role__"}
+                  onValueChange={(v) =>
+                    setSelectedRole(
+                      v === "__choose_role__" ? "" : (v as "merchant" | "employee" | "order_taker"),
+                    )
+                  }
+                  options={staffRoleOptions}
+                />
+              </label>
+            : <input type="hidden" name="role" value="employee" />}
 
-            {!roleChosen ?
+            {!roleChosen && !deliveryOnly ?
               <p className="rounded-xl border border-dashed border-border bg-muted/30 px-3 py-4 text-center text-xs font-semibold text-muted-foreground">
                 {chooseRoleHint}
               </p>

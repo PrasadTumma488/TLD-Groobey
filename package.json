@@ -4,11 +4,12 @@
   "sideEffects": false,
   "type": "module",
   "scripts": {
-    "dev": "npm run voice:copy && vite dev",
+    "dev": "npm run voice:copy && npm run home-categories:copy && vite dev",
+    "home-categories:copy": "node scripts/copy-home-category-images.mjs",
     "pwa:icons": "node scripts/generate-pwa-icons.mjs",
     "bill-logo": "node scripts/generate-bill-logo.mjs",
     "voice:copy": "node scripts/copy-welcome-voice.mjs",
-    "prebuild": "npm run pwa:icons && npm run voice:copy",
+    "prebuild": "npm run pwa:icons && npm run voice:copy && npm run home-categories:copy",
     "build": "vite build && node scripts/generate-sw.mjs",
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
@@ -16,6 +17,7 @@
     "format": "prettier --write .",
     "db:check": "node scripts/check-db-schema.mjs",
     "db:push": "node scripts/push-db.mjs",
+    "db:combos": "node scripts/bootstrap-shop-combos.mjs",
     "db:push:cli": "npx supabase db push --linked --yes",
     "env:db-password": "node scripts/set-db-password.mjs",
     "env:service-role": "node scripts/set-supabase-service-role.mjs"

@@ -349,6 +349,45 @@ export type Database = {
           },
         ];
       };
+      shop_combos: {
+        Row: {
+          created_at: string;
+          created_by: string | null;
+          description: string;
+          id: string;
+          image_url: string | null;
+          is_active: boolean;
+          name: string;
+          price: number;
+          sort_order: number;
+          updated_at: string;
+        };
+        Insert: {
+          created_at?: string;
+          created_by?: string | null;
+          description?: string;
+          id?: string;
+          image_url?: string | null;
+          is_active?: boolean;
+          name: string;
+          price?: number;
+          sort_order?: number;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          created_by?: string | null;
+          description?: string;
+          id?: string;
+          image_url?: string | null;
+          is_active?: boolean;
+          name?: string;
+          price?: number;
+          sort_order?: number;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       shops: {
         Row: {
           address: string | null;

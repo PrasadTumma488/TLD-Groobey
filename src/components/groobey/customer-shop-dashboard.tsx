@@ -7,13 +7,17 @@ import { useServerFn } from "@tanstack/react-start";
 import { GroobeyMemberChrome } from "@/components/groobey/groobey-member-chrome";
 import {
   ShopAuthPrompt,
+  ShopBrowseSkeleton,
   ShopCartLineItemsBox,
-  ShopCatalogSkeleton,
   ShopCatalogToolbar,
   ShopCheckoutCartSummary,
+  ShopComboCard,
+  ShopComboDetailSheet,
+  type ShopComboCardItem,
   ShopDeliveryPicker,
   ShopEmptyCategory,
   ShopFlowHeader,
+  ShopFlowStepper,
   ShopLineItemsList,
   ShopOrderEmailNotice,
   ShopPanel,
@@ -41,14 +45,22 @@ import { getBillEmailDeliveryInfo, sendCustomerBillEmail } from "@/lib/tldGroobe
 import { ensureMyShopSlug } from "@/lib/groobey-ensure-shop-slug";
 import {
   filterProductsByHomeCategory,
-  isValidHomeCategoryId,
 } from "@/lib/groobey-home-category-filter";
-import { HOME_CATEGORIES } from "@/lib/groobey-home-categories";
 import {
   type GroceryCartLine,
   groceryCartRetailTotal,
   groceryCartSummaryText,
+  type ShopCombo,
 } from "@/lib/groobey-grocery-cart";
+import {
+  categoryMeta,
+  isCombosBrowseCategory,
+  isValidProductCategoryId,
+  normalizeShopCategoryParam,
+  parseShopBrowseView,
+  SHOP_COMBOS_CATEGORY_ID,
+  shopBrowseCategories,
+} from "@/lib/groobey-shop-browse";
 import {
   clearGuestShopCart,
   loadGuestShopCart,
@@ -65,12 +77,15 @@ type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 type CustomerOrder = Database["public"]["Tables"]["customer_orders"]["Row"];
 type Shop = Database["public"]["Tables"]["shops"]["Row"];
 type ProductRow = Database["public"]["Tables"]["products"]["Row"];
+type ShopComboRow = ShopCombo;
 
 export function CustomerShopDashboard({
   initialCategoryId = null,
+  initialBrowseView = null,
   resumeCheckout = false,
 }: {
   initialCategoryId?: string | null;
+  initialBrowseView?: string | null;
   resumeCheckout?: boolean;
 }) {
   const ensureSlug = useServerFn(ensureMyShopSlug);
@@ -89,6 +104,7 @@ export function CustomerShopDashboard({
     useState<Awaited<ReturnType<typeof supabase.auth.getSession>>["data"]["session"]>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [products, setProducts] = useState<ProductRow[]>([]);
+  const [combos, setCombos] = useState<ShopComboRow[]>([]);
   const [shops, setShops] = useState<Shop[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -102,32 +118,36 @@ export function CustomerShopDashboard({
     fromHeader: string;
   } | null>(null);
   const [lastPlacedOrder, setLastPlacedOrder] = useState<CustomerOrder | null>(null);
-  const [activeCategory, setActiveCategory] = useState(
-    isValidHomeCategoryId(initialCategoryId) ? initialCategoryId : "all",
+  const initialCategory = useMemo(
+    () => normalizeShopCategoryParam(initialCategoryId, initialBrowseView),
+    [initialCategoryId, initialBrowseView],
   );
+  const [productCategory, setProductCategory] = useState(initialCategory);
   const [step, setStep] = useState<ShopStep>("browse");
   const [searchQuery, setSearchQuery] = useState("");
   const [cartHydrated, setCartHydrated] = useState(false);
   const [cartBump, setCartBump] = useState(false);
+  const [detailCombo, setDetailCombo] = useState<ShopComboCardItem | null>(null);
   const cartFlyTargetRef = useRef<HTMLDivElement>(null);
+  const checkoutFormRef = useRef<HTMLFormElement>(null);
 
   const isSignedIn = Boolean(session?.user);
   const profileReady = isCustomerProfileComplete(profile, session?.user?.email);
   const profileSnap = customerProfileSnapshot(profile, session?.user?.email);
 
   useEffect(() => {
-    if (isValidHomeCategoryId(initialCategoryId)) {
-      setActiveCategory(initialCategoryId);
-    }
-  }, [initialCategoryId]);
+    setProductCategory(normalizeShopCategoryParam(initialCategoryId, initialBrowseView));
+  }, [initialCategoryId, initialBrowseView]);
 
   useEffect(() => {
     const saved = loadGuestShopCart();
     if (saved?.lines.length) {
       setCartLines(saved.lines);
     }
-    if (saved?.category && isValidHomeCategoryId(saved.category)) {
-      setActiveCategory(saved.category);
+    if (saved?.category && isValidProductCategoryId(saved.category)) {
+      setProductCategory(saved.category);
+    } else if (saved?.browseView && parseShopBrowseView(saved.browseView) === "combos") {
+      setProductCategory(SHOP_COMBOS_CATEGORY_ID);
     }
     if (resumeCheckout && saved?.lines.length) {
       setStep("checkout");
@@ -142,22 +162,34 @@ export function CustomerShopDashboard({
     saveGuestShopCart({
       lines: cartLines,
       step,
-      category: activeCategory,
+      category: productCategory,
     });
-  }, [cartLines, step, activeCategory, cartHydrated]);
+  }, [cartLines, step, productCategory, cartHydrated]);
+
+  const loadCombos = useCallback(async () => {
+    const { data } = await supabase
+      .from("shop_combos")
+      .select("*")
+      .eq("is_active", true)
+      .order("sort_order")
+      .order("name");
+    setCombos((data ?? []) as ShopComboRow[]);
+  }, []);
 
   const load = useCallback(async () => {
     const { data: sess } = await supabase.auth.getSession();
     const user = sess.session?.user;
 
     if (!user) {
-      const [prod, shopRows] = await Promise.all([
+      const [prod, comboRows, shopRows] = await Promise.all([
         supabase.from("products").select("*").eq("is_active", true).order("name"),
+        supabase.from("shop_combos").select("*").eq("is_active", true).order("sort_order").order("name"),
         supabase.from("shops").select("*").eq("is_active", true).order("name"),
       ]);
       setSession(null);
       setProfile(null);
       setProducts(prod.data ?? []);
+      setCombos((comboRows.data ?? []) as ShopComboRow[]);
       setShops(shopRows.data ?? []);
       setLoading(false);
       return;
@@ -172,14 +204,16 @@ export function CustomerShopDashboard({
       }
     }
 
-    const [prof, prod, shopRows] = await Promise.all([
+    const [prof, prod, comboRows, shopRows] = await Promise.all([
       supabase.from("profiles").select("*").eq("user_id", user.id).maybeSingle(),
       supabase.from("products").select("*").eq("is_active", true).order("name"),
+      supabase.from("shop_combos").select("*").eq("is_active", true).order("sort_order").order("name"),
       supabase.from("shops").select("*").eq("is_active", true).order("name"),
     ]);
 
     setProfile((prof.data as Profile | null) ?? null);
     setProducts(prod.data ?? []);
+    setCombos((comboRows.data ?? []) as ShopComboRow[]);
     setShops(shopRows.data ?? []);
     setLoading(false);
   }, [ensureSlug]);
@@ -187,6 +221,22 @@ export function CustomerShopDashboard({
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel("customer-shop-combos")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "shop_combos" },
+        () => {
+          void loadCombos();
+        },
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [loadCombos]);
 
   useEffect(() => {
     const { data: listener } = supabase.auth.onAuthStateChange(() => {
@@ -211,27 +261,40 @@ export function CustomerShopDashboard({
     return () => window.clearTimeout(timer);
   }, [emailNotice]);
 
-  const activeCategoryMeta = useMemo(() => {
-    if (activeCategory === "all") return { id: "all", label: "All categories", subtitle: "" };
-    return HOME_CATEGORIES.find((cat) => cat.id === activeCategory) ?? HOME_CATEGORIES[0];
-  }, [activeCategory]);
+  const activeCategoryMeta = useMemo(() => categoryMeta(productCategory), [productCategory]);
+
+  const browsingCombos = isCombosBrowseCategory(productCategory);
+  const shopCategories = useMemo(() => shopBrowseCategories(), []);
 
   const visibleProducts = useMemo(() => {
-    const categoryId = activeCategory === "all" ? null : activeCategory;
+    if (browsingCombos) return [];
+    const categoryId = productCategory === "all" ? null : productCategory;
     let list = filterProductsByHomeCategory(products, categoryId);
     const q = searchQuery.trim().toLowerCase();
     if (q) {
       list = list.filter((product) => product.name.toLowerCase().includes(q));
     }
     return list;
-  }, [products, activeCategory, searchQuery]);
+  }, [products, productCategory, searchQuery, browsingCombos]);
+
+  const visibleCombos = useMemo(() => {
+    if (!browsingCombos) return [];
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return combos;
+    return combos.filter(
+      (combo) =>
+        combo.name.toLowerCase().includes(q) || combo.description.toLowerCase().includes(q),
+    );
+  }, [combos, searchQuery, browsingCombos]);
+
+  const browseResultCount = browsingCombos ? visibleCombos.length : visibleProducts.length;
   const cartTotal = useMemo(
-    () => groceryCartRetailTotal(cartLines, products),
-    [cartLines, products],
+    () => groceryCartRetailTotal(cartLines, products, combos),
+    [cartLines, products, combos],
   );
   const orderItemsText = useMemo(
-    () => groceryCartSummaryText(cartLines, products),
-    [cartLines, products],
+    () => groceryCartSummaryText(cartLines, products, combos),
+    [cartLines, products, combos],
   );
   const cartCount = useMemo(
     () => cartLines.reduce((sum, line) => sum + line.quantity, 0),
@@ -242,27 +305,56 @@ export function CustomerShopDashboard({
     isSignedIn ?
       profile?.display_name?.trim() || session?.user?.email?.split("@")[0] || "there"
     : "Shop";
-  const authOptions = { checkout: true, category: activeCategory };
+  const authOptions = {
+    checkout: true,
+    category: productCategory,
+  };
   const loginHref = shopLoginHref(authOptions);
   const signupHref = shopSignupHref(authOptions);
   const profileEditHref = shopProfileEditHref(authOptions);
 
+  function shopSearchParams(category: string) {
+    if (category === "all") return {};
+    return { category };
+  }
+
   function selectCategory(categoryId: string) {
-    setActiveCategory(categoryId);
-    if (categoryId === "all") {
-      void navigate({ to: shopPath, search: {}, replace: true });
-      return;
-    }
+    setProductCategory(categoryId);
     void navigate({
       to: shopPath,
-      search: { category: categoryId },
+      search: shopSearchParams(categoryId),
       replace: true,
     });
   }
 
+  function addComboToCart(comboId: string, sourceEl?: HTMLElement) {
+    setCartLines((lines) => {
+      const idx = lines.findIndex((row) => row.comboId === comboId);
+      if (idx === -1) return [...lines, { comboId, quantity: 1 }];
+      const next = [...lines];
+      next[idx] = { ...next[idx], quantity: next[idx].quantity + 1 };
+      return next;
+    });
+    setAlert({});
+    if (sourceEl) triggerFlyToCart(sourceEl);
+  }
+
+  function updateComboQty(comboId: string, delta: number, sourceEl?: HTMLElement) {
+    if (delta > 0 && sourceEl) triggerFlyToCart(sourceEl);
+    setCartLines((lines) =>
+      lines
+        .map((line) =>
+          line.comboId === comboId ?
+            { ...line, quantity: Math.max(0, line.quantity + delta) }
+          : line,
+        )
+        .filter((line) => line.quantity > 0),
+    );
+  }
+
   function goToStep(next: ShopStep) {
     if (!isSignedIn && next === "checkout") {
-      saveGuestShopCart({ lines: cartLines, step: "checkout", category: activeCategory });
+      saveGuestShopCart({ lines: cartLines, step: "checkout", category: productCategory });
       setStep("checkout");
       return;
     }
@@ -274,7 +366,7 @@ export function CustomerShopDashboard({
     if (!target) return;
     flyProductToCart(sourceEl, target);
     setCartBump(true);
-    window.setTimeout(() => setCartBump(false), 420);
+    window.setTimeout(() => setCartBump(false), 520);
   }
 
   function addToCart(productId: string, sourceEl?: HTMLElement) {
@@ -308,20 +400,33 @@ export function CustomerShopDashboard({
     () =>
       cartLines
         .map((line) => {
+          if (line.comboId) {
+            const combo = combos.find((c) => c.id === line.comboId);
+            if (!combo) return null;
+            return {
+              key: `combo-${line.comboId}`,
+              name: `Combo: ${combo.name}`,
+              unitPrice: combo.price,
+              unit: "pack",
+              quantity: line.quantity,
+              onUpdateQty: (delta: number, sourceEl?: HTMLElement) =>
+                updateComboQty(line.comboId!, delta, sourceEl),
+            };
+          }
           const product = products.find((p) => p.id === line.productId);
           if (!product) return null;
           return {
-            key: line.productId,
+            key: line.productId!,
             name: product.name,
             unitPrice: product.price,
             unit: product.unit,
             quantity: line.quantity,
             onUpdateQty: (delta: number, sourceEl?: HTMLElement) =>
-              updateQty(line.productId, delta, sourceEl),
+              updateQty(line.productId!, delta, sourceEl),
           };
         })
         .filter(Boolean) as React.ComponentProps<typeof ShopLineItemsList>["items"],
-    [cartLines, products],
+    [cartLines, products, combos],
   );
 
   function viewOrderBill(order: CustomerOrder) {
@@ -524,8 +629,19 @@ export function CustomerShopDashboard({
     : step === "cart" ? "Checkout"
     : "View cart";
 
+  function submitCheckoutForm() {
+    checkoutFormRef.current?.requestSubmit();
+  }
+
   return (
-    <GroobeyMemberChrome className="groobey-shop-page pb-10">
+    <GroobeyMemberChrome
+      className={cn(
+        "groobey-shop-page pb-10",
+        step === "browse" && "groobey-shop-page--browse",
+        step === "cart" && "groobey-shop-page--cart",
+        step === "checkout" && "groobey-shop-page--checkout",
+      )}
+    >
       <div className="groobey-shop-wrap">
         {step === "browse" ?
           <header className="groobey-shop-topbar groobey-shop-topbar--compact">
@@ -559,13 +675,13 @@ export function CustomerShopDashboard({
           />
         }
 
+        <ShopFlowStepper step={step} cartCount={cartCount} onStepChange={goToStep} />
+
         {showCartBar ?
           <ShopCartActionBar
             cartCount={cartCount}
             subtotal={cartTotal}
             label={cartBarLabel}
-            formId={canCheckout ? "groobey-shop-checkout-form" : undefined}
-            actionType={canCheckout ? "submit" : "button"}
             saving={canCheckout ? saving : false}
             disabled={step === "checkout" && !isSignedIn}
             flyTargetRef={cartFlyTargetRef}
@@ -573,7 +689,7 @@ export function CustomerShopDashboard({
             onAction={
               step === "browse" ? () => goToStep("cart")
               : step === "cart" ? () => goToStep("checkout")
-              : !isSignedIn ? () => goToStep("checkout")
+              : canCheckout ? submitCheckoutForm
               : undefined
             }
           />
@@ -597,27 +713,67 @@ export function CustomerShopDashboard({
         : null}
 
         {loading ?
-          <ShopCatalogSkeleton />
-        : <>
+          <ShopBrowseSkeleton combos={browsingCombos} />
+        : <div className="groobey-shop-content-enter">
             {step === "browse" ?
-              <section className="groobey-shop-browse">
+              <section className={cn("groobey-shop-browse", browsingCombos && "groobey-shop-browse--combos")}>
                 <ShopCatalogToolbar
-                  categories={HOME_CATEGORIES}
-                  activeId={activeCategory}
+                  categories={shopCategories}
+                  activeId={productCategory}
                   onCategoryChange={selectCategory}
                   searchQuery={searchQuery}
                   onSearchChange={setSearchQuery}
-                  resultCount={visibleProducts.length}
+                  resultCount={browseResultCount}
+                  browseMode={browsingCombos ? "combos" : "items"}
                 />
 
-                <div className="groobey-shop-catalog-head groobey-shop-catalog-head--browse">
+                <div
+                  className={cn(
+                    "groobey-shop-catalog-head groobey-shop-catalog-head--browse",
+                    browsingCombos && "groobey-shop-catalog-head--combos",
+                  )}
+                >
                   <h2 className="groobey-shop-catalog-title">{activeCategoryMeta.label}</h2>
                   {activeCategoryMeta.subtitle ?
                     <p className="groobey-shop-catalog-sub">{activeCategoryMeta.subtitle}</p>
                   : null}
                 </div>
 
-                {visibleProducts.length === 0 ?
+                {browsingCombos ?
+                  visibleCombos.length === 0 ?
+                    <ShopEmptyCategory
+                      categoryLabel={
+                        searchQuery.trim() ?
+                          `“${searchQuery.trim()}”`
+                        : "combos"
+                      }
+                    />
+                  : <div className="groobey-shop-combo-catalog groobey-shop-combo-catalog--centered">
+                      {visibleCombos.map((combo) => {
+                        const inCart = cartLines.find((l) => l.comboId === combo.id);
+                        const cardCombo: ShopComboCardItem = {
+                          id: combo.id,
+                          name: combo.name,
+                          description: combo.description,
+                          price: combo.price,
+                          imageUrl: combo.image_url,
+                        };
+                        return (
+                          <ShopComboCard
+                            key={combo.id}
+                            combo={cardCombo}
+                            quantity={inCart?.quantity ?? 0}
+                            onOpenDetail={() => setDetailCombo(cardCombo)}
+                            onAdd={(sourceEl) => addComboToCart(combo.id, sourceEl)}
+                            onUpdateQty={(delta, sourceEl) =>
+                              updateComboQty(combo.id, delta, sourceEl)
+                            }
+                          />
+                        );
+                      })}
+                    </div>
+
+                : visibleProducts.length === 0 ?
                   <ShopEmptyCategory
                     categoryLabel={
                       searchQuery.trim() ?
@@ -712,6 +868,7 @@ export function CustomerShopDashboard({
                   </ShopPanel>
                 : <ShopPanel>
                     <form
+                      ref={checkoutFormRef}
                       id="groobey-shop-checkout-form"
                       className="groobey-shop-checkout-form"
                       onSubmit={handlePlaceOrder}
@@ -808,10 +965,30 @@ export function CustomerShopDashboard({
               </div>
             : null}
 
-          </>
+          </div>
         }
       </div>
 
+      <ShopComboDetailSheet
+        combo={detailCombo}
+        open={detailCombo != null}
+        onOpenChange={(open) => {
+          if (!open) setDetailCombo(null);
+        }}
+        quantity={
+          detailCombo ?
+            cartLines.find((l) => l.comboId === detailCombo.id)?.quantity ?? 0
+          : 0
+        }
+        onAdd={(sourceEl) => {
+          if (!detailCombo) return;
+          addComboToCart(detailCombo.id, sourceEl);
+        }}
+        onUpdateQty={(delta, sourceEl) => {
+          if (!detailCombo) return;
+          updateComboQty(detailCombo.id, delta, sourceEl);
+        }}
+      />
     </GroobeyMemberChrome>
   );
 }

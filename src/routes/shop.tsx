@@ -8,22 +8,32 @@ import { ensureMyShopSlug } from "@/lib/groobey-ensure-shop-slug";
 import { resolveSessionAccessFromSession } from "@/lib/groobey-public-access";
 import { bootstrapAllowlistedRoles } from "@/lib/groobey-session-bootstrap";
 import { SHOW_CUSTOMER_PORTAL } from "@/lib/groobey-site-visibility";
+import { groobeyPageHead } from "@/lib/groobey-seo";
 
 type ShopSearch = {
   category?: string;
+  view?: string;
   checkout?: string;
 };
 
 export const Route = createFileRoute("/shop")({
+  head: () =>
+    groobeyPageHead({
+      title: "Shop Groceries Online",
+      description:
+        "Browse groceries, vegetables, fruits, and combo packs. Add to cart and order delivery with TLD Groobey.",
+      path: "/shop",
+    }),
   validateSearch: (search: Record<string, unknown>): ShopSearch => ({
     category: typeof search.category === "string" ? search.category : undefined,
+    view: typeof search.view === "string" ? search.view : undefined,
     checkout: typeof search.checkout === "string" ? search.checkout : undefined,
   }),
   component: ShopRoute,
 });
 
 function ShopRoute() {
-  const { category, checkout } = Route.useSearch();
+  const { category, view, checkout } = Route.useSearch();
   const [ui, setUi] = useState<"load" | "ok" | "off" | "redirect">("load");
   const [redirectTo, setRedirectTo] = useState<string | null>(null);
 
@@ -57,6 +67,7 @@ function ShopRoute() {
       if (access.shopPath && access.shopPath !== "/shop") {
         const params = new URLSearchParams();
         if (category) params.set("category", category);
+        if (view) params.set("view", view);
         if (checkout === "1") params.set("checkout", "1");
         const suffix = params.toString() ? `?${params}` : "";
         setRedirectTo(`${access.shopPath}${suffix}`);
@@ -69,7 +80,7 @@ function ShopRoute() {
     return () => {
       cancelled = true;
     };
-  }, [category, checkout]);
+  }, [category, view, checkout]);
 
   if (ui === "load") return <GroobeyLoadingScreen message="Loading shop…" />;
   if (ui === "off") return <Navigate to="/" replace />;
@@ -78,6 +89,7 @@ function ShopRoute() {
   return (
     <CustomerShopDashboard
       initialCategoryId={category ?? null}
+      initialBrowseView={view ?? null}
       resumeCheckout={checkout === "1"}
     />
   );

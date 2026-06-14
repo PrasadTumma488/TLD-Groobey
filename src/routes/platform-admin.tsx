@@ -6,8 +6,10 @@ import { GroobeyMemberChrome } from "@/components/groobey/groobey-member-chrome"
 import { OwnerDashboard } from "@/components/groobey/owner-dashboard";
 import { supabase } from "@/integrations/supabase/client";
 import { verifyDashboardAccess } from "@/lib/groobey-route-guard";
+import { groobeyNoIndexHead } from "@/lib/groobey-seo";
 
 export const Route = createFileRoute("/platform-admin")({
+  head: () => groobeyNoIndexHead("Platform Admin"),
   component: PlatformAdminRoute,
 });
 

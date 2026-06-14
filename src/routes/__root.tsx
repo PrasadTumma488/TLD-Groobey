@@ -4,7 +4,6 @@ import {
   createRootRoute,
   HeadContent,
   Scripts,
-  useRouterState,
 } from "@tanstack/react-router";
 
 import { GroobeyBillPreviewModal } from "@/components/groobey/groobey-bill-preview-modal";
@@ -15,13 +14,16 @@ import { GroobeySiteFooter } from "@/components/groobey/groobey-site-footer";
 import { GroobeyWelcomeVoice } from "@/components/groobey/groobey-welcome-voice";
 import { PwaRegister } from "@/components/groobey/pwa-register";
 import { GROOBEY_FAVICON_VERSION } from "@/lib/groobey-favicon-version";
+import { GROOBEY_WELCOME_VOICE_SRC } from "@/lib/groobey-welcome-voice";
+import { GROOBEY_WEB_LOGO_PATH } from "@/lib/groobey-brand";
+import { GROOBEY_SEO_DEFAULT_DESCRIPTION, GROOBEY_SEO_SITE_NAME, GROOBEY_GOOGLE_SITE_VERIFICATION, groobeyShareImageUrl } from "@/lib/groobey-seo";
 import appCss from "../styles.css?url";
 
 const favicon = (file: string) => `${file}?v=${GROOBEY_FAVICON_VERSION}`;
 
 const PWA_THEME_COLOR = "#9ACD32";
-const PWA_DESCRIPTION =
-  "Groobey merchant hub for grocery retail - shop owners, staff, order takers, and platform admin.";
+const PWA_DESCRIPTION = GROOBEY_SEO_DEFAULT_DESCRIPTION;
+const SEO_SHARE_IMAGE = groobeyShareImageUrl();
 
 function NotFoundComponent() {
   return (
@@ -55,25 +57,31 @@ export const Route = createRootRoute({
         name: "viewport",
         content: "width=device-width, initial-scale=1, viewport-fit=cover",
       },
-      { title: "Groobey Merchant Hub" },
+      { title: `${GROOBEY_SEO_SITE_NAME} - Fresh Groceries Online` },
       { name: "description", content: PWA_DESCRIPTION },
-      { name: "application-name", content: "Groobey" },
+      { name: "application-name", content: GROOBEY_SEO_SITE_NAME },
       { name: "theme-color", content: PWA_THEME_COLOR },
       { name: "mobile-web-app-capable", content: "yes" },
       { name: "apple-mobile-web-app-capable", content: "yes" },
       { name: "apple-mobile-web-app-status-bar-style", content: "default" },
-      { name: "apple-mobile-web-app-title", content: "Groobey" },
+      { name: "apple-mobile-web-app-title", content: GROOBEY_SEO_SITE_NAME },
       { name: "format-detection", content: "telephone=no" },
-      { name: "author", content: "TLD Groobey" },
-      { name: "generator", content: "Groobey Merchant Hub" },
-      { property: "og:title", content: "Groobey Merchant Hub" },
+      { name: "author", content: GROOBEY_SEO_SITE_NAME },
+      { name: "google-site-verification", content: GROOBEY_GOOGLE_SITE_VERIFICATION },
+      { property: "og:title", content: `${GROOBEY_SEO_SITE_NAME} - Fresh Groceries Online` },
       { property: "og:description", content: PWA_DESCRIPTION },
       { property: "og:type", content: "website" },
+      { property: "og:site_name", content: GROOBEY_SEO_SITE_NAME },
+      { property: "og:image", content: SEO_SHARE_IMAGE },
+      { property: "og:locale", content: "en_IN" },
       { name: "twitter:card", content: "summary" },
+      { name: "twitter:image", content: SEO_SHARE_IMAGE },
     ],
     links: [
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
+      { rel: "preload", href: GROOBEY_WEB_LOGO_PATH, as: "image", type: "image/png" },
+      { rel: "preload", href: GROOBEY_WELCOME_VOICE_SRC, as: "fetch", crossOrigin: "anonymous" },
       {
         rel: "stylesheet",
         href: "https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&display=swap",
@@ -98,6 +106,7 @@ function RootShell({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <head>
+        <meta name="google-site-verification" content={GROOBEY_GOOGLE_SITE_VERIFICATION} />
         <link rel="icon" href={favicon("/favicon.ico")} sizes="any" />
         <link rel="icon" type="image/png" sizes="32x32" href={favicon("/favicon-32x32.png")} />
         <HeadContent />
@@ -112,11 +121,10 @@ function RootShell({ children }: { children: React.ReactNode }) {
 }
 
 function RootComponent() {
-  const pathname = useRouterState({ select: (s) => s.location.pathname });
   return (
     <GroobeyEnvBootstrap>
       <GroobeyHashScroll />
-      {pathname === "/" ? <GroobeyWelcomeVoice /> : null}
+      <GroobeyWelcomeVoice />
       <Outlet />
       <GroobeyBillPreviewModal />
     </GroobeyEnvBootstrap>

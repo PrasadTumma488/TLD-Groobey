@@ -108,20 +108,24 @@ export async function buildGroobeyBillPdfBuffer(params: GroobeyBillPdfParams): P
         GROOBEY_LOGO_DISPLAY.billMaxWidthPx,
         (img.width / img.height) * logoH,
       );
+      const bandPad = 8;
+      const bandH = logoH + bandPad * 2;
+      const bandW = Math.min(contentW, logoW + 48);
+      const bandX = centerX - bandW / 2;
+      page.drawRectangle({
+        x: bandX,
+        y: y - bandH,
+        width: bandW,
+        height: bandH,
+        color: rgb(0.04, 0.04, 0.04),
+      });
       page.drawImage(img, {
         x: centerX - logoW / 2,
-        y: y - logoH,
+        y: y - bandPad - logoH,
         width: logoW,
         height: logoH,
       });
-      y -= logoH + 10;
-      page.drawLine({
-        start: { x: MARGIN, y },
-        end: { x: PAGE_W - MARGIN, y },
-        thickness: 2,
-        color: LIME,
-      });
-      y -= 16;
+      y -= bandH + 12;
       if (params.billKind === "merchant") {
         const tagline = pdfText("Grocery trade · Internal settlement");
         const tagSize = 9;
@@ -161,47 +165,16 @@ export async function buildGroobeyBillPdfBuffer(params: GroobeyBillPdfParams): P
   }
 
   const metaMaxW = PAGE_W - MARGIN * 2;
-  if (params.billKind === "customer" && metaRows.length) {
-    const colW = metaMaxW / 2 - 8;
-    const leftX = MARGIN;
-    const rightX = MARGIN + colW + 16;
-    let rowY = y;
-    let col = 0;
-    for (const row of metaRows) {
-      const wide = row.label === "Address" || row.label === "Customer address";
-      const x = wide ? MARGIN : col === 0 ? leftX : rightX;
-      const w = wide ? metaMaxW : colW;
-      if (wide) {
-        if (col === 1) rowY -= 36;
-        col = 0;
-      }
-      page.drawText(pdfText(row.label), { x, y: rowY, size: 8, font: fontBold, color: GRAY });
-      const valueY = rowY - 11;
-      const nextY = drawWrapped(page, pdfText(row.value), x, valueY, font, 10, w, BLACK) - 2;
-      const cellH = valueY - nextY + 14;
-      if (wide) {
-        rowY = nextY - 6;
-      } else {
-        col += 1;
-        if (col === 2) {
-          rowY -= Math.max(cellH, 32);
-          col = 0;
-        }
-      }
-    }
-    y = col === 1 ? rowY - 32 : rowY - 8;
-  } else {
-    for (const row of metaRows) {
-      page.drawText(pdfText(`${row.label}:`), {
-        x: MARGIN,
-        y,
-        size: 10,
-        font: fontBold,
-        color: BLACK,
-      });
-      y -= 12;
-      y = drawWrapped(page, pdfText(row.value), MARGIN, y, font, 10, metaMaxW) - 4;
-    }
+  for (const row of metaRows) {
+    page.drawText(pdfText(`${row.label}:`), {
+      x: MARGIN,
+      y,
+      size: 10,
+      font: fontBold,
+      color: BLACK,
+    });
+    y -= 12;
+    y = drawWrapped(page, pdfText(row.value), MARGIN, y, font, 10, metaMaxW) - 4;
   }
 
   if (params.marginNote?.trim()) {
@@ -331,7 +304,7 @@ export async function buildGroobeyBillPdfBuffer(params: GroobeyBillPdfParams): P
   }
 
   if (params.billKind !== "merchant") {
-    const contactTitle = pdfText("Reach us anytime");
+    const contactTitle = pdfText("Get in touch");
     page.drawText(contactTitle, {
       x: MARGIN,
       y,

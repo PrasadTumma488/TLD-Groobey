@@ -3,6 +3,7 @@ import {
   GROOBEY_BRAND,
   GROOBEY_LOGO_DISPLAY,
   GROOBEY_PRODUCT_NAME,
+  groobeyCustomerBillThankYouEmailHtml,
 } from "@/lib/groobey-brand";
 import { groobeyBillContactEmailHtml, groobeyBillContactPlainLines } from "@/lib/groobey-bill-contact";
 import { GROOBEY_EMAIL_ICONS, groobeyEmailInlineMeta } from "@/lib/groobey-email-icons";
@@ -27,13 +28,13 @@ export function buildBillDeliveryEmail(params: BillDeliveryEmailParams): {
   const shop = params.shopName.trim() || "your shop";
   const billRef = params.billNumber?.trim();
   const logo = getGroobeyBillLogoDataUrl();
-  const logoW = GROOBEY_LOGO_DISPLAY.billMaxWidthPx;
   const logoH = GROOBEY_LOGO_DISPLAY.billHeightPx;
+  const logoW = GROOBEY_LOGO_DISPLAY.billMaxWidthPx;
 
   const logoCell =
     logo ?
       `<img src="${logo}" alt="${escapeHtml(GROOBEY_APP_NAME)}" height="${logoH}" style="display:block;margin:0 auto;height:${logoH}px;width:auto;max-width:${logoW}px;object-fit:contain;" />`
-    : `<p style="margin:0;font-size:18px;font-weight:800;color:${GROOBEY_BRAND.lime};letter-spacing:0.08em;text-align:center;">TLD GROOBEY</p>`;
+    : `<p style="margin:0;font-size:16px;font-weight:800;color:${GROOBEY_BRAND.lime};letter-spacing:0.08em;text-align:center;">TLD GROOBEY</p>`;
 
   const customerName = params.customerName?.trim();
   const metaParts = [
@@ -44,7 +45,7 @@ export function buildBillDeliveryEmail(params: BillDeliveryEmailParams): {
   const billMetaRow =
     metaParts.length ?
       `<tr>
-        <td style="padding:0 24px 16px;background:#ffffff;">
+        <td style="padding:0 24px 12px;background:#ffffff;">
           ${groobeyEmailInlineMeta(metaParts)}
         </td>
       </tr>`
@@ -64,21 +65,34 @@ export function buildBillDeliveryEmail(params: BillDeliveryEmailParams): {
     <tr><td align="center">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;background:#ffffff;">
         <tr>
-          <td style="padding:28px 24px 12px;text-align:center;background:#ffffff;">
+          <td style="padding:14px 20px;text-align:center;background:${GROOBEY_BRAND.black};">
             ${logoCell}
           </td>
         </tr>
+        ${isCustomer ?
+          `<tr>
+            <td style="padding:16px 20px 0;background:#ffffff;">
+              ${groobeyCustomerBillThankYouEmailHtml()}
+            </td>
+          </tr>`
+        : ""}
         ${billMetaRow}
         <tr>
-          <td style="padding:8px 24px 20px;background:#ffffff;">
+          <td style="padding:12px 24px 8px;background:#ffffff;">
             <p style="margin:0;font-size:15px;line-height:1.55;color:#374151;">
               ${GROOBEY_EMAIL_ICONS.file}
               Your bill is attached as <strong style="color:#0a0a0a;">${pdfName}</strong>.
               Open it to view items and your order total.
             </p>
-            ${isCustomer ? groobeyBillContactEmailHtml() : ""}
           </td>
         </tr>
+        ${isCustomer ?
+          `<tr>
+            <td style="padding:0 24px 20px;background:#ffffff;">
+              ${groobeyBillContactEmailHtml()}
+            </td>
+          </tr>`
+        : ""}
         <tr>
           <td style="padding:14px 24px 18px;border-top:1px solid #f3f4f6;background:#ffffff;">
             <p style="margin:0;font-size:11px;line-height:1.45;color:#9ca3af;text-align:center;">

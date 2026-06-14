@@ -53,6 +53,10 @@ import {
 } from "@/lib/groobey-resend";
 import { sendResendEmail } from "@/lib/groobey-resend-send.server";
 import {
+  applyShopCombosSchema,
+  shopCombosTableExists,
+} from "@/lib/groobey-shop-combos-schema.server";
+import {
   getServiceRoleKeyFromEnv,
   isPublishableKeyUsedAsServiceRole,
 } from "@/lib/supabase-service-role-env";
@@ -2009,4 +2013,42 @@ export async function registerCustomerAccountHandler(ctx: { data: unknown }) {
   }
 
   return registerCustomerViaSignUp(data);
+}
+
+export async function getShopCombosSchemaStatusHandler() {
+  const ready = await shopCombosTableExists();
+  return { ready, hasDbPassword: Boolean(readDbPasswordForStatus()) };
+}
+
+function readDbPasswordForStatus(): string {
+  return (
+    process.env.SUPABASE_DB_PASSWORD?.trim() ||
+    process.env.POSTGRES_PASSWORD?.trim() ||
+    process.env.DATABASE_PASSWORD?.trim() ||
+    ""
+  );
+}
+
+export async function ensureShopCombosSchemaHandler(ctx: { data: unknown }) {
+  const { requesterTokenSchema } = await import("@/lib/tldGroobey.functions-schemas");
+  const data = requesterTokenSchema.parse(ctx.data);
+  await assertAdminOrMain(data.requesterToken);
+
+  if (await shopCombosTableExists()) {
+    return { ok: true as const, alreadyReady: true as const };
+  }
+
+  const result = await applyShopCombosSchema();
+  if (!result.ok) {
+    throw new Error(result.message);
+  }
+
+  const ready = await shopCombosTableExists();
+  if (!ready) {
+    throw new Error(
+      "Schema SQL ran but shop_combos is not visible yet. Wait a few seconds and refresh, or reload the Supabase API schema cache from Project Settings → API.",
+    );
+  }
+
+  return { ok: true as const, alreadyReady: false as const };
 }

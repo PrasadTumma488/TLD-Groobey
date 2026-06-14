@@ -9,13 +9,25 @@ import { GroobeyHeroSlider, GroobeyPromoStrip } from "@/components/groobey/groob
 import { GroobeyPublicLayout } from "@/components/groobey/groobey-public-layout";
 import { GroobeySlideToOrder } from "@/components/groobey/groobey-slide-to-order";
 import { SHOW_CUSTOMER_PORTAL } from "@/lib/groobey-site-visibility";
+import { groobeyHomeJsonLd, groobeyPageHead } from "@/lib/groobey-seo";
 
 const GROOBEY_STAFF_IMAGE = "/home/groobey-staff.png";
 const GROOBEY_CAPTION_IMAGE = "/home/groobey-caption.png";
 
 export const Route = createFileRoute("/")({
   head: () => ({
-    meta: [{ title: "TLD Groobey - Fresh Groceries Online" }],
+    ...groobeyPageHead({
+      title: "TLD Groobey - Fresh Groceries Online",
+      description:
+        "Shop rice, dal, vegetables, fruits, combos & more. Order online with TLD Groobey for fresh groceries and doorstep delivery.",
+      path: "/",
+    }),
+    scripts: [
+      {
+        type: "application/ld+json",
+        children: JSON.stringify(groobeyHomeJsonLd()),
+      },
+    ],
   }),
   component: HomePage,
 });

@@ -92,3 +92,11 @@ export const markDeliveryOrderStatus = createServerFn({ method: "POST" })
 export const registerCustomerAccount = createServerFn({ method: "POST" })
   .inputValidator((input) => registerCustomerSchema.parse(input))
   .handler(async (ctx) => invokeHandler("registerCustomerAccountHandler", ctx));
+
+export const getShopCombosSchemaStatus = createServerFn({ method: "GET" }).handler(async () =>
+  invokeHandler("getShopCombosSchemaStatusHandler"),
+);
+
+export const ensureShopCombosSchema = createServerFn({ method: "POST" })
+  .inputValidator((input) => requesterTokenSchema.parse(input))
+  .handler(async (ctx) => invokeHandler("ensureShopCombosSchemaHandler", ctx));
