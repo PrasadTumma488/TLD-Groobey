@@ -9,18 +9,26 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as TermsRouteImport } from './routes/terms'
 import { Route as StaffRouteImport } from './routes/staff'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as ShopOwnerRouteImport } from './routes/shop-owner'
 import { Route as ShopRouteImport } from './routes/shop'
 import { Route as ProfileRouteImport } from './routes/profile'
+import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as PlatformAdminRouteImport } from './routes/platform-admin'
 import { Route as OrdersRouteImport } from './routes/orders'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as AboutRouteImport } from './routes/about'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as TeamLoginRouteImport } from './routes/team/login'
 import { Route as MySlugRouteImport } from './routes/my/$slug'
 
+const TermsRoute = TermsRouteImport.update({
+  id: '/terms',
+  path: '/terms',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const StaffRoute = StaffRouteImport.update({
   id: '/staff',
   path: '/staff',
@@ -46,6 +54,11 @@ const ProfileRoute = ProfileRouteImport.update({
   path: '/profile',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PlatformAdminRoute = PlatformAdminRouteImport.update({
   id: '/platform-admin',
   path: '/platform-admin',
@@ -59,6 +72,11 @@ const OrdersRoute = OrdersRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AboutRoute = AboutRouteImport.update({
+  id: '/about',
+  path: '/about',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -79,41 +97,50 @@ const MySlugRoute = MySlugRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
   '/login': typeof LoginRoute
   '/orders': typeof OrdersRoute
   '/platform-admin': typeof PlatformAdminRoute
+  '/privacy': typeof PrivacyRoute
   '/profile': typeof ProfileRoute
   '/shop': typeof ShopRoute
   '/shop-owner': typeof ShopOwnerRoute
   '/signup': typeof SignupRoute
   '/staff': typeof StaffRoute
+  '/terms': typeof TermsRoute
   '/my/$slug': typeof MySlugRoute
   '/team/login': typeof TeamLoginRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
   '/login': typeof LoginRoute
   '/orders': typeof OrdersRoute
   '/platform-admin': typeof PlatformAdminRoute
+  '/privacy': typeof PrivacyRoute
   '/profile': typeof ProfileRoute
   '/shop': typeof ShopRoute
   '/shop-owner': typeof ShopOwnerRoute
   '/signup': typeof SignupRoute
   '/staff': typeof StaffRoute
+  '/terms': typeof TermsRoute
   '/my/$slug': typeof MySlugRoute
   '/team/login': typeof TeamLoginRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/about': typeof AboutRoute
   '/login': typeof LoginRoute
   '/orders': typeof OrdersRoute
   '/platform-admin': typeof PlatformAdminRoute
+  '/privacy': typeof PrivacyRoute
   '/profile': typeof ProfileRoute
   '/shop': typeof ShopRoute
   '/shop-owner': typeof ShopOwnerRoute
   '/signup': typeof SignupRoute
   '/staff': typeof StaffRoute
+  '/terms': typeof TermsRoute
   '/my/$slug': typeof MySlugRoute
   '/team/login': typeof TeamLoginRoute
 }
@@ -121,60 +148,79 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/about'
     | '/login'
     | '/orders'
     | '/platform-admin'
+    | '/privacy'
     | '/profile'
     | '/shop'
     | '/shop-owner'
     | '/signup'
     | '/staff'
+    | '/terms'
     | '/my/$slug'
     | '/team/login'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/about'
     | '/login'
     | '/orders'
     | '/platform-admin'
+    | '/privacy'
     | '/profile'
     | '/shop'
     | '/shop-owner'
     | '/signup'
     | '/staff'
+    | '/terms'
     | '/my/$slug'
     | '/team/login'
   id:
     | '__root__'
     | '/'
+    | '/about'
     | '/login'
     | '/orders'
     | '/platform-admin'
+    | '/privacy'
     | '/profile'
     | '/shop'
     | '/shop-owner'
     | '/signup'
     | '/staff'
+    | '/terms'
     | '/my/$slug'
     | '/team/login'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AboutRoute: typeof AboutRoute
   LoginRoute: typeof LoginRoute
   OrdersRoute: typeof OrdersRoute
   PlatformAdminRoute: typeof PlatformAdminRoute
+  PrivacyRoute: typeof PrivacyRoute
   ProfileRoute: typeof ProfileRoute
   ShopRoute: typeof ShopRoute
   ShopOwnerRoute: typeof ShopOwnerRoute
   SignupRoute: typeof SignupRoute
   StaffRoute: typeof StaffRoute
+  TermsRoute: typeof TermsRoute
   MySlugRoute: typeof MySlugRoute
   TeamLoginRoute: typeof TeamLoginRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/terms': {
+      id: '/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof TermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/staff': {
       id: '/staff'
       path: '/staff'
@@ -210,6 +256,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProfileRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/platform-admin': {
       id: '/platform-admin'
       path: '/platform-admin'
@@ -229,6 +282,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/about': {
+      id: '/about'
+      path: '/about'
+      fullPath: '/about'
+      preLoaderRoute: typeof AboutRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -257,14 +317,17 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AboutRoute: AboutRoute,
   LoginRoute: LoginRoute,
   OrdersRoute: OrdersRoute,
   PlatformAdminRoute: PlatformAdminRoute,
+  PrivacyRoute: PrivacyRoute,
   ProfileRoute: ProfileRoute,
   ShopRoute: ShopRoute,
   ShopOwnerRoute: ShopOwnerRoute,
   SignupRoute: SignupRoute,
   StaffRoute: StaffRoute,
+  TermsRoute: TermsRoute,
   MySlugRoute: MySlugRoute,
   TeamLoginRoute: TeamLoginRoute,
 }

@@ -50,4 +50,7 @@ const next =
 
 writeFileSync(envPath, next, "utf8");
 console.log("\n✓ Updated SUPABASE_SERVICE_ROLE_KEY in .env");
-console.log("  Restart the dev server: npm run dev\n");
+console.log("  Restart the dev server: npm run dev");
+console.log("\n  For tldgroobey.in (Vercel production), also run:");
+console.log("    npm run env:vercel-service-role");
+console.log("  Then redeploy (vercel --prod or push to GitHub).\n");

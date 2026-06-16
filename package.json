@@ -4,12 +4,14 @@
   "sideEffects": false,
   "type": "module",
   "scripts": {
-    "dev": "npm run voice:copy && npm run home-categories:copy && vite dev",
+    "dev": "npm run home-images:optimize && npm run voice:copy && vite dev",
     "home-categories:copy": "node scripts/copy-home-category-images.mjs",
+    "home-images:optimize": "node scripts/optimize-home-images.mjs",
     "pwa:icons": "node scripts/generate-pwa-icons.mjs",
     "bill-logo": "node scripts/generate-bill-logo.mjs",
     "voice:copy": "node scripts/copy-welcome-voice.mjs",
-    "prebuild": "npm run pwa:icons && npm run voice:copy && npm run home-categories:copy",
+    "seo:static": "node scripts/generate-seo-static.mjs",
+    "prebuild": "npm run pwa:icons && npm run seo:static && npm run voice:copy && npm run home-images:optimize",
     "build": "vite build && node scripts/generate-sw.mjs",
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
@@ -17,10 +19,13 @@
     "format": "prettier --write .",
     "db:check": "node scripts/check-db-schema.mjs",
     "db:push": "node scripts/push-db.mjs",
-    "db:combos": "node scripts/bootstrap-shop-combos.mjs",
+    "db:apply-out-of-stock": "node scripts/apply-products-out-of-stock-schema.mjs",
     "db:push:cli": "npx supabase db push --linked --yes",
     "env:db-password": "node scripts/set-db-password.mjs",
-    "env:service-role": "node scripts/set-supabase-service-role.mjs"
+    "env:vercel-db-password": "node scripts/push-vercel-db-password.mjs",
+    "env:service-role": "node scripts/set-supabase-service-role.mjs",
+    "env:vercel-service-role": "node scripts/push-vercel-service-role.mjs",
+    "env:vercel-check": "node scripts/check-vercel-env.mjs"
   },
   "dependencies": {
     "@cloudflare/vite-plugin": "^1.25.5",

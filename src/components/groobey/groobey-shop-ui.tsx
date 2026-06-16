@@ -39,7 +39,7 @@ import { Field } from "@/components/groobey/workspace-ui";
 
 export type ShopStep = "browse" | "cart" | "checkout";
 
-/** Circular category tiles — wrapped grid, no horizontal scroll. */
+/** Circular category tiles — horizontal scroll on small screens, wrapped grid on larger viewports. */
 export function ShopCategoryRail({
   categories,
   activeId,
@@ -54,8 +54,26 @@ export function ShopCategoryRail({
   useEffect(() => {
     const rail = railRef.current;
     if (!rail) return;
+    if (window.matchMedia("(min-width: 768px)").matches) return;
+
     const active = rail.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
-    active?.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
+    if (!active) return;
+
+    const railRect = rail.getBoundingClientRect();
+    const activeRect = active.getBoundingClientRect();
+    const edgePadding = 12;
+
+    if (activeRect.left < railRect.left + edgePadding) {
+      rail.scrollBy({
+        left: activeRect.left - railRect.left - edgePadding,
+        behavior: "smooth",
+      });
+    } else if (activeRect.right > railRect.right - edgePadding) {
+      rail.scrollBy({
+        left: activeRect.right - railRect.right + edgePadding,
+        behavior: "smooth",
+      });
+    }
   }, [activeId]);
 
   return (
@@ -291,6 +309,7 @@ type ShopProduct = {
   name: string;
   price: number;
   unit: string;
+  is_out_of_stock?: boolean;
 };
 
 export type ShopComboCardItem = {
@@ -537,18 +556,52 @@ export function ShopProductCard({
   onUpdateQty: (delta: number, sourceEl?: HTMLElement) => void;
 }) {
   const inCart = quantity > 0;
+  const outOfStock = Boolean(product.is_out_of_stock);
 
   return (
-    <article className={cn("groobey-shop-product", inCart && "is-in-cart")}>
+    <article
+      className={cn(
+        "groobey-shop-product",
+        inCart && "is-in-cart",
+        outOfStock && "is-out-of-stock",
+      )}
+    >
       <div className="groobey-shop-product-body">
         <h3 className="groobey-shop-product-name">{product.name}</h3>
+        {outOfStock ?
+          <p className="groobey-shop-product-stock-label">Out of stock</p>
+        : null}
         <p className="groobey-shop-product-price">
           <span className="groobey-shop-product-amount">₹{product.price}</span>
           <span className="groobey-shop-product-unit">/ {product.unit}</span>
         </p>
       </div>
       <div className="groobey-shop-product-actions">
-        {inCart ?
+        {outOfStock ?
+          inCart ?
+            <div className="groobey-shop-qty-pill">
+              <button
+                type="button"
+                className="groobey-shop-qty-pill-btn"
+                aria-label={`Decrease ${product.name}`}
+                onClick={() => onUpdateQty(-1)}
+              >
+                <Minus className="size-3.5" />
+              </button>
+              <span className="groobey-shop-qty-pill-value">{quantity}</span>
+              <button
+                type="button"
+                className="groobey-shop-qty-pill-btn groobey-shop-qty-pill-btn--disabled"
+                aria-label={`${product.name} is out of stock`}
+                disabled
+              >
+                <Plus className="size-3.5" />
+              </button>
+            </div>
+          : <span className="groobey-shop-out-of-stock-pill" aria-live="polite">
+              Out of stock
+            </span>
+        : inCart ?
           <div className="groobey-shop-qty-pill">
             <button
               type="button"

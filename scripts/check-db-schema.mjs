@@ -70,6 +70,8 @@ const checks = {
     }),
   purge_my_old_customer_orders: () => rpcExists("purge_my_old_customer_orders", { p_days: 15 }),
   shop_combos: () => tableExists("shop_combos"),
+  "products.is_out_of_stock": () => columnExists("products", "is_out_of_stock"),
+  ensure_products_out_of_stock_schema: () => rpcExists("ensure_products_out_of_stock_schema"),
   next_groobey_customer_order_bill_number: () => rpcExists("next_groobey_customer_order_bill_number"),
   mark_assigned_order_status: () =>
     rpcExists("mark_assigned_order_status", {

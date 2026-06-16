@@ -36,7 +36,7 @@ export function GroobeyWelcomeVoice() {
       ref={handleAudioRef}
       className="sr-only"
       src={GROOBEY_WELCOME_VOICE_SRC}
-      preload="auto"
+      preload="none"
       playsInline
       aria-label={GROOBEY_WELCOME_VOICE_TEXT}
     />

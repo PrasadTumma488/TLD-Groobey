@@ -58,6 +58,27 @@ await iconPng(48, "favicon-48x48.png", "any", { favicon: true });
 await iconPng(64, "favicon-64x64.png", "any", { favicon: true });
 await iconPng(128, "favicon-128x128.png", "any", { favicon: true });
 
+const ogWidth = 1200;
+const ogHeight = 630;
+const ogLogo = await sharp(logo)
+  .resize(Math.round(ogHeight * 0.42), Math.round(ogHeight * 0.42), {
+    fit: "contain",
+    background: transparentBg,
+  })
+  .png()
+  .toBuffer();
+await sharp({
+  create: {
+    width: ogWidth,
+    height: ogHeight,
+    channels: 4,
+    background: { r: 247, g: 250, b: 243, alpha: 1 },
+  },
+})
+  .composite([{ input: ogLogo, gravity: "centre" }])
+  .png()
+  .toFile(path.join(publicDir, "og-image.png"));
+
 const fav16 = fs.readFileSync(path.join(publicDir, "favicon-16x16.png"));
 const fav32 = fs.readFileSync(path.join(publicDir, "favicon-32x32.png"));
 const fav48 = fs.readFileSync(path.join(publicDir, "favicon-48x48.png"));
@@ -75,7 +96,7 @@ fs.writeFileSync(
 );
 
 console.log(
-  "[pwa:icons] Generated favicon.ico (valid ICO), PNG favicons, PWA icons; favicon",
+  "[pwa:icons] Generated favicon.ico (valid ICO), PNG favicons, PWA icons, og-image.png; favicon",
   faviconHash,
   "web-logo",
   webLogoHash,

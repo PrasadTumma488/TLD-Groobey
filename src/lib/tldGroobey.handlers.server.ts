@@ -57,6 +57,10 @@ import {
   shopCombosTableExists,
 } from "@/lib/groobey-shop-combos-schema.server";
 import {
+  applyProductsOutOfStockSchema,
+  productsOutOfStockColumnExists,
+} from "@/lib/groobey-products-out-of-stock-schema.server";
+import {
   getServiceRoleKeyFromEnv,
   isPublishableKeyUsedAsServiceRole,
 } from "@/lib/supabase-service-role-env";
@@ -2047,6 +2051,35 @@ export async function ensureShopCombosSchemaHandler(ctx: { data: unknown }) {
   if (!ready) {
     throw new Error(
       "Schema SQL ran but shop_combos is not visible yet. Wait a few seconds and refresh, or reload the Supabase API schema cache from Project Settings → API.",
+    );
+  }
+
+  return { ok: true as const, alreadyReady: false as const };
+}
+
+export async function getProductsOutOfStockSchemaStatusHandler() {
+  const ready = await productsOutOfStockColumnExists();
+  return { ready, hasDbPassword: Boolean(readDbPasswordForStatus()) };
+}
+
+export async function ensureProductsOutOfStockSchemaHandler(ctx: { data: unknown }) {
+  const { requesterTokenSchema } = await import("@/lib/tldGroobey.functions-schemas");
+  const data = requesterTokenSchema.parse(ctx.data);
+  await assertAdminOrMain(data.requesterToken);
+
+  if (await productsOutOfStockColumnExists()) {
+    return { ok: true as const, alreadyReady: true as const };
+  }
+
+  const result = await applyProductsOutOfStockSchema();
+  if (!result.ok) {
+    throw new Error(result.message);
+  }
+
+  const ready = await productsOutOfStockColumnExists();
+  if (!ready) {
+    throw new Error(
+      "Out-of-stock column setup ran but is not visible yet. Wait a few seconds and refresh, or reload the Supabase API schema cache from Project Settings → API.",
     );
   }
 

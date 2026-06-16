@@ -358,12 +358,14 @@ export function ProductRow({
   onRateUpdate,
   onDelete,
   onEdit,
+  onToggleOutOfStock,
 }: {
   item: Product;
   canEdit?: boolean;
   onRateUpdate?: (productId: string, nextPrice: number) => void;
   onDelete?: (productId: string) => void;
   onEdit?: () => void;
+  onToggleOutOfStock?: (productId: string, nextValue: boolean) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [price, setPrice] = useState(String(item.price));
@@ -380,9 +382,21 @@ export function ProductRow({
   }
 
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-xl border border-border bg-card/70 p-3 transition hover:translate-x-1">
+    <div
+      className={cn(
+        "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-xl border border-border bg-card/70 p-3 transition hover:translate-x-1",
+        item.is_out_of_stock && "border-amber-300/70 bg-amber-50/40",
+      )}
+    >
       <div className="min-w-0">
-        <p className="font-black">{item.name}</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="font-black">{item.name}</p>
+          {item.is_out_of_stock ?
+            <span className="rounded-full bg-amber-200/90 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-amber-950">
+              Out of stock
+            </span>
+          : null}
+        </div>
         <p className="text-xs font-semibold text-muted-foreground">
           {item.unit}
           {Number(item.default_quantity ?? 1) !== 1 ?
@@ -417,6 +431,23 @@ export function ProductRow({
           </button>
         )}
         <div className="flex flex-wrap items-center gap-1.5">
+          {onToggleOutOfStock && (
+            <Button
+              type="button"
+              variant={item.is_out_of_stock ? "groobey" : "outline"}
+              className="h-9 rounded-lg px-2 text-xs"
+              onClick={() => onToggleOutOfStock(item.id, !item.is_out_of_stock)}
+            >
+              {item.is_out_of_stock ?
+                <>
+                  <Eye className="size-3.5" /> Mark in stock
+                </>
+              : <>
+                  <EyeOff className="size-3.5" /> Out of stock
+                </>
+              }
+            </Button>
+          )}
           {onEdit && (
             <Button
               type="button"

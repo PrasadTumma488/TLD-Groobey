@@ -4,8 +4,8 @@ export const GROOBEY_SITE_CONTACT = {
   phone: "+91 72074 74455",
   whatsappGroupUrl: "https://chat.whatsapp.com/GlsTCe7WiBnF5mhnKbbiP8",
   whatsappGroupLabel: "WhatsApp group",
-  instagramUrl: "https://www.instagram.com/thetld2026",
-  instagramHandle: "The TLD 2026",
+  instagramUrl: "https://www.instagram.com/tldgroobey.in",
+  instagramHandle: "TLDGroobey.in",
 } as const;
 
 /** Direct chat link for placing orders and order updates via WhatsApp. */

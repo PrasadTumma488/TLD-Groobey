@@ -70,6 +70,7 @@ import {
   shopSignupHref,
 } from "@/lib/groobey-guest-shop-cart";
 import { defaultQuantityForProduct } from "@/lib/groobey-product-catalog";
+import { normalizeProductRow } from "@/lib/groobey-products-out-of-stock-schema";
 import { flyProductToCart } from "@/lib/groobey-shop-fly-to-cart";
 import { clampMarginPercent, schemaSetupHint, tradeAmountFromRetail } from "@/lib/groobey-trade-margin";
 
@@ -188,7 +189,7 @@ export function CustomerShopDashboard({
       ]);
       setSession(null);
       setProfile(null);
-      setProducts(prod.data ?? []);
+      setProducts((prod.data ?? []).map(normalizeProductRow));
       setCombos((comboRows.data ?? []) as ShopComboRow[]);
       setShops(shopRows.data ?? []);
       setLoading(false);
@@ -212,7 +213,7 @@ export function CustomerShopDashboard({
     ]);
 
     setProfile((prof.data as Profile | null) ?? null);
-    setProducts(prod.data ?? []);
+    setProducts((prod.data ?? []).map(normalizeProductRow));
     setCombos((comboRows.data ?? []) as ShopComboRow[]);
     setShops(shopRows.data ?? []);
     setLoading(false);
@@ -220,6 +221,22 @@ export function CustomerShopDashboard({
 
   useEffect(() => {
     void load();
+  }, [load]);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel("customer-shop-products")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "products" },
+        () => {
+          void load();
+        },
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
   }, [load]);
 
   useEffect(() => {
@@ -371,7 +388,8 @@ export function CustomerShopDashboard({
 
   function addToCart(productId: string, sourceEl?: HTMLElement) {
     const product = products.find((p) => p.id === productId);
-    const qty = product ? defaultQuantityForProduct(product) : 1;
+    if (!product || product.is_out_of_stock) return;
+    const qty = defaultQuantityForProduct(product);
     setCartLines((lines) => {
       const idx = lines.findIndex((row) => row.productId === productId);
       if (idx === -1) return [...lines, { productId, quantity: qty }];
@@ -384,6 +402,10 @@ export function CustomerShopDashboard({
   }
 
   function updateQty(productId: string, delta: number, sourceEl?: HTMLElement) {
+    if (delta > 0) {
+      const product = products.find((p) => p.id === productId);
+      if (product?.is_out_of_stock) return;
+    }
     if (delta > 0 && sourceEl) triggerFlyToCart(sourceEl);
     setCartLines((lines) =>
       lines

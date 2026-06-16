@@ -100,3 +100,11 @@ export const getShopCombosSchemaStatus = createServerFn({ method: "GET" }).handl
 export const ensureShopCombosSchema = createServerFn({ method: "POST" })
   .inputValidator((input) => requesterTokenSchema.parse(input))
   .handler(async (ctx) => invokeHandler("ensureShopCombosSchemaHandler", ctx));
+
+export const getProductsOutOfStockSchemaStatus = createServerFn({ method: "GET" }).handler(async () =>
+  invokeHandler("getProductsOutOfStockSchemaStatusHandler"),
+);
+
+export const ensureProductsOutOfStockSchema = createServerFn({ method: "POST" })
+  .inputValidator((input) => requesterTokenSchema.parse(input))
+  .handler(async (ctx) => invokeHandler("ensureProductsOutOfStockSchemaHandler", ctx));

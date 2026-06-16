@@ -49,6 +49,12 @@ import {
 } from "@/lib/groobey-pack-sizes";
 import { filterProductsByQuery } from "@/lib/groobey-product-catalog";
 import { filterProductsByHomeCategory } from "@/lib/groobey-home-category-filter";
+import {
+  isProductsOutOfStockSchemaError,
+  normalizeProductRow,
+  PRODUCTS_OUT_OF_STOCK_SETUP_SQL,
+  SUPABASE_SQL_EDITOR_URL,
+} from "@/lib/groobey-products-out-of-stock-schema";
 import { SHOP_COMBOS_CATEGORY_ID } from "@/lib/groobey-shop-browse";
 import { isTransientDatabaseError, retryTransient } from "@/lib/groobey-retry";
 import { setGroobeyNotificationNavigate } from "@/lib/groobey-notification-nav";
@@ -107,6 +113,8 @@ import {
   createStaffAccount,
   deleteStaffAccount,
   ensureMyGroobeyCode,
+  ensureProductsOutOfStockSchema,
+  getProductsOutOfStockSchemaStatus,
   getSetupStatus,
   listStaffAccounts,
   sendCustomerBillEmail,
@@ -255,6 +263,31 @@ function sortProductsByNameUnit(list: Product[]): Product[] {
   });
 }
 
+async function queryAdminProducts() {
+  const withStock = await supabase
+    .from("products")
+    .select(
+      "id,name,unit,price,category,is_active,is_out_of_stock,created_at,merchant_unit_price,default_quantity",
+    )
+    .order("name");
+  if (!withStock.error) return withStock;
+
+  if (!isProductsOutOfStockSchemaError(withStock.error.message)) return withStock;
+
+  const fallback = await supabase
+    .from("products")
+    .select(
+      "id,name,unit,price,category,is_active,created_at,merchant_unit_price,default_quantity",
+    )
+    .order("name");
+  if (fallback.error || !fallback.data) return fallback;
+
+  return {
+    ...fallback,
+    data: fallback.data.map((row) => normalizeProductRow({ ...row, is_out_of_stock: false })),
+  };
+}
+
 export function OwnerDashboard() {
   const createAccount = useServerFn(createStaffAccount);
   const updateStaff = useServerFn(updateStaffAccount);
@@ -266,6 +299,8 @@ export function OwnerDashboard() {
   const saveMyProfile = useServerFn(updateMyProfile);
   const sendBillEmail = useServerFn(sendCustomerBillEmail);
   const fetchSetupStatus = useServerFn(getSetupStatus);
+  const ensureOutOfStockSchema = useServerFn(ensureProductsOutOfStockSchema);
+  const fetchOutOfStockSchemaStatus = useServerFn(getProductsOutOfStockSchemaStatus);
   const customerBillOnly = !SHOW_SETTLEMENT_BILLS;
 
   const [session, setSession] =
@@ -310,6 +345,9 @@ export function OwnerDashboard() {
   const [editingOwnProfile, setEditingOwnProfile] = useState(false);
   const [productSearch, setProductSearch] = useState("");
   const [catalogCategory, setCatalogCategory] = useState("all");
+  const [outOfStockSchemaReady, setOutOfStockSchemaReady] = useState<boolean | null>(null);
+  const [outOfStockSetupBusy, setOutOfStockSetupBusy] = useState(false);
+  const [outOfStockSqlCopied, setOutOfStockSqlCopied] = useState(false);
   const [addName, setAddName] = useState("");
   const [addUnit, setAddUnit] = useState(DEFAULT_GROCERY_PACK);
   const [addPrice, setAddPrice] = useState("");
@@ -348,15 +386,20 @@ export function OwnerDashboard() {
       if (!silent && !hasSyncedWorkspace.current) setLoading(true);
       setError("");
       try {
+        if (session.access_token) {
+          try {
+            await ensureOutOfStockSchema({ data: { requesterToken: session.access_token } });
+            setOutOfStockSchemaReady(true);
+          } catch {
+            const status = await fetchOutOfStockSchemaStatus().catch(() => ({ ready: false }));
+            setOutOfStockSchemaReady(status.ready);
+          }
+        }
+
         const [productsRes, shopsRes, salesRes, attendanceRes, profileRes] = await retryTransient(
           () =>
             Promise.all([
-              supabase
-                .from("products")
-                .select(
-                  "id,name,unit,price,category,is_active,created_at,merchant_unit_price,default_quantity",
-                )
-                .order("name"),
+              queryAdminProducts(),
               supabase
                 .from("shops")
                 .select(
@@ -435,7 +478,7 @@ export function OwnerDashboard() {
           return;
         }
         hasSyncedWorkspace.current = true;
-        setProducts((productsRes.data ?? []) as Product[]);
+        setProducts(((productsRes.data ?? []) as Product[]).map(normalizeProductRow));
         const nextShops = (shopsRes.data ?? []) as Shop[];
         setShops(nextShops);
         const ownerIds = [
@@ -547,7 +590,7 @@ export function OwnerDashboard() {
         setLoading(false);
       }
     },
-    [session?.user],
+    [session?.user, session?.access_token, ensureOutOfStockSchema, fetchOutOfStockSchemaStatus],
   );
 
   const loadStaff = useCallback(
@@ -1196,6 +1239,103 @@ export function OwnerDashboard() {
       setProducts((prev) => prev.filter((p) => p.id !== productId));
       if (editingProduct?.id === productId) setEditingProduct(null);
       setNotice("Product removed.");
+    }
+  }
+
+  async function toggleProductOutOfStock(productId: string, nextValue: boolean) {
+    setError("");
+    let updateError = (
+      await supabase.from("products").update({ is_out_of_stock: nextValue }).eq("id", productId)
+    ).error;
+
+    if (
+      updateError &&
+      isProductsOutOfStockSchemaError(updateError.message) &&
+      session?.access_token
+    ) {
+      try {
+        await ensureOutOfStockSchema({ data: { requesterToken: session.access_token } });
+        setOutOfStockSchemaReady(true);
+        updateError = (
+          await supabase.from("products").update({ is_out_of_stock: nextValue }).eq("id", productId)
+        ).error;
+      } catch (setupError) {
+        setError(
+          setupError instanceof Error ?
+            setupError.message
+          : "Out-of-stock setup failed. Run supabase/scripts/products_out_of_stock_quick.sql in Supabase SQL Editor.",
+        );
+        return;
+      }
+    }
+
+    if (updateError) {
+      setError(updateError.message);
+      return;
+    }
+    setProducts((prev) =>
+      prev.map((p) => (p.id === productId ? { ...p, is_out_of_stock: nextValue } : p)),
+    );
+    setNotice(nextValue ? "Marked out of stock for customers." : "Marked in stock for customers.");
+  }
+
+  async function runOutOfStockSetup() {
+    setOutOfStockSetupBusy(true);
+    setError("");
+    try {
+      const { error: rpcError } = await supabase.rpc("ensure_products_out_of_stock_schema");
+      if (!rpcError) {
+        setOutOfStockSchemaReady(true);
+        setNotice("Out-of-stock feature is ready.");
+        await loadWorkspace({ silent: true });
+        return;
+      }
+
+      if (session?.access_token) {
+        await ensureOutOfStockSchema({ data: { requesterToken: session.access_token } });
+        setOutOfStockSchemaReady(true);
+        setNotice("Out-of-stock feature is ready.");
+        await loadWorkspace({ silent: true });
+        return;
+      }
+
+      throw new Error(rpcError.message);
+    } catch (setupError) {
+      setError(
+        setupError instanceof Error ?
+          `${setupError.message} Use “Copy setup SQL” below, paste in Supabase SQL Editor, run it, then click “I ran the SQL — check again”.`
+        : "Could not set up out-of-stock column. Copy the SQL below into Supabase SQL Editor.",
+      );
+    } finally {
+      setOutOfStockSetupBusy(false);
+    }
+  }
+
+  async function copyOutOfStockSetupSql() {
+    try {
+      await navigator.clipboard.writeText(PRODUCTS_OUT_OF_STOCK_SETUP_SQL);
+      setOutOfStockSqlCopied(true);
+      window.setTimeout(() => setOutOfStockSqlCopied(false), 2500);
+      setNotice("SQL copied. Paste it in Supabase SQL Editor and click Run.");
+    } catch {
+      setError("Could not copy SQL. Open Supabase SQL Editor from the link below.");
+    }
+  }
+
+  async function recheckOutOfStockSchema() {
+    setOutOfStockSetupBusy(true);
+    setError("");
+    try {
+      const status = await fetchOutOfStockSchemaStatus();
+      setOutOfStockSchemaReady(status.ready);
+      if (status.ready) {
+        setNotice("Out-of-stock is ready.");
+        await loadWorkspace({ silent: true });
+      } else {
+        setError("Column still missing. Run the SQL in Supabase SQL Editor, then try again.");
+      }
+    } finally {
+      setOutOfStockSetupBusy(false);
     }
   }
 
@@ -2977,6 +3117,61 @@ export function OwnerDashboard() {
 
         <TabsContent value="catalog" className="groobey-admin-catalog-tab space-y-6">
           <InlineFeedback {...alertsFor("catalog")} />
+          {outOfStockSchemaReady === false ?
+            <div className="rounded-xl border border-amber-300/80 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-950">
+              <p className="font-black">One-time setup for out-of-stock</p>
+              <ol className="mt-2 list-decimal space-y-1 pl-5 font-medium">
+                <li>
+                  <a
+                    href={SUPABASE_SQL_EDITOR_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-black underline underline-offset-2"
+                  >
+                    Open Supabase SQL Editor
+                  </a>
+                </li>
+                <li>Click “Copy setup SQL”, paste in the editor, and Run</li>
+                <li>Come back here and click “I ran the SQL — check again”</li>
+              </ol>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="groobey"
+                  className="min-h-10 rounded-xl"
+                  onClick={() => void copyOutOfStockSetupSql()}
+                >
+                  {outOfStockSqlCopied ? "Copied!" : "Copy setup SQL"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="min-h-10 rounded-xl"
+                  disabled={outOfStockSetupBusy}
+                  onClick={() => void recheckOutOfStockSchema()}
+                >
+                  {outOfStockSetupBusy ?
+                    <>
+                      <Loader2 className="size-4 animate-spin" /> Checking…
+                    </>
+                  : "I ran the SQL — check again"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="min-h-10 rounded-xl"
+                  disabled={outOfStockSetupBusy || !session?.access_token}
+                  onClick={() => void runOutOfStockSetup()}
+                >
+                  Try auto-setup
+                </Button>
+              </div>
+              <p className="mt-2 text-xs font-medium text-amber-900/80">
+                Auto-setup only works after the SQL runs once, or if{" "}
+                <code className="text-[11px]">SUPABASE_DB_PASSWORD</code> is set on Vercel.
+              </p>
+            </div>
+          : null}
           <AdminCatalogCategoryRail activeId={catalogCategory} onSelect={setCatalogCategory} />
           {catalogCategory === SHOP_COMBOS_CATEGORY_ID ?
             <AdminCombosPanel
@@ -2991,6 +3186,8 @@ export function OwnerDashboard() {
             Upload your <strong>TLD GROOBY</strong> Excel (S.No, CATEGORY, PRODUCT, any gram/kg price
             columns, MRP), or add items one by one. You can add columns like 50G, 1.5KG, up to 10KG - each
             filled price becomes a catalog line. Remove old rows in the list if you no longer need them.
+            Use <strong>Out of stock</strong> on any item to hide ADD for customers while keeping the item
+            visible in the shop.
           </div>
           <GroobeyExcelCatalogUpload
             importing={importingExcel}
@@ -3136,6 +3333,7 @@ export function OwnerDashboard() {
                   item={item}
                   canEdit
                   onRateUpdate={updateRate}
+                  onToggleOutOfStock={(id, next) => void toggleProductOutOfStock(id, next)}
                   onEdit={() => {
                     setEditingProduct(item);
                     setError("");

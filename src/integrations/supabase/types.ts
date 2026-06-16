@@ -157,6 +157,7 @@ export type Database = {
           default_quantity: number;
           id: string;
           is_active: boolean;
+          is_out_of_stock: boolean;
           merchant_unit_price: number;
           name: string;
           price: number;
@@ -170,6 +171,7 @@ export type Database = {
           default_quantity?: number;
           id?: string;
           is_active?: boolean;
+          is_out_of_stock?: boolean;
           merchant_unit_price?: number;
           name: string;
           price?: number;
@@ -183,6 +185,7 @@ export type Database = {
           default_quantity?: number;
           id?: string;
           is_active?: boolean;
+          is_out_of_stock?: boolean;
           merchant_unit_price?: number;
           name?: string;
           price?: number;

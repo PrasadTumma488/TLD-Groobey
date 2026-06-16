@@ -1,0 +1,13 @@
+# TLD Groobey
+User-agent: *
+Allow: /
+
+Disallow: /platform-admin
+Disallow: /staff
+Disallow: /orders
+Disallow: /shop-owner
+Disallow: /profile
+Disallow: /my/
+Disallow: /team/
+
+Sitemap: https://tldgroobey.in/sitemap.xml

@@ -28,7 +28,7 @@ export function isValidProductCategoryId(id: string | null | undefined): id is s
   return isValidHomeCategoryId(id);
 }
 
-/** All shop category tiles including Combos centered in the rail (customer shop + admin catalog). */
+/** All shop category tiles — product categories first, Combos last (customer shop + admin catalog). */
 export function shopBrowseCategories(): HomeCategory[] {
   const combos: HomeCategory = {
     id: SHOP_COMBOS_TILE.id,
@@ -36,8 +36,7 @@ export function shopBrowseCategories(): HomeCategory[] {
     subtitle: SHOP_COMBOS_TILE.subtitle,
     image: SHOP_COMBOS_TILE.image,
   };
-  const mid = Math.ceil(HOME_CATEGORIES.length / 2);
-  return [...HOME_CATEGORIES.slice(0, mid), combos, ...HOME_CATEGORIES.slice(mid)];
+  return [...HOME_CATEGORIES, combos];
 }
 
 export function categoryMeta(categoryId: string): {

@@ -9,10 +9,13 @@ import { GroobeyHeroSlider, GroobeyPromoStrip } from "@/components/groobey/groob
 import { GroobeyPublicLayout } from "@/components/groobey/groobey-public-layout";
 import { GroobeySlideToOrder } from "@/components/groobey/groobey-slide-to-order";
 import { SHOW_CUSTOMER_PORTAL } from "@/lib/groobey-site-visibility";
-import { groobeyHomeJsonLd, groobeyPageHead } from "@/lib/groobey-seo";
+import { groobeyHomeJsonLd, groobeyPageHead, groobeyWebPageHeadScripts } from "@/lib/groobey-seo";
+import { GroobeyMarketingImage } from "@/components/groobey/groobey-marketing-image";
+import { HOME_SLIDER_SLIDES } from "@/lib/groobey-home-slider";
 
 const GROOBEY_STAFF_IMAGE = "/home/groobey-staff.png";
 const GROOBEY_CAPTION_IMAGE = "/home/groobey-caption.png";
+const LCP_HERO_IMAGE = HOME_SLIDER_SLIDES[0]?.src ?? "/home-slider/slider-1_grocery.png";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -22,12 +25,16 @@ export const Route = createFileRoute("/")({
         "Shop rice, dal, vegetables, fruits, combos & more. Order online with TLD Groobey for fresh groceries and doorstep delivery.",
       path: "/",
     }),
-    scripts: [
+    links: [
       {
-        type: "application/ld+json",
-        children: JSON.stringify(groobeyHomeJsonLd()),
+        rel: "preload",
+        href: LCP_HERO_IMAGE,
+        as: "image",
+        type: "image/png",
+        fetchPriority: "high",
       },
     ],
+    scripts: groobeyWebPageHeadScripts(groobeyHomeJsonLd()),
   }),
   component: HomePage,
 });
@@ -35,6 +42,7 @@ export const Route = createFileRoute("/")({
 function HomePage() {
   return (
     <GroobeyPublicLayout className="groobey-home-main space-y-16 pb-8 sm:pb-10">
+      <h1 className="sr-only">TLD Groobey — fresh groceries online with doorstep delivery</h1>
       <GroobeyHeroSlider />
       <GroobeyPromoStrip />
 
@@ -52,24 +60,22 @@ function HomePage() {
             aria-label="You Order. We Deliver. Fresh and Fast."
             onContextMenu={(e) => e.preventDefault()}
           >
-            <img
-              src={GROOBEY_CAPTION_IMAGE}
+            <GroobeyMarketingImage
+              pngSrc={GROOBEY_CAPTION_IMAGE}
               alt=""
               className="groobey-home-staff-caption"
               width={498}
               height={141}
               loading="lazy"
-              decoding="async"
               draggable={false}
             />
-            <img
-              src={GROOBEY_STAFF_IMAGE}
+            <GroobeyMarketingImage
+              pngSrc={GROOBEY_STAFF_IMAGE}
               alt="TLD Groobey delivery team"
               className="groobey-home-staff-photo"
               width={407}
               height={612}
               loading="lazy"
-              decoding="async"
               draggable={false}
             />
           </figure>

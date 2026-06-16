@@ -840,19 +840,122 @@
     isolation: isolate;
   }
 
+  .groobey-seo-page {
+    padding-top: 0.5rem;
+  }
+
+  .groobey-seo-article {
+    max-width: 42rem;
+    margin-inline: auto;
+  }
+
+  .groobey-seo-article-header {
+    margin-bottom: 2rem;
+  }
+
+  .groobey-seo-article-kicker {
+    margin: 0 0 0.5rem;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: var(--muted-foreground);
+  }
+
+  .groobey-seo-article-kicker-link {
+    color: var(--primary);
+    text-decoration: none;
+  }
+
+  .groobey-seo-article-kicker-link:hover {
+    text-decoration: underline;
+  }
+
+  .groobey-seo-article-title {
+    font-size: clamp(1.75rem, 5vw, 2.35rem);
+    font-weight: 900;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+  }
+
+  .groobey-seo-article-lead {
+    margin-top: 0.85rem;
+    font-size: 1.0625rem;
+    font-weight: 600;
+    line-height: 1.65;
+    color: var(--muted-foreground);
+  }
+
+  .groobey-seo-article-body {
+    display: flex;
+    flex-direction: column;
+    gap: 1.75rem;
+  }
+
+  .groobey-seo-section-title {
+    margin-bottom: 0.65rem;
+    font-size: 1.125rem;
+    font-weight: 900;
+    line-height: 1.3;
+  }
+
+  .groobey-seo-section p,
+  .groobey-seo-section li {
+    font-size: 0.9375rem;
+    font-weight: 500;
+    line-height: 1.7;
+    color: var(--muted-foreground);
+  }
+
+  .groobey-seo-section p + p {
+    margin-top: 0.75rem;
+  }
+
+  .groobey-seo-section a {
+    color: var(--primary);
+    font-weight: 700;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .groobey-seo-link-list,
+  .groobey-seo-ordered-list {
+    margin: 0.5rem 0 0;
+    padding-left: 1.25rem;
+  }
+
+  .groobey-seo-link-list li + li,
+  .groobey-seo-ordered-list li + li {
+    margin-top: 0.45rem;
+  }
+
+  .groobey-seo-inline-cta {
+    display: inline-flex;
+    margin-top: 0.75rem;
+    padding: 0.65rem 1.1rem;
+    border-radius: 0.85rem;
+    background: var(--primary);
+    color: var(--primary-foreground) !important;
+    font-weight: 800;
+    text-decoration: none !important;
+  }
+
+  .groobey-seo-inline-cta:hover {
+    opacity: 0.92;
+  }
+
   .groobey-category-grid {
-    display: grid;
-    width: 100%;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
     gap: 0.75rem;
+    width: 100%;
   }
 
   .groobey-category-card {
     box-sizing: border-box;
     position: relative;
     display: flex;
-    width: 100%;
-    max-width: none;
+    flex-shrink: 0;
+    width: calc((100% - 0.75rem) / 2);
     overflow: hidden;
     flex-direction: column;
     isolation: isolate;
@@ -869,26 +972,18 @@
   }
 
   @media (min-width: 640px) {
-    .groobey-category-grid {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-  }
-
-  @media (max-width: 639px) {
-    .groobey-category-card--combos {
-      grid-column: 1 / -1;
-      justify-self: center;
-      width: calc((100% - 0.75rem) / 2);
+    .groobey-category-card {
+      width: calc((100% - 1.5rem) / 3);
     }
   }
 
   @media (min-width: 1024px) {
     .groobey-category-grid {
-      grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 1rem;
     }
 
     .groobey-category-card {
+      width: calc((100% - 3rem) / 4);
       border-radius: 1.25rem;
     }
   }
@@ -940,6 +1035,12 @@
 
   .groobey-category-card-media--photo {
     background: #111111;
+  }
+
+  .groobey-category-card-media picture {
+    display: block;
+    width: 100%;
+    height: 100%;
   }
 
   .groobey-category-card-media--photo::after {
@@ -1041,6 +1142,17 @@
   .groobey-slider-shell {
     position: relative;
     padding-bottom: 1.125rem;
+  }
+
+  .groobey-slider-shell picture {
+    display: block;
+    max-height: 100%;
+    max-width: 100%;
+  }
+
+  .groobey-home-staff-visual picture {
+    display: block;
+    line-height: 0;
   }
 
   .groobey-slider-nav-pill {
@@ -2307,10 +2419,11 @@
     margin-inline: -1rem;
     padding: 0.25rem 1rem 0.45rem;
     overflow-x: auto;
+    overscroll-behavior-x: contain;
     scrollbar-width: none;
     -webkit-overflow-scrolling: touch;
     scroll-snap-type: x proximity;
-    scroll-padding-inline: 50%;
+    scroll-padding-inline: 1rem;
     justify-content: flex-start;
   }
 
@@ -2318,11 +2431,22 @@
     display: none;
   }
 
-  @media (min-width: 1024px) {
+  @media (min-width: 768px) {
     .groobey-shop-category-rail {
-      gap: 0.85rem;
+      flex-wrap: wrap;
+      justify-content: center;
+      overflow-x: visible;
+      overscroll-behavior-x: auto;
+      scroll-snap-type: none;
+      gap: 0.85rem 0.65rem;
       margin-inline: 0;
       padding-inline: 0;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .groobey-shop-category-rail {
+      gap: 0.85rem 0.75rem;
     }
   }
 
@@ -2338,8 +2462,14 @@
     background: transparent;
     text-align: center;
     cursor: pointer;
-    scroll-snap-align: center;
+    scroll-snap-align: start;
     transition: transform 0.15s ease, opacity 0.15s ease;
+  }
+
+  @media (min-width: 768px) {
+    .groobey-shop-category-tile {
+      scroll-snap-align: none;
+    }
   }
 
   .groobey-shop-category-tile:active {
@@ -3795,6 +3925,45 @@
     box-shadow:
       var(--shadow-soft),
       0 0 0 1px color-mix(in oklab, var(--groobey-lime) 25%, transparent);
+  }
+
+  .groobey-shop-product.is-out-of-stock {
+    border-color: color-mix(in oklab, #d97706 28%, white);
+    background: color-mix(in oklab, #fffbeb 88%, white);
+    opacity: 0.92;
+  }
+
+  .groobey-shop-product.is-out-of-stock:hover {
+    transform: none;
+    border-color: color-mix(in oklab, #d97706 32%, white);
+  }
+
+  .groobey-shop-product-stock-label {
+    margin: 0 0 0.2rem;
+    font-size: 0.6875rem;
+    font-weight: 900;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #b45309;
+  }
+
+  .groobey-shop-out-of-stock-pill {
+    display: inline-flex;
+    min-height: 2.25rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    border: 1px solid color-mix(in oklab, #d97706 35%, white);
+    background: color-mix(in oklab, #fef3c7 70%, white);
+    padding: 0 0.9rem;
+    font-size: 0.75rem;
+    font-weight: 900;
+    color: #92400e;
+  }
+
+  .groobey-shop-qty-pill-btn--disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
   }
 
   .groobey-shop-add-pill {

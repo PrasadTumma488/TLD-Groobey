@@ -2,6 +2,11 @@ import { ChevronLeft, ChevronRight, Package, ShieldCheck, ShoppingCart, Truck } 
 import { useCallback, useEffect, useState } from "react";
 
 import {
+  GROOBEY_SLIDER_IMAGE_SIZES,
+  groobeySliderImageSrcSet,
+} from "@/lib/groobey-home-images";
+import { GroobeyMarketingImage } from "@/components/groobey/groobey-marketing-image";
+import {
   HOME_SLIDER_BG,
   HOME_SLIDER_IMAGE,
   HOME_SLIDER_SLIDES,
@@ -51,12 +56,16 @@ export function GroobeyHeroSlider() {
                 className="flex h-full w-full shrink-0 items-center justify-center"
                 style={{ backgroundColor: HOME_SLIDER_BG }}
               >
-                <img
-                  src={slide.src}
+                <GroobeyMarketingImage
+                  pngSrc={slide.src}
+                  webpSrcSet={groobeySliderImageSrcSet(slide.src)}
+                  sizes={GROOBEY_SLIDER_IMAGE_SIZES}
                   alt={slide.alt}
                   className="block max-h-full max-w-full object-contain object-center"
+                  width={HOME_SLIDER_IMAGE.width}
+                  height={HOME_SLIDER_IMAGE.height}
                   loading={i === 0 ? "eager" : "lazy"}
-                  decoding="async"
+                  fetchPriority={i === 0 ? "high" : "auto"}
                   draggable={false}
                 />
               </div>

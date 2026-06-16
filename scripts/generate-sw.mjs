@@ -39,8 +39,14 @@ const { count, size, warnings } = await injectManifest({
   swSrc: swBundled,
   swDest: path.join(distClient, "sw.js"),
   globDirectory: distClient,
-  globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2,webmanifest}"],
-  globIgnores: ["sw.js", "sw.js.map"],
+  globPatterns: ["**/*.{js,css,html,ico,svg,woff2,webmanifest,webp}"],
+  globIgnores: [
+    "sw.js",
+    "sw.js.map",
+    "**/home-slider/**",
+    "**/home-categories/**",
+    "**/home/**",
+  ],
   maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
 });
 

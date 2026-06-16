@@ -1,5 +1,10 @@
 import { Link } from "@tanstack/react-router";
 import { HOME_CATEGORIES, type HomeCategory } from "@/lib/groobey-home-categories";
+import {
+  GROOBEY_CATEGORY_IMAGE_SIZES,
+  groobeyCategoryImageSrcSet,
+} from "@/lib/groobey-home-images";
+import { GroobeyMarketingImage } from "@/components/groobey/groobey-marketing-image";
 import { homeCategoryIcon } from "@/lib/groobey-home-category-icons";
 import { SHOP_COMBOS_TILE } from "@/lib/groobey-shop-browse";
 import { SHOW_CUSTOMER_PORTAL } from "@/lib/groobey-site-visibility";
@@ -12,6 +17,21 @@ export function GroobeyCategoryGrid() {
       ))}
       <GroobeyCombosCategoryCard />
     </div>
+  );
+}
+
+function CategoryImage({ src, alt }: { src: string; alt: string }) {
+  return (
+    <GroobeyMarketingImage
+      pngSrc={src}
+      webpSrcSet={groobeyCategoryImageSrcSet(src)}
+      sizes={GROOBEY_CATEGORY_IMAGE_SIZES}
+      alt={alt}
+      className="groobey-category-card-img"
+      width={640}
+      height={640}
+      loading="lazy"
+    />
   );
 }
 
@@ -28,13 +48,7 @@ function GroobeyCategoryCard({ category }: { category: HomeCategory }) {
         }
       >
         {category.image ?
-          <img
-            src={category.image}
-            alt={category.label}
-            className="groobey-category-card-img"
-            loading="lazy"
-            decoding="async"
-          />
+          <CategoryImage src={category.image} alt={category.label} />
         : <div className="groobey-category-card-placeholder" aria-hidden>
             <PlaceholderIcon className="size-10 text-primary/70 sm:size-12" strokeWidth={1.75} />
           </div>
@@ -66,13 +80,7 @@ function GroobeyCombosCategoryCard() {
   const body = (
     <>
       <div className="groobey-category-card-media groobey-category-card-media--photo">
-        <img
-          src={SHOP_COMBOS_TILE.image}
-          alt={SHOP_COMBOS_TILE.label}
-          className="groobey-category-card-img"
-          loading="lazy"
-          decoding="async"
-        />
+        <CategoryImage src={SHOP_COMBOS_TILE.image} alt={SHOP_COMBOS_TILE.label} />
       </div>
       <div className="groobey-category-card-body">
         <h3 className="groobey-category-card-title">{SHOP_COMBOS_TILE.label}</h3>

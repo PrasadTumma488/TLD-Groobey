@@ -1,6 +1,8 @@
 import { GROOBEY_APP_NAME, GROOBEY_WEB_LOGO_PATH } from "@/lib/groobey-brand";
+import { HOME_CATEGORIES } from "@/lib/groobey-home-categories";
 import { GROOBEY_SITE_CONTACT } from "@/lib/groobey-site-contact";
 import { SHOW_CUSTOMER_PORTAL } from "@/lib/groobey-site-visibility";
+import { SHOP_COMBOS_CATEGORY_ID } from "@/lib/groobey-shop-browse";
 
 /** Default customer-facing meta description (home + fallback). */
 export const GROOBEY_SEO_DEFAULT_DESCRIPTION =
@@ -11,6 +13,12 @@ export const GROOBEY_SEO_SITE_NAME = GROOBEY_APP_NAME;
 
 /** Google Search Console — HTML meta + DNS TXT value (same token). */
 export const GROOBEY_GOOGLE_SITE_VERIFICATION = "kvy-uAjz9f6iFiDr4ZWlUZ32Ze0FCSwC5t7f796nr8Q";
+
+/** Default home page title (view-source + fallbacks). */
+export const GROOBEY_SEO_DEFAULT_TITLE = `${GROOBEY_SEO_SITE_NAME} - Fresh Groceries Online`;
+
+/** Social share image path (generated at build — see scripts/generate-pwa-icons.mjs). */
+export const GROOBEY_OG_IMAGE_PATH = "/og-image.png";
 
 const DEFAULT_SITE_ORIGIN = "https://tldgroobey.in";
 
@@ -39,13 +47,21 @@ export function groobeyAbsoluteUrl(path = "/"): string {
 }
 
 export function groobeyShareImageUrl(): string {
-  return groobeyAbsoluteUrl(GROOBEY_WEB_LOGO_PATH.split("?")[0] ?? GROOBEY_WEB_LOGO_PATH);
+  return groobeyAbsoluteUrl(GROOBEY_OG_IMAGE_PATH);
+}
+
+/** Optional Google Analytics 4 measurement ID (e.g. G-XXXXXXXX). */
+export function groobeyGaMeasurementId(): string | undefined {
+  const id =
+    process.env.GROOBEY_GA_MEASUREMENT_ID?.trim() ||
+    process.env.VITE_GA_MEASUREMENT_ID?.trim();
+  return id || undefined;
 }
 
 export type GroobeyPageSeo = {
   title: string;
   description?: string;
-  /** Path only, e.g. `/shop` */
+  /** Path only, e.g. `/shop` or `/shop?category=groceries` */
   path?: string;
   noindex?: boolean;
 };
@@ -65,15 +81,21 @@ export function groobeyPageHead(seo: GroobeyPageSeo) {
       { property: "og:url", content: canonical },
       { property: "og:site_name", content: GROOBEY_SEO_SITE_NAME },
       { property: "og:image", content: image },
+      { property: "og:image:alt", content: `${GROOBEY_SEO_SITE_NAME} logo` },
       { property: "og:type", content: "website" },
       { property: "og:locale", content: "en_IN" },
-      { name: "twitter:card", content: "summary" },
+      { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:title", content: seo.title },
       { name: "twitter:description", content: description },
       { name: "twitter:image", content: image },
-      ...(seo.noindex ? [{ name: "robots", content: "noindex, nofollow" }] : [{ name: "robots", content: "index, follow" }]),
+      ...(seo.noindex ?
+        [{ name: "robots", content: "noindex, nofollow" }]
+      : [{ name: "robots", content: "index, follow, max-image-preview:large" }]),
     ],
-    links: [{ rel: "canonical", href: canonical }],
+    links: [
+      { rel: "canonical", href: canonical },
+      { rel: "sitemap", type: "application/xml", href: groobeyAbsoluteUrl("/sitemap.xml") },
+    ],
   };
 }
 
@@ -85,19 +107,79 @@ export function groobeyNoIndexHead(title: string) {
   });
 }
 
-/** Public URLs for XML sitemap (customer-facing only). */
-export function groobeyPublicSitemapPaths(): string[] {
-  const paths = ["/"];
-  if (SHOW_CUSTOMER_PORTAL) {
-    paths.push("/shop", "/login", "/signup");
-  }
-  return paths;
+export function groobeyWebPageHeadScripts(jsonLd: Record<string, unknown>) {
+  return [
+    {
+      type: "application/ld+json",
+      children: JSON.stringify(jsonLd),
+    },
+  ];
 }
 
-/** JSON-LD for the home page (GroceryStore + WebSite). */
+type SitemapEntry = {
+  path: string;
+  changefreq: "daily" | "weekly" | "monthly";
+  priority: number;
+};
+
+/** Public URLs for XML sitemap (customer-facing only). */
+export function groobeyPublicSitemapEntries(): SitemapEntry[] {
+  const entries: SitemapEntry[] = [
+    { path: "/", changefreq: "weekly", priority: 1 },
+    { path: "/about", changefreq: "monthly", priority: 0.85 },
+    { path: "/privacy", changefreq: "monthly", priority: 0.4 },
+    { path: "/terms", changefreq: "monthly", priority: 0.4 },
+  ];
+
+  if (SHOW_CUSTOMER_PORTAL) {
+    entries.push(
+      { path: "/shop", changefreq: "daily", priority: 0.95 },
+      { path: "/login", changefreq: "monthly", priority: 0.5 },
+      { path: "/signup", changefreq: "monthly", priority: 0.5 },
+    );
+    for (const category of HOME_CATEGORIES) {
+      entries.push({
+        path: `/shop?category=${encodeURIComponent(category.id)}`,
+        changefreq: "daily",
+        priority: 0.8,
+      });
+    }
+    entries.push({
+      path: `/shop?category=${SHOP_COMBOS_CATEGORY_ID}`,
+      changefreq: "daily",
+      priority: 0.8,
+    });
+  }
+
+  return entries;
+}
+
+/** @deprecated use groobeyPublicSitemapEntries */
+export function groobeyPublicSitemapPaths(): string[] {
+  return groobeyPublicSitemapEntries().map((entry) => entry.path);
+}
+
+function organizationJsonLd(origin: string) {
+  const phoneDigits = GROOBEY_SITE_CONTACT.phone.replace(/\D/g, "");
+  return {
+    "@type": "GroceryStore",
+    "@id": `${origin}/#organization`,
+    name: GROOBEY_SEO_SITE_NAME,
+    url: origin,
+    logo: groobeyShareImageUrl(),
+    image: groobeyShareImageUrl(),
+    description: GROOBEY_SEO_DEFAULT_DESCRIPTION,
+    email: GROOBEY_SITE_CONTACT.email,
+    ...(phoneDigits ? { telephone: `+${phoneDigits}` } : {}),
+    sameAs: [GROOBEY_SITE_CONTACT.instagramUrl, GROOBEY_SITE_CONTACT.whatsappGroupUrl].filter(
+      Boolean,
+    ),
+  };
+}
+
+/** JSON-LD for the home page. */
 export function groobeyHomeJsonLd(): Record<string, unknown> {
   const origin = groobeySiteOrigin();
-  const phoneDigits = GROOBEY_SITE_CONTACT.phone.replace(/\D/g, "");
 
   return {
     "@context": "https://schema.org",
@@ -111,16 +193,40 @@ export function groobeyHomeJsonLd(): Record<string, unknown> {
         inLanguage: "en-IN",
         publisher: { "@id": `${origin}/#organization` },
       },
+      organizationJsonLd(origin),
       {
-        "@type": "GroceryStore",
-        "@id": `${origin}/#organization`,
-        name: GROOBEY_SEO_SITE_NAME,
+        "@type": "WebPage",
+        "@id": `${origin}/#webpage`,
         url: origin,
-        image: groobeyShareImageUrl(),
+        name: `${GROOBEY_SEO_SITE_NAME} - Fresh Groceries Online`,
         description: GROOBEY_SEO_DEFAULT_DESCRIPTION,
-        email: GROOBEY_SITE_CONTACT.email,
-        ...(phoneDigits ? { telephone: `+${phoneDigits}` } : {}),
-        sameAs: [GROOBEY_SITE_CONTACT.instagramUrl, GROOBEY_SITE_CONTACT.whatsappGroupUrl].filter(Boolean),
+        isPartOf: { "@id": `${origin}/#website` },
+        about: { "@id": `${origin}/#organization` },
+        inLanguage: "en-IN",
+      },
+    ],
+  };
+}
+
+/** JSON-LD for the About page. */
+export function groobeyAboutJsonLd(): Record<string, unknown> {
+  const origin = groobeySiteOrigin();
+  const aboutUrl = `${origin}/about`;
+
+  return {
+    "@context": "https://schema.org",
+    "@graph": [
+      organizationJsonLd(origin),
+      {
+        "@type": "AboutPage",
+        "@id": `${aboutUrl}/#webpage`,
+        url: aboutUrl,
+        name: "About TLD Groobey",
+        description:
+          "Learn about TLD Groobey online grocery store — fresh staples, produce, combos, and doorstep delivery.",
+        isPartOf: { "@id": `${origin}/#website` },
+        about: { "@id": `${origin}/#organization` },
+        inLanguage: "en-IN",
       },
     ],
   };
@@ -144,16 +250,25 @@ Sitemap: ${sitemap}
 `;
 }
 
+function escapeXml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
 export function groobeySitemapXml(): string {
   const origin = groobeySiteOrigin();
   const lastmod = new Date().toISOString().slice(0, 10);
-  const urls = groobeyPublicSitemapPaths()
+  const urls = groobeyPublicSitemapEntries()
     .map(
-      (path) => `  <url>
-    <loc>${origin}${path}</loc>
+      (entry) => `  <url>
+    <loc>${escapeXml(`${origin}${entry.path}`)}</loc>
     <lastmod>${lastmod}</lastmod>
-    <changefreq>${path === "/" ? "weekly" : "daily"}</changefreq>
-    <priority>${path === "/" ? "1.0" : path === "/shop" ? "0.9" : "0.6"}</priority>
+    <changefreq>${entry.changefreq}</changefreq>
+    <priority>${entry.priority.toFixed(2)}</priority>
   </url>`,
     )
     .join("\n");

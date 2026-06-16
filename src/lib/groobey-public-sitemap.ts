@@ -49,8 +49,9 @@ export function footerQuickLinks(): SitemapLink[] {
 
 export function footerLegalLinks(): FooterLegalLink[] {
   return [
-    { label: "Privacy", href: "/", hash: "how-it-works" },
-    { label: "Terms", href: "/", hash: "how-it-works" },
+    { label: "Privacy", href: "/privacy" },
+    { label: "Terms", href: "/terms" },
+    { label: "About", href: "/about" },
     { label: "Contact", href: "/", hash: "contact" },
   ];
 }
@@ -70,6 +71,7 @@ export function publicSitemapSections(): SitemapSection[] {
     {
       title: "Learn",
       links: [
+        { label: "About TLD Groobey", href: "/about" },
         { label: "Shop by category", href: "/", hash: "categories" },
         { label: "How ordering works", href: "/", hash: "how-it-works" },
         { label: "Contact us", href: "/", hash: "contact" },
