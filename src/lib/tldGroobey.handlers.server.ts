@@ -315,6 +315,7 @@ function pickHighestRole(
   if (roles.includes("merchant")) return "merchant";
   if (roles.includes("order_taker")) return "order_taker";
   if (roles.includes("employee")) return "employee";
+  if (roles.includes("customer")) return "customer";
   return null;
 }
 
@@ -1048,8 +1049,13 @@ const ownerClient = createOwnerScopedClient(data.requesterToken);
       .eq("user_id", user.id)
       .maybeSingle();
     if (ownProfileErr) throw new Error(ownProfileErr.message);
-    if (ownProfile?.groobey_code?.trim()) {
-      return { ok: true as const, groobeyId: ownProfile.groobey_code };
+
+    const existingCode = ownProfile?.groobey_code?.trim() ?? "";
+    const isCustomer = role === "customer";
+    const hasValidCustomerId = /^TLD-USER-\d{6}-\d+$/i.test(existingCode);
+
+    if (existingCode && (!isCustomer || hasValidCustomerId)) {
+      return { ok: true as const, groobeyId: existingCode };
     }
 
     const displayName =
@@ -1071,9 +1077,22 @@ const ownerClient = createOwnerScopedClient(data.requesterToken);
     if (upsertErr) throw new Error(upsertErr.message);
 
     const actorClient = hasServiceRoleKey() ? supabaseAdmin : ownerClient;
+
+    if (isCustomer) {
+      const { data: assigned, error: assignErr } = await actorClient.rpc(
+        "assign_customer_tld_user_id",
+        { p_user_id: user.id },
+      );
+      if (assignErr) throw new Error(assignErr.message);
+      if (typeof assigned === "string" && assigned.trim()) {
+        return { ok: true as const, groobeyId: assigned.trim() };
+      }
+      throw new Error("Could not assign TLD User ID. Run npm run db:apply-tld-user-ids once.");
+    }
+
     let code = await allocateUniqueGroobeyCode(actorClient, role, {
       excludeUserId: user.id,
-      existingCode: ownProfile?.groobey_code,
+      existingCode: isCustomer ? null : ownProfile?.groobey_code,
     });
     let updateErr: { message: string } | null = null;
     for (let attempt = 0; attempt < 5; attempt += 1) {
@@ -1222,6 +1241,72 @@ await assertAdminOrMain(data.requesterToken);
         })),
       ],
     };
+}
+
+/** TLD group customer accounts for Platform Admin → Customers → Daily users. */
+export async function listCustomerAccountsHandler(ctx: { data: unknown }) {
+  const { data } = ctx as { data: Record<string, unknown> };
+  await assertAdminOrMain(data.requesterToken);
+  const actor = platformAdminDataActor(data.requesterToken);
+
+  const { data: roleRows, error: roleError } = await actor
+    .from("user_roles")
+    .select("user_id, created_at")
+    .eq("role", "customer")
+    .order("created_at", { ascending: false });
+
+  if (roleError) throw new Error(roleError.message);
+
+  const userIds = (roleRows ?? []).map((row) => row.user_id);
+  if (!userIds.length) return { accounts: [] as const };
+
+  const profileActor = hasServiceRoleKey() ? supabaseAdmin : actor;
+  const { data: profs, error: profError } = await profileActor
+    .from("profiles")
+    .select(
+      "user_id, display_name, email, phone, default_address, groobey_code, is_active, created_at",
+    )
+    .in("user_id", userIds);
+
+  if (profError) throw new Error(profError.message);
+
+  const profById = new Map((profs ?? []).map((profile) => [profile.user_id, profile]));
+
+  if (hasServiceRoleKey()) {
+    for (const userId of userIds) {
+      const profile = profById.get(userId);
+      const code = profile?.groobey_code?.trim() ?? "";
+      if (!/^TLD-USER-\d{6}-\d+$/i.test(code)) {
+        await supabaseAdmin.rpc("assign_customer_tld_user_id", { p_user_id: userId });
+      }
+    }
+    const { data: refreshed } = await profileActor
+      .from("profiles")
+      .select(
+        "user_id, display_name, email, phone, default_address, groobey_code, is_active, created_at",
+      )
+      .in("user_id", userIds);
+    for (const profile of refreshed ?? []) {
+      profById.set(profile.user_id, profile);
+    }
+  }
+
+  return {
+    accounts: userIds.map((userId) => {
+      const profile = profById.get(userId);
+      const roleRow = roleRows?.find((row) => row.user_id === userId);
+      return {
+        userId,
+        displayName: profile?.display_name?.trim() ?? "",
+        email: profile?.email ?? null,
+        phone: profile?.phone ?? null,
+        address: profile?.default_address ?? null,
+        groobeyId: profile?.groobey_code ?? null,
+        joinedAt: profile?.created_at ?? roleRow?.created_at ?? null,
+        isActive: profile?.is_active ?? true,
+      };
+    }),
+  };
 }
 
 export async function setStaffAccountActiveHandler(ctx: { data: unknown }) {

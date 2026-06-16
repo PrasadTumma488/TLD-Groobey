@@ -55,7 +55,9 @@ import {
   PRODUCTS_OUT_OF_STOCK_SETUP_SQL,
   SUPABASE_SQL_EDITOR_URL,
 } from "@/lib/groobey-products-out-of-stock-schema";
+import { mergeTldDailyUserRows, type TldCustomerAccount } from "@/lib/groobey-tld-daily-users";
 import { SHOP_COMBOS_CATEGORY_ID } from "@/lib/groobey-shop-browse";
+import { TLD_USER_ID_LABEL } from "@/lib/groobey-tld-user-account";
 import { isTransientDatabaseError, retryTransient } from "@/lib/groobey-retry";
 import { setGroobeyNotificationNavigate } from "@/lib/groobey-notification-nav";
 import { groobeySignOut } from "@/lib/groobey-auth-logout";
@@ -116,6 +118,7 @@ import {
   ensureProductsOutOfStockSchema,
   getProductsOutOfStockSchemaStatus,
   getSetupStatus,
+  listCustomerAccounts,
   listStaffAccounts,
   sendCustomerBillEmail,
   setStaffAccountActive,
@@ -293,6 +296,7 @@ export function OwnerDashboard() {
   const updateStaff = useServerFn(updateStaffAccount);
   const deleteStaff = useServerFn(deleteStaffAccount);
   const listStaff = useServerFn(listStaffAccounts);
+  const listTldAccounts = useServerFn(listCustomerAccounts);
   const setStaffActive = useServerFn(setStaffAccountActive);
   const syncCodes = useServerFn(syncGroobeyCodes);
   const ensureOwnCode = useServerFn(ensureMyGroobeyCode);
@@ -325,6 +329,8 @@ export function OwnerDashboard() {
   const [serverSetup, setServerSetup] = useState<{ hasServiceRoleKey: boolean } | null>(null);
   const [loading, setLoading] = useState(true);
   const [staffLoading, setStaffLoading] = useState(false);
+  const [tldAccountsLoading, setTldAccountsLoading] = useState(false);
+  const [tldCustomerAccounts, setTldCustomerAccounts] = useState<TldCustomerAccount[]>([]);
   const [tabAlerts, setTabAlerts] = useState<
     Record<string, { error?: string; notice?: string }>
   >({});
@@ -624,6 +630,38 @@ export function OwnerDashboard() {
     [listStaff, session?.access_token],
   );
 
+  const loadTldDailyUsers = useCallback(
+    async (opts?: { quietListError?: boolean }) => {
+      if (!ADMIN_CUSTOMER_ORDERS_FOCUS) return;
+      setTldAccountsLoading(true);
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        let token = (sessionData.session?.access_token ?? "").trim();
+        if (!token && session?.access_token) token = session.access_token.trim();
+        if (!token) {
+          setTldCustomerAccounts([]);
+          return;
+        }
+        const result = await listTldAccounts({
+          data: { requesterToken: token },
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        setTldCustomerAccounts(result.accounts);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Unable to load TLD group accounts.";
+        if (opts?.quietListError) {
+          console.warn("[groobey] loadTldDailyUsers (quiet):", msg);
+        } else {
+          setNotice("");
+          setError(msg);
+        }
+      } finally {
+        setTldAccountsLoading(false);
+      }
+    },
+    [listTldAccounts, session?.access_token],
+  );
+
   useEffect(() => {
     void fetchSetupStatus()
       .then((status) => setServerSetup(status))
@@ -652,7 +690,10 @@ export function OwnerDashboard() {
   const adminNotifications = useGroobeyWorkspaceNotifications({
     userId: session?.user?.id,
     mode: "admin",
-    onRefresh: () => void loadWorkspace({ silent: true }),
+    onRefresh: () => {
+      void loadWorkspace({ silent: true });
+      void loadTldDailyUsers({ quietListError: true });
+    },
   });
 
   useEffect(() => {
@@ -677,6 +718,15 @@ export function OwnerDashboard() {
   useEffect(() => {
     void loadStaff();
   }, [loadStaff]);
+
+  useEffect(() => {
+    void loadTldDailyUsers();
+  }, [loadTldDailyUsers]);
+
+  useEffect(() => {
+    if (activeTab !== "customers") return;
+    void loadTldDailyUsers({ quietListError: true });
+  }, [activeTab, loadTldDailyUsers]);
 
   useEffect(() => {
     if (!editingProduct) return;
@@ -1922,13 +1972,23 @@ export function OwnerDashboard() {
           pending: isPending ? 1 : 0,
           active: isActive ? 1 : 0,
           lastOrder: order.created_at || "",
+          kind: "shopper" as const,
         });
       }
     }
     return [...map.values()].sort((a, b) => b.lastOrder.localeCompare(a.lastOrder));
   }, [pipelineCustomerOrders]);
+  const tldDailyUserRows = useMemo(
+    () => mergeTldDailyUserRows(tldCustomerAccounts, pipelineCustomerOrders, month),
+    [tldCustomerAccounts, pipelineCustomerOrders, month],
+  );
   const selectedCustomerOrders = useMemo(() => {
     if (!selectedCustomer) return [];
+    if (selectedCustomer.userId) {
+      return pipelineCustomerOrders
+        .filter((order) => order.created_by === selectedCustomer.userId)
+        .sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
+    }
     return pipelineCustomerOrders
       .filter((order) => customerOrderKey(order) === selectedCustomer.key)
       .sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
@@ -1953,8 +2013,13 @@ export function OwnerDashboard() {
     [pipelineCustomerOrders, today],
   );
   const orderMatchesCustomerFilter = useCallback(
-    (order: CustomerOrder) =>
-      !ordersCustomerFilter || customerOrderKey(order) === ordersCustomerFilter,
+    (order: CustomerOrder) => {
+      if (!ordersCustomerFilter) return true;
+      if (ordersCustomerFilter.startsWith("user:")) {
+        return order.created_by === ordersCustomerFilter.slice(5);
+      }
+      return customerOrderKey(order) === ordersCustomerFilter;
+    },
     [ordersCustomerFilter],
   );
   const filteredActiveOrderTakerOrders = useMemo(
@@ -1971,8 +2036,16 @@ export function OwnerDashboard() {
   );
   const ordersCustomerFilterLabel = useMemo(() => {
     if (!ordersCustomerFilter) return null;
+    if (ordersCustomerFilter.startsWith("user:")) {
+      const userId = ordersCustomerFilter.slice(5);
+      return (
+        tldDailyUserRows.find((c) => c.userId === userId)?.name ??
+        customerDirectory.find((c) => c.userId === userId)?.name ??
+        "TLD account"
+      );
+    }
     return customerDirectory.find((c) => c.key === ordersCustomerFilter)?.name ?? "Customer";
-  }, [ordersCustomerFilter, customerDirectory]);
+  }, [ordersCustomerFilter, customerDirectory, tldDailyUserRows]);
   const salesActiveOrders = filteredActiveOrderTakerOrders;
   const salesUnassignedOrders = filteredUnassignedHandoffOrders;
   const salesCompletedToday = filteredCompletedOrderTakerOrdersToday;
@@ -2109,8 +2182,14 @@ export function OwnerDashboard() {
   }, [shops]);
   const isProfileView = activeTab === "profile";
 
-  function openCustomerOrders(customerKey: string) {
-    setOrdersCustomerFilter(customerKey);
+  function openCustomerOrders(customer: AdminCustomerRow | string) {
+    if (typeof customer === "string") {
+      setOrdersCustomerFilter(customer);
+    } else if (customer.userId) {
+      setOrdersCustomerFilter(`user:${customer.userId}`);
+    } else {
+      setOrdersCustomerFilter(customer.key);
+    }
     setActiveTab("sales");
   }
 
@@ -2125,7 +2204,9 @@ export function OwnerDashboard() {
   function renderCustomerDetailDialogContent() {
     if (!selectedCustomer) return null;
     const customer = selectedCustomer;
+    const isTldAccount = customer.kind === "tld-account";
     const last = customer.lastOrder ? formatGroobeyDateTime(customer.lastOrder) : EM_DASH;
+    const joined = customer.joinedAt ? formatGroobeyDateTime(customer.joinedAt) : EM_DASH;
     return (
       <div className="space-y-4">
         <div className="groobey-admin-customer-detail-hero">
@@ -2135,21 +2216,57 @@ export function OwnerDashboard() {
           <div className="min-w-0">
             <p className="text-base font-black leading-tight">{customer.name}</p>
             <p className="mt-0.5 text-xs font-semibold text-muted-foreground">
-              {customer.count} order{customer.count === 1 ? "" : "s"}
-              {customer.pending > 0 ? ` ${MIDDLE_DOT} ${customer.pending} pending` : ""}
-              {customer.active > 0 ? ` ${MIDDLE_DOT} ${customer.active} active` : ""}
+              {isTldAccount ? "TLD group · Daily user" : "Online shopper"}
+              {isTldAccount && customer.tldUserId ?
+                ` ${MIDDLE_DOT} ${customer.tldUserId}`
+              : ""}
+              {isTldAccount ?
+                ` ${MIDDLE_DOT} ${customer.count} monthly order${customer.count === 1 ? "" : "s"} (${formatCalendarMonthLabel(customer.monthKey ?? month)})`
+              : customer.count > 0 ?
+                ` ${MIDDLE_DOT} ${customer.count} order${customer.count === 1 ? "" : "s"}`
+              : ""}
+              {!isTldAccount && customer.pending > 0 ? ` ${MIDDLE_DOT} ${customer.pending} pending` : ""}
+              {!isTldAccount && customer.active > 0 ? ` ${MIDDLE_DOT} ${customer.active} active` : ""}
             </p>
           </div>
         </div>
         <div className="groobey-admin-customer-detail-grid">
+          {isTldAccount && customer.email ?
+            <div className="groobey-admin-customer-detail-field sm:col-span-2">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Email</p>
+              <p className="mt-0.5 text-sm font-semibold">{customer.email}</p>
+            </div>
+          : null}
           <div className="groobey-admin-customer-detail-field">
             <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Phone</p>
             <p className="mt-0.5 text-sm font-semibold">{customer.phone}</p>
           </div>
-          <div className="groobey-admin-customer-detail-field">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Last order</p>
-            <p className="mt-0.5 text-sm font-semibold">{last}</p>
-          </div>
+          {isTldAccount ?
+            <div className="groobey-admin-customer-detail-field">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Joined</p>
+              <p className="mt-0.5 text-sm font-semibold">{joined}</p>
+            </div>
+          : <div className="groobey-admin-customer-detail-field">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Last order</p>
+              <p className="mt-0.5 text-sm font-semibold">{last}</p>
+            </div>
+          }
+          {isTldAccount ?
+            <div className="groobey-admin-customer-detail-field sm:col-span-2">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                {TLD_USER_ID_LABEL}
+              </p>
+              <p className="mt-0.5 font-mono text-sm font-semibold">
+                {customer.tldUserId || customer.groobeyId || EM_DASH}
+              </p>
+            </div>
+          : null}
+          {isTldAccount && customer.lastOrder ?
+            <div className="groobey-admin-customer-detail-field">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Last order</p>
+              <p className="mt-0.5 text-sm font-semibold">{last}</p>
+            </div>
+          : null}
           <div className="groobey-admin-customer-detail-field sm:col-span-2">
             <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Address</p>
             <p className="mt-0.5 text-sm font-semibold leading-snug">{customer.address || EM_DASH}</p>
@@ -2160,7 +2277,7 @@ export function OwnerDashboard() {
           variant="outline"
           className="h-9 rounded-xl text-xs font-bold"
           onClick={() => {
-            openCustomerOrders(customer.key);
+            openCustomerOrders(customer);
             closeCustomerDetail();
           }}
         >
@@ -2705,8 +2822,8 @@ export function OwnerDashboard() {
           {ADMIN_CUSTOMER_ORDERS_FOCUS ?
             <Stat
               icon={UsersRound}
-              label="Customers"
-              value={String(customerDirectory.length)}
+              label="Daily users"
+              value={String(tldDailyUserRows.length)}
               onClick={() => setActiveTab("customers")}
             />
           : <Stat
@@ -3013,7 +3130,13 @@ export function OwnerDashboard() {
             />
             <Stat
               icon={UsersRound}
-              label="Customers"
+              label="Daily users"
+              value={String(tldDailyUserRows.length)}
+              onClick={() => setActiveTab("customers")}
+            />
+            <Stat
+              icon={UsersRound}
+              label="Shoppers (orders)"
               value={String(customerDirectory.length)}
               onClick={() => setActiveTab("customers")}
             />
@@ -3027,12 +3150,26 @@ export function OwnerDashboard() {
         </TabsContent>
 
         {ADMIN_CUSTOMER_ORDERS_FOCUS ?
-          <TabsContent value="customers" className="space-y-3">
+          <TabsContent value="customers" className="space-y-4">
             <InlineFeedback {...alertsFor("customers")} />
-            <Panel title="Customer directory" icon={UsersRound}>
+            <Panel title="Daily users · TLD group" icon={UsersRound}>
+              {tldAccountsLoading && tldDailyUserRows.length === 0 ?
+                <div className="flex items-center gap-2 text-sm font-semibold">
+                  <Loader2 className="size-4 animate-spin" aria-hidden />
+                  Loading TLD group accounts…
+                </div>
+              : <AdminCustomerInbox
+                  customers={tldDailyUserRows}
+                  onOpenCustomer={openCustomerDetail}
+                  variant="daily-users"
+                />
+              }
+            </Panel>
+            <Panel title="Online shoppers (from orders)" icon={UsersRound}>
               <AdminCustomerInbox
                 customers={customerDirectory}
                 onOpenCustomer={openCustomerDetail}
+                variant="shoppers"
               />
             </Panel>
           </TabsContent>

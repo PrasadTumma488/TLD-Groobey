@@ -20,6 +20,7 @@
     "db:check": "node scripts/check-db-schema.mjs",
     "db:push": "node scripts/push-db.mjs",
     "db:apply-out-of-stock": "node scripts/apply-products-out-of-stock-schema.mjs",
+    "db:apply-tld-user-ids": "node scripts/apply-customer-tld-user-ids.mjs",
     "db:push:cli": "npx supabase db push --linked --yes",
     "env:db-password": "node scripts/set-db-password.mjs",
     "env:vercel-db-password": "node scripts/push-vercel-db-password.mjs",

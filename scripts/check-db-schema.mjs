@@ -73,6 +73,10 @@ const checks = {
   "products.is_out_of_stock": () => columnExists("products", "is_out_of_stock"),
   ensure_products_out_of_stock_schema: () => rpcExists("ensure_products_out_of_stock_schema"),
   next_groobey_customer_order_bill_number: () => rpcExists("next_groobey_customer_order_bill_number"),
+  assign_customer_tld_user_id: () =>
+    rpcExists("assign_customer_tld_user_id", {
+      p_user_id: "00000000-0000-0000-0000-000000000000",
+    }),
   mark_assigned_order_status: () =>
     rpcExists("mark_assigned_order_status", {
       p_order_id: "00000000-0000-0000-0000-000000000000",

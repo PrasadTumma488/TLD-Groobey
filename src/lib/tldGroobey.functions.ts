@@ -49,6 +49,10 @@ export const listStaffAccounts = createServerFn({ method: "POST" })
   .inputValidator((input) => requesterTokenSchema.parse(input))
   .handler(async (ctx) => invokeHandler("listStaffAccountsHandler", ctx));
 
+export const listCustomerAccounts = createServerFn({ method: "POST" })
+  .inputValidator((input) => requesterTokenSchema.parse(input))
+  .handler(async (ctx) => invokeHandler("listCustomerAccountsHandler", ctx));
+
 export const setStaffAccountActive = createServerFn({ method: "POST" })
   .inputValidator((input) => setStaffActiveSchema.parse(input))
   .handler(async (ctx) => invokeHandler("setStaffAccountActiveHandler", ctx));
